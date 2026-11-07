@@ -1,6 +1,5 @@
 //! Almanach des âmes : tokens consommés par jour, conservés d'une session
-//! à l'autre (écran F8, rendu dans `almanac/view.rs`, fichier dans
-//! `almanac/disk.rs`).
+//! à l'autre (affiché par `/usage`, fichier dans `almanac/disk.rs`).
 //!
 //! Un seul fichier JSON (`$XDG_DATA_HOME/kiro-horror-tui/almanac.json`,
 //! sinon `~/.local/share/kiro-horror-tui/almanac.json`) associe chaque date
@@ -10,7 +9,6 @@
 //! l'almanach passe en mémoire seule et affiche l'erreur.
 
 mod disk;
-mod view;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -186,6 +184,40 @@ impl Almanac {
         self.all_time().total().checked_div(active).unwrap_or(0)
     }
 
+    /// Bloc `/usage` : ce soir, 7/30 nuits, total, moyenne, pire nuit +
+    /// graphe des 30 dernières nuits. Vide → une seule ligne.
+    pub fn usage_block(&self, today: NaiveDate) -> String {
+        let nights = self.recent().count();
+        if nights == 0 {
+            return String::from("almanac: blank — no souls reaped yet");
+        }
+        let tonight = self.day(today);
+        let darkest = self
+            .peak()
+            .map(|(day, tally)| format!("{} ({})", tally.total(), day.format("%d %b")))
+            .unwrap_or_else(|| String::from("—"));
+        let mut out = format!(
+            "ALMANAC (all sessions) —\n\
+             tonight: {} (in={} out={} calls={})\n\
+             7 nights: {} · 30 nights: {} · all time: {} ({nights} nights, ~{}/night)\n\
+             darkest: {darkest}\n\
+             last 30 nights: {}",
+            tonight.total(),
+            tonight.prompt,
+            tonight.completion,
+            tonight.calls,
+            self.span(today, 7).total(),
+            self.span(today, 30).total(),
+            self.all_time().total(),
+            self.daily_average(),
+            sparkline(&self.last_days(today, SPARK_NIGHTS)),
+        );
+        if let Some(err) = self.error() {
+            out.push_str(&format!("\nalmanac error: {err}"));
+        }
+        out
+    }
+
     /// Almanach de démonstration (mémoire) pour `--smoke` / `--preview` :
     /// 40 nuits pseudo-aléatoires mais déterministes, quelques nuits calmes.
     pub fn demo(today: NaiveDate) -> Self {
@@ -204,6 +236,25 @@ impl Almanac {
         }
         almanac
     }
+}
+
+/// Nuits couvertes par le graphe de [`Almanac::usage_block`].
+const SPARK_NIGHTS: usize = 30;
+/// Niveaux du graphe, du plus bas au plus haut.
+const SPARK_LEVELS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+
+/// Graphe une ligne des totaux (0 → `▁`, max → `█`), ancien → récent.
+fn sparkline(days: &[(NaiveDate, DayTally)]) -> String {
+    let max = days.iter().map(|(_, t)| t.total()).max().unwrap_or(0);
+    if max == 0 {
+        return "▁".repeat(days.len());
+    }
+    days.iter()
+        .map(|(_, t)| {
+            let idx = (t.total().saturating_mul(8) / max).min(7) as usize;
+            SPARK_LEVELS[idx]
+        })
+        .collect()
 }
 
 /// Date locale du jour (les nuits changent à minuit, heure locale).
@@ -263,6 +314,42 @@ mod tests {
         assert_eq!(a.daily_average(), 60);
         let recent: Vec<_> = a.recent().map(|(d, _)| d).collect();
         assert_eq!(recent, vec![date(2026, 11, 3), date(2026, 11, 1)]);
+    }
+
+    #[test]
+    fn usage_block_blank_when_no_calls() {
+        let a = Almanac::memory();
+        assert_eq!(
+            a.usage_block(date(2026, 11, 7)),
+            "almanac: blank — no souls reaped yet"
+        );
+    }
+
+    #[test]
+    fn usage_block_shows_tally_and_sparkline() {
+        let mut a = Almanac::memory();
+        a.note(date(2026, 11, 7), 100, 50);
+        a.note(date(2026, 11, 6), 10, 0);
+        a.note(date(2026, 10, 1), 5, 5);
+        let text = a.usage_block(date(2026, 11, 7));
+        assert!(
+            text.contains("tonight: 150 (in=100 out=50 calls=1)"),
+            "{text}"
+        );
+        assert!(text.contains("7 nights: 160"), "{text}");
+        assert!(text.contains("30 nights: 160"), "{text}");
+        assert!(
+            text.contains("all time: 170 (3 nights, ~56/night)"),
+            "{text}"
+        );
+        assert!(text.contains("darkest: 150 (07 Nov)"), "{text}");
+        let spark = text
+            .lines()
+            .find(|l| l.starts_with("last 30 nights: "))
+            .unwrap()
+            .trim_start_matches("last 30 nights: ");
+        assert_eq!(spark.chars().count(), 30);
+        assert!(spark.ends_with('█'), "{spark}");
     }
 
     #[test]

@@ -59,13 +59,12 @@ impl App {
         chat.scroll.by(delta);
     }
 
-    /// Clic sur un onglet : même effet que sa touche (F6/F7/F8 basculent).
+    /// Clic sur un onglet : même effet que sa touche (F6 bascule).
     fn goto_tab(&mut self, tab: Screen) {
         match tab {
             Screen::Chat => self.screen = Screen::Chat,
             Screen::Bestiary => self.screen = self.screen.toggle(Screen::Bestiary),
             Screen::Hub => self.open_hub(),
-            Screen::Almanac => self.show_almanac(),
         }
     }
 }
@@ -186,7 +185,6 @@ mod tests {
             (Screen::Chat, Rect::new(10, 0, 7, 1)),
             (Screen::Bestiary, Rect::new(31, 0, 14, 1)),
             (Screen::Hub, Rect::new(45, 0, 9, 1)),
-            (Screen::Almanac, Rect::new(54, 0, 12, 1)),
         ];
         app.on_mouse(click(32, 0)); // bestiaire → Bestiary
         assert_eq!(app.screen, Screen::Bestiary);
@@ -196,10 +194,8 @@ mod tests {
         assert_eq!(app.screen, Screen::Chat);
         app.on_mouse(click(46, 0)); // hub → Hub
         assert_eq!(app.screen, Screen::Hub);
-        app.on_mouse(click(55, 0)); // almanach → Almanac (comme F8)
-        assert_eq!(app.screen, Screen::Almanac);
         app.on_mouse(click(70, 0)); // hors onglets → inchangé
-        assert_eq!(app.screen, Screen::Almanac);
+        assert_eq!(app.screen, Screen::Hub);
     }
 
     #[test]
