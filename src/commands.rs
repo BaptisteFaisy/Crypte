@@ -1,11 +1,9 @@
 //! Commandes slash (`/usage` `/new` `/thinking` `/model` `/agent` `/agents`
-//! `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact` `/connect` `/permissions` `/web` `/help`).
+//! `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact` `/connect` `/permissions` `/web` `/tools` `/help`).
 //!
-//! `parse` matche le premier mot (cibles + texte consomment le reste) ;
-//! `usage_text` met en forme les registres courant et cumulé.
+//! `parse` matche le premier mot (cibles + texte consomment le reste).
 
 use crate::bus::{LinkEnd, Target};
-use crate::tokens::{fmt_cost, fmt_tps, TokenLedger};
 
 /// Vrai si la saisie est une commande (commence par `/` après trim).
 pub fn is_command(input: &str) -> bool {
@@ -53,6 +51,7 @@ pub enum Command {
     Connect(Option<String>),
     Permissions(Option<String>),
     Web(String),
+    Tools(Option<String>),
     Unknown(String),
 }
 
@@ -75,7 +74,7 @@ pub const WEB_USAGE: &str = "usage: /web <query> — web search with summarized 
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
 /// Matche le premier mot ; cibles + texte consomment le reste,
-/// `/thinking` `/model` `/connect` `/permissions` ont un argument optionnel.
+/// `/thinking` `/model` `/connect` `/permissions` `/tools` ont un arg optionnel.
 pub fn parse(input: &str) -> Option<Command> {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
@@ -95,6 +94,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/compact" => Some(Command::Compact),
         "/connect" => Some(Command::Connect(opt_arg(&mut parts))),
         "/permissions" => Some(Command::Permissions(opt_arg(&mut parts))),
+        "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),
@@ -240,37 +240,17 @@ pub fn valid_effort(s: &str) -> bool {
     matches!(s, "default" | "low" | "medium" | "high")
 }
 
-/// Texte multi-lignes : modèle + thinking + usage chat courant et session.
-pub fn usage_text(
-    current: &TokenLedger,
-    total: &TokenLedger,
-    model: &str,
-    thinking: &str,
-) -> String {
-    let (last_in, last_out) = current.last();
-    format!(
-        "model: {model}\n\
-         thinking: {thinking}\n\
-         CHAT — in={} out={} total={}\n\
-         last call: in={last_in} out={last_out}\n\
-         tps: last={} avg={}\n\
-         cost: {}\n\
-         SESSION TOTAL — in={} out={} total={}\n\
-         avg tps: {}",
-        current.prompt,
-        current.completion,
-        current.total(),
-        fmt_tps(current.last_tps()),
-        fmt_tps(current.avg_tps()),
-        fmt_cost(current.cost()),
-        total.prompt,
-        total.completion,
-        total.total(),
-        fmt_tps(total.avg_tps()),
-    )
+/// Valeurs d'effort reconnues (sondées via `valid_effort`, source unique).
+pub fn effort_values() -> Vec<&'static str> {
+    [
+        "minimal", "none", "low", "medium", "high", "xhigh", "max", "auto",
+    ]
+    .into_iter()
+    .filter(|v| valid_effort(v))
+    .collect()
 }
 
-/// Aide : les 17 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 18 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (current chat + session total)\n\
@@ -287,8 +267,9 @@ pub fn help_text() -> &'static str {
      /unlink <a> <b> — remove a link\n\
      /compact — compact the current chat history\n\
      /connect [openai|muse] — connect (status if no argument)\n\
-     /permissions [yolo|auto] — future tools mode (remembered)\n\
+     /permissions [yolo|auto] — tools mode: ask or run free (remembered)\n\
      /web <query> — web search + summary with cited sources\n\
+     /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
      /help — this help\n\
      Keys: F3/F4 chats · F5 scare · F6 bestiary · F7 hub · F8 almanac · Ctrl+N\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
@@ -309,6 +290,16 @@ mod tests {
             parse("/permissions auto"),
             Some(Command::Permissions(Some(String::from("auto"))))
         );
+    }
+
+    #[test]
+    fn parse_tools_marche_arret_optionnels() {
+        assert_eq!(parse("/tools"), Some(Command::Tools(None)));
+        assert_eq!(
+            parse("/tools off"),
+            Some(Command::Tools(Some(String::from("off"))))
+        );
+        assert!(help_text().contains("/tools [on|off]"));
     }
 
     #[test]
