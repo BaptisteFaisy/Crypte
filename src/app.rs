@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::{layout::Rect, DefaultTerminal};
 use tokio::sync::mpsc;
 
@@ -83,6 +83,8 @@ pub struct App {
     /// Lecture agents.md déjà tentée (une seule lecture, jamais relue).
     pub(crate) agents_tried: bool,
     pub(crate) screen: Screen,
+    /// Ajustement manuel de la colonne droite (Ctrl+←/→, 0 = auto).
+    pub(crate) right_delta: i16,
     /// Rectangle du bouton [+] (mémorisé au rendu, `None` hors sidebar).
     pub(crate) plus_btn: Option<Rect>,
     /// Bloc des lignes de chats de la sidebar (mémorisé au rendu, une
@@ -161,39 +163,6 @@ impl App {
             ghostty::progress(busy)?;
         }
         Ok(())
-    }
-
-    /// Traite une touche ; renvoie false pour quitter.
-    /// Confirmation outil ou flow `/connect` : touches dédiées (pas de quit).
-    fn on_key(&mut self, key: KeyEvent) -> bool {
-        if self.tool_run.as_ref().is_some_and(|run| run.confirming) {
-            return self.on_tool_key(key);
-        }
-        if self.connect_flow.is_some() {
-            return self.on_flow_key(key);
-        }
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        let empty = self.sessions.current().chat.input.is_empty();
-        match self.screen {
-            Screen::Bestiary => return self.on_bestiary_key(key.code),
-            Screen::Hub => return self.on_hub_key(key.code),
-            Screen::Settings => return self.on_settings_key(key),
-            _ => {}
-        }
-        match key.code {
-            KeyCode::Char('q') if !ctrl && empty => false,
-            KeyCode::Char('n' | 'N') if ctrl => self.cmd(|s| s.add_chat()),
-            KeyCode::Char(c) if !ctrl => self.cmd(|s| s.sessions.current_mut().chat.input_push(c)),
-            KeyCode::Backspace => self.cmd(|s| s.sessions.current_mut().chat.input_pop()),
-            KeyCode::Enter => self.cmd(|s| s.send()),
-            KeyCode::F(3) => self.cmd(|s| s.sessions.prev()),
-            KeyCode::F(4) => self.cmd(|s| s.sessions.next()),
-            KeyCode::F(5) => self.cmd(|s| s.spook()),
-            KeyCode::F(6) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Bestiary)),
-            KeyCode::F(7) => self.cmd(|s| s.open_hub()),
-            KeyCode::F(8) => self.cmd(|s| s.show_almanac()),
-            _ => true,
-        }
     }
 
     /// F5 : Kiro s'effraie et une créature surgit (jump scare + éclair).
@@ -329,6 +298,26 @@ mod tests {
             .last()
             .map(|m| m.text.clone())
             .unwrap_or_default()
+    }
+
+    #[test]
+    fn ctrl_fleches_redimensionnent_la_colonne() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let key = |c| KeyEvent::new(c, KeyModifiers::CONTROL);
+        assert!(app.on_key(key(KeyCode::Left)));
+        assert_eq!(app.right_delta, 2);
+        assert!(app.on_key(key(KeyCode::Right)));
+        assert_eq!(app.right_delta, 0);
+    }
+
+    #[test]
+    fn resize_colonne_borne_le_delta() {
+        let mut app = test_app();
+        app.resize_right(200);
+        assert_eq!(app.right_delta, 64);
+        app.resize_right(-200);
+        assert_eq!(app.right_delta, -64);
     }
 
     #[test]

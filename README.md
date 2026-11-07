@@ -168,15 +168,15 @@ exempt, stays the remedy).
 | --- | ---- |
 | Enter | send the message |
 | `q` (empty input) | quit |
-| F3 / F4 | previous / next chat |
 | Ctrl+N | new chat |
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
 | F5 | scare: Kiro scared 2s, jump scare, lightning flash |
 | F6 | toggle chat / bestiary (arrows to pick) |
 | F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
 | F8 | toggle chat / almanac (tokens per day) |
+| Ctrl+Left / Ctrl+Right | widen / narrow the right column |
 
-On narrow terminals the header tabs drop their key hints (F2…) so
+On narrow terminals the header tabs drop their key hints (F5 F6…) so
 the `ctx` gauge always fits.
 
 ## Ghostty

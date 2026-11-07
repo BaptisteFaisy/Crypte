@@ -40,6 +40,25 @@ merge_queue:
   # Mergify reste bornee a 4, ajustable.
   max_parallel_checks: 4
 
+# File automatique : toute PR prête entre seule dans la file, sans geste
+# manuel (demande user 2026-11-07 : « je veux que ça soit automatique »).
+# Même contrat que `queue_conditions` ci-dessus + le garde de base ; le
+# label `hold` est la sortie de secours pour garder une PR hors file.
+# Rappel : l'auto-merge natif GitHub doit rester activé sur le dépôt
+# (allow_auto_merge=true) pour que la file s'enchaîne sans intervention.
+pull_request_rules:
+  - name: file automatique des PR prêtes
+    conditions:
+      - check-success = ci-budget
+      - check-success = stale-base-guard
+      - -closed
+      - -draft
+      - -conflict
+      - -label = hold
+      - base = main
+    actions:
+      queue:
+
 # Auto-queue natif (produit Merge Queue) : évite de dépendre du produit
 # « Workflow Automation » (pull_request_rules), constaté désactivé le 24/10.
 merge_protections_settings:

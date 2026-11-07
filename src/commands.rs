@@ -277,7 +277,7 @@ pub fn help_text() -> &'static str {
      /web <query> — web search + summary with cited sources\n\
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
      /help — this help\n\
-     Keys: F3/F4 chats · F5 scare · F6 bestiary · F7 hub · F8 almanac · Ctrl+N\n\
+     Keys: F5 scare · F6 bestiary · F7 hub · F8 almanac · Ctrl+N\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
 }
 

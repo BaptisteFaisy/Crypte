@@ -121,6 +121,7 @@ impl App {
             agents_file,
             agents_tried: !lazy,
             screen: Screen::Chat,
+            right_delta: 0,
             plus_btn: None,
             side_rows: None,
             tab_hits: Vec::new(),
