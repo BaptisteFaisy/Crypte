@@ -20,9 +20,9 @@ use crate::fx::Fx;
 use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
 use crate::ghostty;
+use crate::history::{send_window, short_name};
 use crate::mascot::{Mascot, MascotState};
 use crate::provider::{Completion, Provider, ProviderConfig};
-use crate::history::{send_window, short_name};
 use crate::sessions::Sessions;
 
 /// Écran affiché dans la zone principale.
@@ -481,5 +481,4 @@ mod tests {
         );
         assert_eq!(last_text(&app, 0), "[agent#1] erreur: boom");
     }
-
 }
