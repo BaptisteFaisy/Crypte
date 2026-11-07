@@ -1,11 +1,8 @@
-//! Commandes slash du chat (`/usage`, `/new`, `/thinking`, `/model`,
-//! `/agent`, `/agents`, `/ask`, `/tell`, `/msg`, `/link`, `/links`,
-//! `/unlink`, `/compact`, `/connect`, `/permissions`, `/help`).
+//! Commandes slash (`/usage` `/new` `/thinking` `/model` `/agent` `/agents`
+//! `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact` `/connect` `/permissions` `/web` `/help`).
 //!
-//! `parse` matche le premier mot ; `/agent`, `/ask`, `/tell`, `/msg`,
-//! `/link` et `/unlink` consomment le reste de la ligne (cible + texte),
-//! sinon le reste est ignoré. `usage_text` met en forme le registre du
-//! chat courant et le registre cumulé de la session.
+//! `parse` matche le premier mot (cibles + texte consomment le reste) ;
+//! `usage_text` met en forme les registres courant et cumulé.
 
 use crate::bus::{LinkEnd, Target};
 use crate::tokens::{fmt_cost, fmt_tps, TokenLedger};
@@ -55,6 +52,7 @@ pub enum Command {
     Hint(&'static str),
     Connect(Option<String>),
     Permissions(Option<String>),
+    Web(String),
     Unknown(String),
 }
 
@@ -65,20 +63,19 @@ pub enum MsgTarget {
     All,
 }
 
-/// Aides d'usage (commandes `/tell` `/ask` `/agent` `/msg` `/link`
-/// `/unlink` mal formées).
+/// Aides d'usage (commandes mal formées).
 pub const TELL_USAGE: &str = "usage: /tell <n> <text> — talk to chat n";
 pub const ASK_USAGE: &str = "usage: /ask #<id> <text> — follow up with an agent";
 pub const AGENT_USAGE: &str = "usage: /agent [@<n>] <text> — sub-agent (reply goes to chat n)";
 pub const MSG_USAGE: &str = "usage: /msg <n|@n|#id|all> <text> — talk to a chat, an agent, all";
 pub const LINK_USAGE: &str = "usage: /link <n|#id> <n|#id> — replies from one go to the other";
 pub const UNLINK_USAGE: &str = "usage: /unlink <n|#id> <n|#id> — remove a link";
+pub const WEB_USAGE: &str = "usage: /web <query> — web search with summarized sources";
 
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
-/// Matche le premier mot ; `/agent` (cible `@<n>` optionnelle), `/ask`
-/// et `/tell` (cible + texte) consomment le reste, `/thinking` et
-/// `/model` prennent un argument optionnel.
+/// Matche le premier mot ; cibles + texte consomment le reste,
+/// `/thinking` `/model` `/connect` `/permissions` ont un argument optionnel.
 pub fn parse(input: &str) -> Option<Command> {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
@@ -105,12 +102,12 @@ pub fn parse(input: &str) -> Option<Command> {
         "/msg" => parse_msg(trimmed, word),
         "/link" => parse_link(trimmed, word),
         "/unlink" => parse_unlink(trimmed, word),
+        "/web" => parse_web(trimmed, word),
         _ => Some(Command::Unknown(word.to_string())),
     }
 }
 
-/// Second mot optionnel (`/thinking [niveau]`, `/model [nom|reset]`,
-/// `/connect [openai|muse]`, `/permissions [yolo|auto]`).
+/// Second mot optionnel (`/thinking` `/model` `/connect` `/permissions`).
 fn opt_arg(parts: &mut std::str::SplitWhitespace<'_>) -> Option<String> {
     parts.next().map(str::to_string)
 }
@@ -229,6 +226,15 @@ fn parse_unlink(trimmed: &str, word: &str) -> Option<Command> {
     }
 }
 
+/// `/web <requête...>` : recherche web ; vide → aide d'usage.
+fn parse_web(trimmed: &str, word: &str) -> Option<Command> {
+    let rest = trimmed[word.len()..].trim();
+    if rest.is_empty() {
+        return Some(Command::Hint(WEB_USAGE));
+    }
+    Some(Command::Web(rest.to_string()))
+}
+
 /// Niveaux d'effort acceptés : default/low/medium/high uniquement.
 pub fn valid_effort(s: &str) -> bool {
     matches!(s, "default" | "low" | "medium" | "high")
@@ -264,7 +270,7 @@ pub fn usage_text(
     )
 }
 
-/// Aide : les 16 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 17 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (current chat + session total)\n\
@@ -282,6 +288,7 @@ pub fn help_text() -> &'static str {
      /compact — compact the current chat history\n\
      /connect [openai|muse] — connect (status if no argument)\n\
      /permissions [yolo|auto] — future tools mode (remembered)\n\
+     /web <query> — web search + summary with cited sources\n\
      /help — this help\n\
      Keys: F2 grimoire · F3/F4 chats · F5 scare · F6 bestiary · F7 hub · Ctrl+N\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
@@ -363,6 +370,17 @@ mod tests {
         assert!(valid_effort("high"));
         assert!(!valid_effort("ultra"));
         assert!(!valid_effort("HIGH"));
+    }
+
+    #[test]
+    fn parse_web_ok_et_aide() {
+        assert_eq!(
+            parse("/web rust async runtime"),
+            Some(Command::Web(String::from("rust async runtime")))
+        );
+        assert_eq!(parse("/web"), Some(Command::Hint(WEB_USAGE)));
+        assert_eq!(parse("/web   "), Some(Command::Hint(WEB_USAGE)));
+        assert!(help_text().contains("/web <query>"));
     }
 
     #[test]

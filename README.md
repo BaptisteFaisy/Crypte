@@ -73,6 +73,8 @@ Environment variables (prioritary):
 | `KH_API_KEY` | API key (never logged; `--once` requires it) | — |
 | `KH_MODEL` | model (`--once` requires it) | — |
 | `KH_CONTEXT_WINDOW` | context-window override (tokens) | per-model table |
+| `BRAVE_API_KEY` | premium `/web` backend (optional) | — |
+| `TAVILY_API_KEY` | premium `/web` backend, LLM-tuned (optional) | — |
 
 With `--muse-auth`, defaults become base `https://api.meta.ai/v1`
 + model `muse-spark-1.3-contributor` (key read from `auth.json`).
@@ -257,6 +259,18 @@ stays intact. Sends (chat or agent) refused past the context limit
 on the send window (fill in `/usage`); exempt `/compact` stays
 the remedy.
 
+## Web search (`/web`)
+
+`/web <query>` searches the web and delivers an LLM synthesis with
+cited sources (`[n]` + `Sources:` footer), tagged `[web:backend]`.
+Backend chain, first non-empty wins: Tavily (`TAVILY_API_KEY`) →
+Brave (`BRAVE_API_KEY`) → DuckDuckGo (free) → Wikipedia FR+EN
+(free, always available). No key required: free backends work out
+of the box, premium keys just rank first. Optimized: 8 s per
+backend, top-3 pages fetched in parallel, budgeted context, 10 min
+cache. Works disconnected too (raw results, zero tokens); the
+provider history is untouched (display + ledger only, like agents).
+
 ## AGENTS.md (system context)
 
 At startup, the binary loads `./AGENTS.md` then `./AGENT.md` from
@@ -280,7 +294,8 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 `sidebar.rs` (coffins column + [+] new-chat button),
 `commands.rs` (parsing `/…` commands + help + usage),
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
-`/compact` `/connect`), `connect.rs` (`/connect` flow: masked key → model),
+`/compact` `/connect` `/web`), `connect.rs` (`/connect` flow: masked key → model),
+`web/` (`/web`: backends → fetch → cache → synthesis),
 `agents.rs` (agents.md loading + tested pure compaction),
 `app/ui.rs` (layout: header, panels, powerline bar),
 `theme.rs` (single palette), `bestiary.rs` (sprites + integer
