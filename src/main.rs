@@ -35,6 +35,7 @@ mod sessions;
 mod sidebar;
 mod theme;
 mod tokens;
+mod tools;
 mod web;
 mod workspace;
 

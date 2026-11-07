@@ -42,6 +42,7 @@ impl App {
             Some(Command::Connect(arg)) => self.cmd_connect(arg),
             Some(Command::Permissions(arg)) => self.cmd_permissions(arg),
             Some(Command::Web(query)) => self.cmd_web(query),
+            Some(Command::Tools(arg)) => self.cmd_tools(arg),
             Some(Command::Unknown(word)) => {
                 self.push_system(format!("unknown command: {word} — /help for help"));
             }
@@ -55,7 +56,7 @@ impl App {
         let model = self.effective_model();
         let thinking = self.thinking_text();
         let mut msg =
-            commands::usage_text(&self.sessions.current().ledger, &total, &model, &thinking);
+            crate::tokens::usage_text(&self.sessions.current().ledger, &total, &model, &thinking);
         msg.push('\n');
         msg.push_str(&agents::usage_line(self.agents_md.as_deref()));
         let sess = self.sessions.current();
@@ -110,7 +111,7 @@ impl App {
                 self.push_system(format!("thinking: {v}"));
             }
             Some(v) => {
-                let mut vals = effort_values();
+                let mut vals = commands::effort_values();
                 vals.push("default");
                 self.push_system(format!("invalid effort: {v} — values: {}", vals.join(", ")));
             }
@@ -475,14 +476,4 @@ impl App {
             }
         }
     }
-}
-
-/// Valeurs d'effort reconnues (sondées via `valid_effort`, source unique).
-fn effort_values() -> Vec<&'static str> {
-    [
-        "minimal", "none", "low", "medium", "high", "xhigh", "max", "auto",
-    ]
-    .into_iter()
-    .filter(|v| commands::valid_effort(v))
-    .collect()
 }

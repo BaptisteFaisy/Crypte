@@ -255,6 +255,36 @@ pub fn fmt_tps(tps: f64) -> String {
     }
 }
 
+/// Texte multi-lignes : modèle + thinking + usage chat courant et session.
+pub fn usage_text(
+    current: &TokenLedger,
+    total: &TokenLedger,
+    model: &str,
+    thinking: &str,
+) -> String {
+    let (last_in, last_out) = current.last();
+    format!(
+        "model: {model}\n\
+         thinking: {thinking}\n\
+         CHAT — in={} out={} total={}\n\
+         last call: in={last_in} out={last_out}\n\
+         tps: last={} avg={}\n\
+         cost: {}\n\
+         SESSION TOTAL — in={} out={} total={}\n\
+         avg tps: {}",
+        current.prompt,
+        current.completion,
+        current.total(),
+        fmt_tps(current.last_tps()),
+        fmt_tps(current.avg_tps()),
+        fmt_cost(current.cost()),
+        total.prompt,
+        total.completion,
+        total.total(),
+        fmt_tps(total.avg_tps()),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
