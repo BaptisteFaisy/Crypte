@@ -99,16 +99,6 @@ pub struct App {
 }
 
 impl App {
-    /// Nouveau chat + pin agents.md si chargé (Ctrl+N, `/new`).
-    pub(crate) fn add_chat(&mut self) {
-        self.sessions.add();
-        self.pin_current();
-        let at = self.sessions.index();
-        let name = self.sessions.current().name.clone();
-        self.events
-            .emit(&crate::events::Event::chat_created(at, &name));
-    }
-
     /// Branche le vrai terminal (après `ratatui::init`) : protocole
     /// d'images (Kitty dans Ghostty) + habillage de la fenêtre.
     pub fn attach_terminal(&mut self) -> Result<()> {

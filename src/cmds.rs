@@ -475,7 +475,6 @@ impl App {
             }
         }
     }
-
 }
 
 /// Valeurs d'effort reconnues (sondées via `valid_effort`, source unique).

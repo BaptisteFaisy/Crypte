@@ -156,6 +156,16 @@ impl App {
         self.announce_agents_md();
     }
 
+    /// Nouveau chat + pin agents.md si chargé (Ctrl+N, `/new`).
+    pub(crate) fn add_chat(&mut self) {
+        self.sessions.add();
+        self.pin_current();
+        let at = self.sessions.index();
+        let name = self.sessions.current().name.clone();
+        self.events
+            .emit(&crate::events::Event::chat_created(at, &name));
+    }
+
     /// Épingle agents.md en tête du chat courant (si chargé).
     pub(super) fn pin_current(&mut self) {
         if let Some(content) = &self.agents_md {
