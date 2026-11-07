@@ -27,6 +27,7 @@ mod mascot;
 mod mouse;
 mod permissions;
 mod persist;
+mod pool;
 mod provider;
 mod sessions;
 mod sidebar;

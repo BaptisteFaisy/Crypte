@@ -68,6 +68,8 @@ impl App {
             crate::tokens::fmt_context(used, self.context_limit()),
             self.sessions.current().heap_bytes()
         ));
+        let (flight, cap) = (self.pool.in_flight(), self.pool.cap());
+        msg.push_str(&format!("\npool: {flight}/{cap} llm in flight"));
         self.push_system(msg);
     }
 
@@ -149,7 +151,8 @@ impl App {
             ));
             return;
         }
-        let Some(agent_id) = self.sessions.add_agent(id, &prompt, messages.clone()) else {
+        let exchange = vec![(String::from("user"), prompt.clone())];
+        let Some(agent_id) = self.sessions.add_agent(id, &prompt, exchange) else {
             return;
         };
         self.sessions
@@ -162,11 +165,11 @@ impl App {
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&messages, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply));
+            let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply)).await;
         });
     }
 
@@ -432,11 +435,11 @@ impl App {
         let sess = self.sessions.current();
         let tail = agents::without_pinned(&sess.history, sess.pinned_system);
         messages.extend(tail.iter().cloned());
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&messages, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Compact(id, reply));
+            let _ = tx.send(Incoming::Compact(id, reply)).await;
         });
     }
 
@@ -486,10 +489,10 @@ impl App {
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
         self.push_system(format!("web search: {query}…"));
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply =
                 crate::web::answer(query, provider.as_deref(), &model, effort.as_deref()).await;
-            let _ = tx.send(Incoming::Web(id, reply));
+            let _ = tx.send(Incoming::Web(id, reply)).await;
         });
     }
 }

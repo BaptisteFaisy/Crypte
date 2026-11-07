@@ -18,6 +18,7 @@ use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
 use crate::hub::Hub;
 use crate::mascot::Mascot;
+use crate::pool::{SpawnPool, INCOMING_CAP};
 use crate::provider::{Provider, ProviderConfig};
 use crate::sessions::Sessions;
 
@@ -97,7 +98,7 @@ impl App {
         lazy: bool,
         hint_connect: bool,
     ) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(INCOMING_CAP);
         let mut app = Self {
             mascot: Mascot::new(),
             fx: Fx::new(),
@@ -123,6 +124,7 @@ impl App {
             chats_path: None,
             tx,
             rx,
+            pool: SpawnPool::new(),
         };
         app.pin_current();
         app.announce_agents_md();

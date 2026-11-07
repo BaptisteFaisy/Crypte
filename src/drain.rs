@@ -181,26 +181,31 @@ impl App {
         let model = self.effective_model_for(idx);
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&history, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Chat(idx, reply));
+            let _ = tx.send(Incoming::Chat(idx, reply)).await;
         });
     }
 
-    /// Appel agent (échange déjà à jour) : tâche async, réponse livrée
-    /// à `deliver`. Sans provider : rien (l'agent garde son état).
+    /// Appel agent (échange déjà à jour) : tâche async sous permis,
+    /// réponse livrée à `deliver`. Le contexte système agents.md est
+    /// re-préfixé ici (une seule copie, en vol) : il n'est jamais
+    /// stocké dans l'agent (voir `cmd_agent`). Sans provider : rien.
     pub(crate) fn launch_agent(
         &mut self,
         owner: usize,
         agent_id: usize,
         deliver: usize,
-        history: Vec<(String, String)>,
+        mut history: Vec<(String, String)>,
     ) {
         let Some(provider) = self.provider.clone() else {
             return;
         };
+        if let Some(md) = &self.agents_md {
+            history.insert(0, (String::from("system"), md.clone()));
+        }
         self.hub.signal(Signal::Ask {
             from: deliver,
             agent: agent_id,
@@ -208,11 +213,13 @@ impl App {
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&history, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Agent(owner, agent_id, deliver, reply));
+            let _ = tx
+                .send(Incoming::Agent(owner, agent_id, deliver, reply))
+                .await;
         });
     }
 
