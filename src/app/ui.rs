@@ -26,19 +26,7 @@ use crate::tokens::{fmt_tps, short_model};
 pub enum Screen {
     #[default]
     Chat,
-    Bestiary,
     Hub,
-}
-
-impl Screen {
-    /// `target` si on n'y est pas déjà, sinon retour au chat (F6).
-    pub(crate) fn toggle(self, target: Screen) -> Self {
-        if self == target {
-            Screen::Chat
-        } else {
-            target
-        }
-    }
 }
 
 /// Huitièmes de bloc pour une jauge lisse.
@@ -51,11 +39,7 @@ pub(crate) const MIN_H: u16 = 17;
 /// Seuil compact : sous 80 colonnes, sidebar réduite, panneau droit masqué.
 const COMPACT_W: u16 = 80;
 /// Onglets de l'en-tête : écran, libellé, touche.
-const TABS: [(Screen, &str, &str); 3] = [
-    (Screen::Chat, "chat", ""),
-    (Screen::Bestiary, "bestiary", "F6"),
-    (Screen::Hub, "hub", "F7"),
-];
+const TABS: [(Screen, &str, &str); 2] = [(Screen::Chat, "chat", ""), (Screen::Hub, "hub", "F7")];
 /// Coiffes powerline arrondies (sprites internes de Ghostty).
 const CAP_L: &str = "\u{e0b6}";
 const CAP_R: &str = "\u{e0b4}";
@@ -84,7 +68,6 @@ impl App {
         self.draw_header(frame, head);
         match self.screen {
             Screen::Chat => self.draw_chat(frame, body),
-            Screen::Bestiary => self.galerie.draw(frame, body, &mut self.bank),
             Screen::Hub => self.draw_hub(frame, body),
         }
         self.draw_status(frame, foot);
@@ -182,7 +165,7 @@ impl App {
         frame.render_widget(gauge, area);
     }
 
-    /// Onglets d'écran ; sans les touches (F6…) s'ils ne tiennent pas
+    /// Onglets d'écran ; sans les touches (F7…) s'ils ne tiennent pas
     /// dans `room` colonnes (la jauge fear reste entière à 80 colonnes).
     /// Enregistre leurs rectangles (`tab_hits`, clic = écran, voir `mouse`).
     fn tabs(&mut self, room: usize, at: Position) -> Vec<Span<'static>> {
@@ -357,7 +340,7 @@ fn fear_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
 fn key_hints(short: bool) -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
     if short {
-        return vec![Span::styled("F5 F6", key)];
+        return vec![Span::styled("F5 F7", key)];
     }
     let word = Style::new().fg(ASH);
     let mut spans = Vec::with_capacity(6);
@@ -414,19 +397,20 @@ mod tests {
     }
 
     #[test]
-    fn header_fits_three_tabs_and_gauge_at_80_columns() {
+    fn header_fits_two_tabs_and_gauge_at_80_columns() {
         let mut app = App::offline().unwrap();
         for w in [70, 80, 120] {
             let mut term = Terminal::new(TestBackend::new(w, 24)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();
             let buf = term.backend().buffer();
             let head: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
-            for word in ["chat", "bestiary", "hub", "fear"] {
+            for word in ["chat", "hub", "fear"] {
                 assert!(head.contains(word), "{w} cols: {word} missing in {head:?}");
             }
             assert!(!head.contains("grimoire"), "{w} cols: {head:?}");
             assert!(!head.contains("almanac"), "{w} cols: {head:?}");
-            // 3 onglets : les touches (F6/F7) tiennent dès 80 colonnes.
+            assert!(!head.contains("bestiary"), "{w} cols: {head:?}");
+            // 2 onglets : la touche (F7) tient dès 80 colonnes.
             if w >= 80 {
                 assert!(head.contains("F7"), "{w} cols: {head:?}");
             }
@@ -442,7 +426,7 @@ mod tests {
             .push(Role::Assistant, "les os craquent sous la lune");
         for (w, h) in [(70, 17), (80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub] {
+            for screen in [Screen::Chat, Screen::Hub] {
                 app.screen = screen;
                 app.spook();
                 app.tick();
@@ -454,7 +438,7 @@ mod tests {
     #[test]
     fn minimum_70x17_shows_ui_not_too_small() {
         let mut app = App::offline().unwrap();
-        for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub] {
+        for screen in [Screen::Chat, Screen::Hub] {
             app.screen = screen;
             let mut term = Terminal::new(TestBackend::new(70, 17)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();

@@ -5,6 +5,7 @@
 mod ctors;
 mod esprits;
 mod keys;
+mod model;
 mod send;
 mod ui;
 
@@ -26,7 +27,6 @@ use crate::chat::Role;
 use crate::connect::ConnectFlow;
 use crate::events::EventLog;
 use crate::fx::Fx;
-use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
 use crate::ghostty;
 
@@ -59,7 +59,6 @@ pub struct App {
     bank: ImageBank,
     pub(crate) apparition: Apparition,
     pub(crate) hub: Hub,
-    galerie: Galerie,
     tick: u64,
     busy: bool,
     /// Jauge contexte mise en cache (tokens estimés + fenêtre modèle),
@@ -88,7 +87,7 @@ pub struct App {
     /// ligne par chat, `None` hors écran chat) : clic = choisir le chat.
     pub(crate) side_rows: Option<Rect>,
     /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
-    /// clic = aller à l'écran (chat, bestiaire, hub).
+    /// clic = aller à l'écran (chat, hub).
     pub(crate) tab_hits: Vec<(Screen, Rect)>,
     pub(crate) thinking: Option<String>,
     pub(crate) permissions: Mode,
@@ -203,40 +202,6 @@ impl App {
         routed
     }
 
-    /// Modèle effectif : celui du chat courant, sinon le défaut provider.
-    pub(crate) fn effective_model(&self) -> String {
-        self.effective_model_ref().to_string()
-    }
-
-    /// Modèle effectif du chat `idx` (le sien, sinon le défaut provider).
-    pub(crate) fn effective_model_for(&self, idx: usize) -> String {
-        self.effective_model_ref_for(idx).to_string()
-    }
-
-    /// Modèle effectif du chat courant, emprunté (barre d'état, zéro alloc).
-    pub(crate) fn effective_model_ref(&self) -> &str {
-        self.effective_model_ref_for(self.sessions.index())
-    }
-
-    /// Modèle effectif du chat `idx`, emprunté : le sien, sinon le
-    /// défaut provider, sinon `—`.
-    fn effective_model_ref_for(&self, idx: usize) -> &str {
-        if let Some(model) = self.sessions.get(idx).and_then(|c| c.model.as_deref()) {
-            return model;
-        }
-        self.provider
-            .as_ref()
-            .map(|p| p.config().model.as_str())
-            .unwrap_or("—")
-    }
-
-    /// Thinking affiché (`None` → "default").
-    pub(crate) fn thinking_text(&self) -> String {
-        self.thinking
-            .clone()
-            .unwrap_or_else(|| String::from("default"))
-    }
-
     /// Ajoute un message système au chat courant.
     pub(crate) fn push_system(&mut self, msg: String) {
         self.sessions.current_mut().chat.push(Role::System, msg);
@@ -338,6 +303,18 @@ mod tests {
         app.drain_replies();
         let tonight = app.almanac.day(crate::almanac::today());
         assert_eq!((tonight.total(), tonight.calls), (20, 2));
+    }
+
+    #[test]
+    fn bestiary_montre_une_creature_au_hasard() {
+        let mut app = test_app();
+        app.run_command("/bestiary");
+        let shown = app.apparition.current(false, 0);
+        assert_ne!(shown.slug, "fantome");
+        assert_eq!(
+            last_text(&app, 0),
+            format!("{} — {}", shown.name, shown.lore)
+        );
     }
 
     #[test]
