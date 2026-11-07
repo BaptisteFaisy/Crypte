@@ -11,6 +11,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::theme::{self, ASH, BONE, CANDLE, PUMPKIN, SAND, UMBER};
 
@@ -22,7 +23,8 @@ const INPUT_HEIGHT: u16 = 3;
 const GUTTER: &str = "▍ ";
 
 /// Émetteur d'un message.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Role {
     User,
     Assistant,
@@ -30,7 +32,7 @@ pub enum Role {
 }
 
 /// Un message : rôle + texte brut (wrappé seulement au rendu).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
     pub text: String,

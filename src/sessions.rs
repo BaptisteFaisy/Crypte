@@ -112,6 +112,19 @@ impl Sessions {
             .unwrap_or(0)
     }
 
+    /// Reconstruit depuis des chats sauvegardés (jamais vide, courant borné).
+    pub fn from_chats(chats: Vec<ChatSession>, current: usize) -> Self {
+        if chats.is_empty() {
+            return Self::new();
+        }
+        let current = current.min(chats.len() - 1);
+        Self {
+            chats,
+            current,
+            next_agent_id: 1,
+        }
+    }
+
     /// Nouveau chat « Chat N » qui devient courant.
     pub fn add(&mut self) {
         let n = self.chats.len() + 1;
@@ -183,6 +196,20 @@ impl Default for Sessions {
 mod tests {
     use super::subagents::user;
     use super::*;
+
+    #[test]
+    fn from_chats_borne_et_neuf_si_vide() {
+        let chats = vec![
+            ChatSession::new(String::from("a")),
+            ChatSession::new(String::from("b")),
+        ];
+        let s = Sessions::from_chats(chats, 9);
+        assert_eq!(s.count(), 2);
+        assert_eq!(s.index(), 1);
+        let fresh = Sessions::from_chats(vec![], 0);
+        assert_eq!(fresh.count(), 1);
+        assert_eq!(fresh.index(), 0);
+    }
 
     #[test]
     fn add_agent_ids_uniques_et_historique_stocke() {

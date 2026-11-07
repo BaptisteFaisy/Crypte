@@ -14,6 +14,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
+use serde::{Deserialize, Serialize};
 use tiktoken_rs::{o200k_base, CoreBPE};
 
 use crate::theme;
@@ -122,7 +123,7 @@ fn fmt_limit(limit: u64) -> String {
 }
 
 /// Registre d'usage tokens sur la session.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenLedger {
     /// Tokens prompt cumulés (session).
     pub prompt: u64,

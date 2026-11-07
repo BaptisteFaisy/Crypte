@@ -67,6 +67,8 @@ pub struct App {
     pub(crate) permissions: Mode,
     /// Fichier de persistance du mode (`None` si `HOME` manquant).
     pub(crate) permissions_path: Option<PathBuf>,
+    /// Fichier de persistance des chats (`None` = off : tests, smoke, demo).
+    pub(crate) chats_path: Option<PathBuf>,
     pub(crate) tx: mpsc::UnboundedSender<Incoming>,
     rx: mpsc::UnboundedReceiver<Incoming>,
 }
@@ -117,6 +119,7 @@ impl App {
                 dirty = true;
             }
         }
+        self.save_now();
         Ok(())
     }
 
@@ -272,6 +275,7 @@ impl App {
     /// Fait avancer les animations (mascotte, apparitions, effets).
     pub(crate) fn tick(&mut self) {
         self.tick = self.tick.wrapping_add(1);
+        self.autosave_if_due(self.tick);
         self.mascot.tick();
         self.apparition.tick();
         self.hub.sync(&self.sessions);

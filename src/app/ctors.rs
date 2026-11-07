@@ -91,6 +91,7 @@ impl App {
             thinking: None,
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
+            chats_path: None,
             tx,
             rx,
         };

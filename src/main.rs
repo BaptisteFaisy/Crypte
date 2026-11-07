@@ -25,6 +25,7 @@ mod hub;
 mod mascot;
 mod mouse;
 mod permissions;
+mod persist;
 mod provider;
 mod sessions;
 mod sidebar;
@@ -222,6 +223,9 @@ async fn main() -> Result<()> {
         Ok(cfg) => App::from_config_with_agents(cfg, agents_md)?,
         Err(_) => App::disconnected_with_agents(agents_md),
     };
+    if !args.demo {
+        app.enable_history();
+    }
     if args.demo {
         app.populate_hub_demo();
         app.open_hub();
