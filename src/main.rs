@@ -25,6 +25,7 @@ mod hub;
 mod mascot;
 mod mouse;
 mod permissions;
+mod pool;
 mod provider;
 mod sessions;
 mod sidebar;

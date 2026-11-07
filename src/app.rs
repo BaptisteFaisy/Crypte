@@ -31,6 +31,7 @@ use crate::history::{send_window, short_name};
 use crate::hub::Hub;
 use crate::mascot::{Mascot, MascotState};
 use crate::permissions::Mode;
+use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
 use crate::web::WebAnswer;
@@ -67,8 +68,10 @@ pub struct App {
     pub(crate) permissions: Mode,
     /// Fichier de persistance du mode (`None` si `HOME` manquant).
     pub(crate) permissions_path: Option<PathBuf>,
-    pub(crate) tx: mpsc::UnboundedSender<Incoming>,
-    rx: mpsc::UnboundedReceiver<Incoming>,
+    pub(crate) tx: mpsc::Sender<Incoming>,
+    rx: mpsc::Receiver<Incoming>,
+    /// Pool borné d'appels LLM (plafond `CRYPTE_MAX_FLIGHT`, défaut 4).
+    pub(crate) pool: SpawnPool,
 }
 
 impl App {
@@ -215,11 +218,11 @@ impl App {
         sess.sending = true;
         sess.auto_hops = 0;
         sess.sending_since = Some(Instant::now());
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&history, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Chat(id, reply));
+            let _ = tx.send(Incoming::Chat(id, reply)).await;
         });
     }
 

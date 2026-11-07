@@ -68,6 +68,8 @@ impl App {
             "context: {}",
             crate::tokens::fmt_context(used, self.context_limit())
         ));
+        let (flight, cap) = (self.pool.in_flight(), self.pool.cap());
+        msg.push_str(&format!("\npool: {flight}/{cap} llm in flight"));
         self.push_system(msg);
     }
 
@@ -158,11 +160,11 @@ impl App {
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&messages, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply));
+            let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply)).await;
         });
     }
 
@@ -423,11 +425,11 @@ impl App {
         let tx = self.tx.clone();
         let mut messages = vec![(String::from("system"), String::from(COMPACT_INSTRUCTION))];
         messages.extend(agents::without_pinned(&history, pinned).iter().cloned());
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&messages, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Compact(id, reply));
+            let _ = tx.send(Incoming::Compact(id, reply)).await;
         });
     }
 
@@ -477,10 +479,10 @@ impl App {
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
         self.push_system(format!("web search: {query}…"));
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply =
                 crate::web::answer(query, provider.as_deref(), &model, effort.as_deref()).await;
-            let _ = tx.send(Incoming::Web(id, reply));
+            let _ = tx.send(Incoming::Web(id, reply)).await;
         });
     }
 }
