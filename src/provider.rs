@@ -305,16 +305,14 @@ struct ChatMessage<'a> {
 
 impl<'a> ChatRequest<'a> {
     fn new(model: &'a str, messages: &'a [(String, String)], effort: Option<&'a str>) -> Self {
-        let messages = messages
-            .iter()
-            .map(|(role, content)| ChatMessage {
-                role: role.as_str(),
-                content: content.as_str(),
-            })
-            .collect();
+        let mut refs = Vec::with_capacity(messages.len());
+        refs.extend(messages.iter().map(|(role, content)| ChatMessage {
+            role: role.as_str(),
+            content: content.as_str(),
+        }));
         Self {
             model,
-            messages,
+            messages: refs,
             stream: false,
             reasoning_effort: effort,
         }
@@ -362,9 +360,10 @@ impl Completion {
     fn from_response(resp: ChatResponse) -> Self {
         let text = resp
             .choices
-            .first()
-            .and_then(|c| c.message.as_ref())
-            .and_then(|m| m.content.clone())
+            .into_iter()
+            .next()
+            .and_then(|c| c.message)
+            .and_then(|m| m.content)
             .unwrap_or_default();
         let (prompt_tokens, completion_tokens) = resp
             .usage
@@ -378,12 +377,12 @@ impl Completion {
     }
 }
 
-/// Tronque sans couper un caractère UTF-8 (budgets `web` inclus).
+/// Tronque sans couper un caractère UTF-8 (budgets `web` inclus),
+/// en une seule passe (frontière d'octets, pas de double parcours).
 pub(crate) fn truncate(s: &str, max_chars: usize) -> String {
-    if s.chars().count() <= max_chars {
-        s.to_string()
-    } else {
-        s.chars().take(max_chars).collect()
+    match s.char_indices().map(|(i, _)| i).nth(max_chars) {
+        Some(end) => s[..end].to_string(),
+        None => s.to_string(),
     }
 }
 

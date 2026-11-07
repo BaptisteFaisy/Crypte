@@ -4,6 +4,8 @@
 //! si envoi en cours + ` A{n}` si sous-agents actifs), le chat courant
 //! mis en relief, puis le bouton [+] (clic = nouveau chat, voir `mouse`).
 
+use std::borrow::Cow;
+
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -70,11 +72,14 @@ fn plus_rect(area: Rect, chats: usize) -> Option<Rect> {
 }
 
 /// Ligne bouton : `[+]` citrouille gras + `nouveau chat` sable.
+/// Le libellé tient presque toujours : emprunté, jamais copié.
 fn plus_line(width: usize) -> Line<'static> {
-    let rest: String = PLUS_REST
-        .chars()
-        .take(width.saturating_sub(PLUS_HEAD.len()))
-        .collect();
+    let avail = width.saturating_sub(PLUS_HEAD.len());
+    let rest: Cow<'static, str> = if PLUS_REST.len() <= avail {
+        Cow::Borrowed(PLUS_REST)
+    } else {
+        Cow::Owned(PLUS_REST.chars().take(avail).collect())
+    };
     let head = Style::new().fg(theme::PUMPKIN).add_modifier(Modifier::BOLD);
     Line::from(vec![
         Span::styled(PLUS_HEAD, head),
@@ -99,10 +104,20 @@ fn sidebar_line(
         String::new()
     };
     let suffix = if sending { "…" } else { "" };
-    let used = 2 + tokens.chars().count() + agents.chars().count() + suffix.chars().count();
+    // `tokens`/`agents` sont ASCII : `len()` vaut la largeur ; `…` = 1 colonne.
+    let used = 2 + tokens.len() + agents.len() + usize::from(sending);
     let name_w = width.saturating_sub(used);
-    let name: String = name.chars().take(name_w).collect();
-    let pad = " ".repeat(name_w.saturating_sub(name.chars().count()));
+    let mut count = 0usize;
+    let mut end = 0usize;
+    for (i, ch) in name.char_indices() {
+        if count == name_w {
+            break;
+        }
+        end = i + ch.len_utf8();
+        count += 1;
+    }
+    let name = name[..end].to_string();
+    let pad = " ".repeat(name_w - count);
     let (bar, name_style) = if current {
         let bold = Style::new().fg(theme::BONE).add_modifier(Modifier::BOLD);
         (Style::new().fg(theme::PUMPKIN), bold)
@@ -111,7 +126,8 @@ fn sidebar_line(
     };
     let line = Line::from(vec![
         Span::styled("▍ ", bar),
-        Span::styled(format!("{name}{pad}"), name_style),
+        Span::styled(name, name_style),
+        Span::styled(pad, name_style),
         Span::styled(tokens, Style::new().fg(theme::ASH)),
         Span::styled(agents, Style::new().fg(theme::ECTO)),
         Span::styled(suffix, Style::new().fg(theme::CANDLE)),

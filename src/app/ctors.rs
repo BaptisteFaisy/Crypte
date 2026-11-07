@@ -108,6 +108,8 @@ impl App {
             galerie: Galerie::new(),
             tick: 0,
             busy: false,
+            ctx_used: 0,
+            ctx_limit: 0,
             sessions: Sessions::new(),
             almanac: Almanac::memory(),
             bus: Bus::new(),
@@ -131,6 +133,7 @@ impl App {
         if hint_connect {
             app.push_system(String::from(NOT_CONNECTED));
         }
+        app.refresh_ctx_cache();
         app
     }
 
@@ -151,8 +154,8 @@ impl App {
 
     /// Épingle agents.md en tête du chat courant (si chargé).
     pub(super) fn pin_current(&mut self) {
-        if let Some(content) = self.agents_md.clone() {
-            self.sessions.current_mut().pin_system(&content);
+        if let Some(content) = &self.agents_md {
+            self.sessions.current_mut().pin_system(content);
         }
     }
 
