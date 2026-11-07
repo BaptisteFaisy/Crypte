@@ -152,7 +152,7 @@ impl App {
             self.tool_spawn_llm();
             return;
         };
-        if needs_confirm(self.permissions, &call.name) {
+        if needs_confirm(self.permissions, &call.name) && !self.mcp.is_auto(&call.name) {
             self.tool_ask(&call);
         } else if let Some(run) = self.tool_run.as_mut() {
             run.queue.pop_front();
@@ -219,8 +219,9 @@ impl App {
         let model = self.effective_model_for(chat);
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
+        let mcp = self.mcp.clone();
         self.pool.spawn(async move {
-            let tools = defs();
+            let tools = mcp.tooled_defs().await;
             let reply = provider
                 .complete_with_tools(&wire, &tools, &model, effort.as_deref())
                 .await;
@@ -234,9 +235,14 @@ impl App {
     fn tool_spawn_exec(&mut self, chat: usize, call: ToolCall) {
         self.push_tool_line(chat, format!("[tool {}]", call_line(&call)));
         let tx = self.tx.clone();
+        let mcp = self.mcp.clone();
         tokio::spawn(async move {
             let started = std::time::Instant::now();
-            let out = exec::run_tool(chat, &call.name, &call.args).await;
+            let out = if crate::kiro::mcp_client::is_mcp_name(&call.name) {
+                mcp.call(chat, &call.name, &call.args).await
+            } else {
+                exec::run_tool(chat, &call.name, &call.args).await
+            };
             let ms = started.elapsed().as_millis().min(9_999_999) as u64;
             let delivery = Delivery::from_outcome(call, out, ms);
             let _ = tx.send(Incoming::ToolDone(chat, vec![delivery])).await;

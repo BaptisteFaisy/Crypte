@@ -33,6 +33,7 @@ use crate::gfx::ImageBank;
 use crate::ghostty;
 
 use crate::hub::Hub;
+use crate::kiro::mcp_pool::McpState;
 use crate::kiro::spec_run::{SpecGen, SpecRun};
 use crate::mascot::{Mascot, MascotState};
 use crate::permissions::Mode;
@@ -49,7 +50,8 @@ use crate::web::WebAnswer;
 /// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
 /// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]),
 /// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]),
-/// génération spec (`chat`, état chaîné, voir [`crate::kiro::spec_run`]).
+/// génération spec (`chat`, état chaîné, voir [`crate::kiro::spec_run`]),
+/// MCP (`/mcp refresh` terminé, statut à afficher).
 pub(crate) enum Incoming {
     Chat(usize, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
@@ -58,6 +60,7 @@ pub(crate) enum Incoming {
     ToolDone(usize, Vec<Delivery>),
     Vps(crate::vps::VpsOutcome),
     SpecNew(usize, SpecGen, Result<Completion>),
+    McpRefresh(String),
 }
 
 /// État global de l'application.
@@ -117,6 +120,8 @@ pub struct App {
     pub(crate) spec_runs: HashMap<usize, SpecRun>,
     /// Run en attente de `y/n` (mode `auto`, un seul à la fois).
     pub(crate) spec_waiting: Option<SpecRun>,
+    /// Parc MCP (connexions paresseuses, `/mcp`, arrêt à la sortie).
+    pub(crate) mcp: McpState,
     /// Fichier de persistance des chats (`None` = off : tests, smoke, demo).
     pub(crate) chats_path: Option<PathBuf>,
     /// Journal d'événements temps réel (`--events-log`, désactivé sinon).
@@ -175,6 +180,7 @@ impl App {
                 dirty = true;
             }
         }
+        self.mcp.shutdown().await;
         self.save_now();
         Ok(())
     }
@@ -220,6 +226,7 @@ impl App {
                 Incoming::ToolDone(id, deliveries) => self.drain_tool_done(id, deliveries),
                 Incoming::Vps(outcome) => self.drain_vps(outcome),
                 Incoming::SpecNew(chat, gen, reply) => self.drain_spec_new(chat, gen, reply),
+                Incoming::McpRefresh(text) => self.drain_mcp_refresh(text),
             }
         }
         routed

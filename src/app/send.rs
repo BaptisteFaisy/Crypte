@@ -57,8 +57,9 @@ impl App {
         sess.sending_since = Some(Instant::now());
         if self.tools_on {
             let wire = crate::tools::flow::tooled_wire(history);
+            let mcp = self.mcp.clone();
             self.pool.spawn(async move {
-                let tools = crate::tools::defs();
+                let tools = mcp.tooled_defs().await;
                 let reply = provider
                     .complete_with_tools(&wire, &tools, &model, effort.as_deref())
                     .await;

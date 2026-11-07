@@ -133,6 +133,7 @@ impl App {
             tool_run: None,
             spec_runs: HashMap::new(),
             spec_waiting: None,
+            mcp: crate::kiro::mcp_pool::McpState::new(),
             chats_path: None,
             events: EventLog::disabled(),
             vps: crate::vps::VpsRuntime::load(),
