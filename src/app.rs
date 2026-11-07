@@ -9,6 +9,7 @@ mod ui;
 
 pub use self::ui::Screen;
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -55,6 +56,11 @@ pub struct App {
     galerie: Galerie,
     tick: u64,
     busy: bool,
+    /// Jauge contexte mise en cache (tokens estimés + fenêtre modèle),
+    /// rafraîchie 1×/s : le calcul (BPE + clones) est trop coûteux à
+    /// chaque frame (10 Hz). Voir `refresh_ctx_cache`.
+    ctx_used: u64,
+    ctx_limit: u64,
     pub(crate) sessions: Sessions,
     pub(crate) bus: Bus,
     pub(crate) provider: Option<Arc<Provider>>,
@@ -243,18 +249,29 @@ impl App {
 
     /// Modèle effectif : celui du chat courant, sinon le défaut provider.
     pub(crate) fn effective_model(&self) -> String {
-        self.effective_model_for(self.sessions.index())
+        self.effective_model_ref().to_string()
     }
 
     /// Modèle effectif du chat `idx` (le sien, sinon le défaut provider).
     pub(crate) fn effective_model_for(&self, idx: usize) -> String {
-        if let Some(model) = self.sessions.get(idx).and_then(|c| c.model.clone()) {
+        self.effective_model_ref_for(idx).to_string()
+    }
+
+    /// Modèle effectif du chat courant, emprunté (barre d'état, zéro alloc).
+    pub(crate) fn effective_model_ref(&self) -> &str {
+        self.effective_model_ref_for(self.sessions.index())
+    }
+
+    /// Modèle effectif du chat `idx`, emprunté : le sien, sinon le
+    /// défaut provider, sinon `—`.
+    fn effective_model_ref_for(&self, idx: usize) -> &str {
+        if let Some(model) = self.sessions.get(idx).and_then(|c| c.model.as_deref()) {
             return model;
         }
         self.provider
             .as_ref()
-            .map(|p| p.config().model.clone())
-            .unwrap_or_else(|| String::from("—"))
+            .map(|p| p.config().model.as_str())
+            .unwrap_or("—")
     }
 
     /// Thinking affiché (`None` → "default").
@@ -277,18 +294,27 @@ impl App {
         self.hub.sync(&self.sessions);
         self.hub.step();
         self.fx.tick(self.mascot.state() == MascotState::Spook);
+        if self.tick % 10 == 0 {
+            self.refresh_ctx_cache();
+        }
+    }
+
+    /// Rafraîchit la jauge contexte mise en cache (1×/s depuis `tick`,
+    /// + 1× à la construction) : la frame ne fait plus que lire.
+    pub(crate) fn refresh_ctx_cache(&mut self) {
+        self.ctx_used = self.context_used();
+        self.ctx_limit = self.context_limit();
     }
 }
 
 /// Nom court de modèle : après le dernier '/', max 14 caractères.
-pub fn short_model(model: &str) -> String {
-    model
-        .rsplit('/')
-        .next()
-        .unwrap_or(model)
-        .chars()
-        .take(14)
-        .collect()
+/// Emprunté quand rien n'est tronqué (cas courant, zéro alloc).
+pub fn short_model(model: &str) -> Cow<'_, str> {
+    let base = model.rsplit('/').next().unwrap_or(model);
+    match base.char_indices().map(|(i, _)| i).nth(14) {
+        Some(end) => Cow::Owned(base[..end].to_string()),
+        None => Cow::Borrowed(base),
+    }
 }
 
 #[cfg(test)]
