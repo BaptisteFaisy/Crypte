@@ -13,6 +13,7 @@ pub mod glob;
 pub mod hooks;
 pub mod ignore;
 pub mod mcp;
+pub mod mcp_client;
 pub mod spec;
 pub mod spec_cmds;
 pub mod spec_prompts;
