@@ -6,7 +6,7 @@
 //! via le protocole Kitty (voir `gfx`).
 
 use ratatui::{
-    layout::{Alignment, Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
@@ -64,6 +64,8 @@ impl App {
     pub(crate) fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         self.plus_btn = None;
+        self.side_rows = None;
+        self.tab_hits.clear();
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
         if area.width < 80 || area.height < 24 {
@@ -99,7 +101,9 @@ impl App {
             Constraint::Length(right_width(area.width)),
         ])
         .areas(area);
-        self.plus_btn = self.sessions.draw_sidebar(frame, side);
+        let hits = self.sessions.draw_sidebar(frame, side);
+        self.side_rows = hits.chats;
+        self.plus_btn = hits.plus;
         let sess = self.sessions.current();
         let view = ChatView {
             title: &sess.name,
@@ -227,8 +231,9 @@ impl App {
         ])
     }
 
-    /// En-tête : titre en dégradé, onglets, jauge de contexte à droite.
-    fn draw_header(&self, frame: &mut Frame, area: Rect) {
+    /// En-tête : titre en dégradé, onglets (cliquables, voir `mouse`),
+    /// jauge de contexte à droite.
+    fn draw_header(&mut self, frame: &mut Frame, area: Rect) {
         let mut spans = vec![Span::raw(" ")];
         spans.extend(theme::gradient(
             "\u{f068c} CRYPT",
@@ -239,7 +244,9 @@ impl App {
         spans.push(Span::styled("  ", Style::new()));
         let gauge = ctx_gauge(self.ctx_used, self.ctx_limit);
         let used = spans_width(&spans) + spans_width(&gauge) + 1;
-        spans.extend(self.tabs((area.width as usize).saturating_sub(used)));
+        let room = (area.width as usize).saturating_sub(used);
+        let x = area.x + spans_width(&spans) as u16;
+        spans.extend(self.tabs(room, Position::new(x, area.y)));
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
         let gauge = Paragraph::new(Line::from(gauge)).alignment(Alignment::Right);
         frame.render_widget(gauge, area);
@@ -247,7 +254,8 @@ impl App {
 
     /// Onglets d'écran ; sans les touches (F2…) s'ils ne tiennent pas
     /// dans `room` colonnes (la jauge ctx reste entière à 80 colonnes).
-    fn tabs(&self, room: usize) -> Vec<Span<'static>> {
+    /// Enregistre leurs rectangles (`tab_hits`, clic = écran, voir `mouse`).
+    fn tabs(&mut self, room: usize, at: Position) -> Vec<Span<'static>> {
         let build = |keys: bool| -> Vec<Span<'static>> {
             TABS.iter()
                 .flat_map(|&(screen, label, key)| {
@@ -255,12 +263,19 @@ impl App {
                 })
                 .collect()
         };
-        let full = build(true);
-        if spans_width(&full) <= room {
-            full
-        } else {
-            build(false)
+        let keys = spans_width(&build(true)) <= room;
+        let mut spans = Vec::new();
+        let mut x = at.x;
+        self.tab_hits.clear();
+        for &(screen, label, key) in TABS.iter() {
+            let t = tab(label, if keys { key } else { "" }, self.screen == screen);
+            let w = spans_width(&t);
+            self.tab_hits
+                .push((screen, Rect::new(x, at.y, w as u16, 1)));
+            x = x.saturating_add(w as u16);
+            spans.extend(t);
         }
+        spans
     }
 
     /// Écran almanach : tokens par nuit + la faucheuse qui tient le compte.

@@ -21,12 +21,20 @@ use crate::theme;
 const PLUS_HEAD: &str = "[+] ";
 const PLUS_REST: &str = "new chat";
 
+/// Zones cliquables de la sidebar, mémorisées au rendu (voir `mouse`).
+pub struct SidebarHits {
+    /// Bloc des lignes de chats (une ligne par chat, clic = choisir).
+    pub chats: Option<Rect>,
+    /// Bouton [+] (clic = nouveau chat).
+    pub plus: Option<Rect>,
+}
+
 impl Sessions {
     /// Sidebar « cercueils » : une ligne par chat (nom + tokens + `…` si
     /// envoi + ` A{n}`), le chat courant marqué d'une barre citrouille,
-    /// puis le bouton [+] (clic = nouveau chat). Rend son rectangle
-    /// (`None` s'il est rogné ou si la sidebar est trop étroite).
-    pub fn draw_sidebar(&self, frame: &mut Frame, area: Rect) -> Option<Rect> {
+    /// puis le bouton [+] (clic = nouveau chat). Rend ses zones
+    /// cliquables (`None` si rognées ou si la sidebar est trop étroite).
+    pub fn draw_sidebar(&self, frame: &mut Frame, area: Rect) -> SidebarHits {
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -35,7 +43,10 @@ impl Sessions {
         let inner_w = area.width.saturating_sub(2) as usize;
         if inner_w < 3 {
             frame.render_widget(block, area);
-            return None;
+            return SidebarHits {
+                chats: None,
+                plus: None,
+            };
         }
         let mut lines: Vec<Line<'static>> = self
             .iter()
@@ -56,7 +67,22 @@ impl Sessions {
             lines.push(plus_line(inner_w));
         }
         frame.render_widget(Paragraph::new(lines).block(block), area);
-        plus
+        SidebarHits {
+            chats: chat_rows_rect(area, self.count()),
+            plus,
+        }
+    }
+}
+
+/// Bloc des lignes de chats : une ligne par chat visible depuis le haut
+/// intérieur (`None` si aucune ligne visible — sidebar naine ou étroite).
+fn chat_rows_rect(area: Rect, chats: usize) -> Option<Rect> {
+    let (w, h) = (area.width.saturating_sub(2), area.height.saturating_sub(2));
+    let rows = (chats as u16).min(h);
+    if w < 3 || rows == 0 {
+        None
+    } else {
+        Some(Rect::new(area.x + 1, area.y + 1, w, rows))
     }
 }
 
@@ -150,6 +176,16 @@ mod tests {
         assert_eq!(plus_rect(area, 1), Some(Rect::new(1, 3, 16, 1)));
         assert_eq!(plus_rect(area, 8), None); // 8 lignes = plein
         assert_eq!(plus_rect(Rect::new(0, 1, 4, 10), 1), None); // étroit
+    }
+
+    #[test]
+    fn lignes_chats_une_ligne_par_chat_visible() {
+        let area = Rect::new(0, 1, 18, 10);
+        assert_eq!(chat_rows_rect(area, 1), Some(Rect::new(1, 2, 16, 1)));
+        assert_eq!(chat_rows_rect(area, 3), Some(Rect::new(1, 2, 16, 3)));
+        assert_eq!(chat_rows_rect(area, 20), Some(Rect::new(1, 2, 16, 8))); // rogné
+        assert_eq!(chat_rows_rect(Rect::new(0, 1, 4, 10), 1), None); // étroit
+        assert_eq!(chat_rows_rect(Rect::new(0, 1, 18, 2), 1), None); // nain
     }
 
     #[test]
