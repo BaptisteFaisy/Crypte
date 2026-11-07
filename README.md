@@ -141,7 +141,7 @@ exempt, stays the remedy).
 | F8 | toggle chat / almanac (tokens per day) |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
 
-On narrow terminals the header tabs drop their key hints (F2…) so
+On narrow terminals the header tabs drop their key hints (F5 F6…) so
 the `ctx` gauge always fits.
 
 ## Ghostty
