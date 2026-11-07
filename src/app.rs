@@ -101,7 +101,7 @@ pub struct App {
     /// Journal d'événements temps réel (`--events-log`, désactivé sinon).
     pub(crate) events: EventLog,
     pub(crate) tx: mpsc::Sender<Incoming>,
-    rx: mpsc::Receiver<Incoming>,
+    pub(crate) rx: mpsc::Receiver<Incoming>,
     /// Pool borné d'appels LLM (plafond `CRYPTE_MAX_FLIGHT`, défaut 4).
     pub(crate) pool: SpawnPool,
 }
@@ -251,14 +251,7 @@ impl App {
         sess.auto_hops = 0;
         sess.sending_since = Some(Instant::now());
         if self.tools_on {
-            let mut wire: Vec<crate::tools::WireMsg> = history
-                .into_iter()
-                .map(|(role, content)| crate::tools::WireMsg::text(role, content))
-                .collect();
-            wire.push(crate::tools::WireMsg::text(
-                String::from("system"),
-                String::from(crate::tools::GUIDE),
-            ));
+            let wire = crate::tools::flow::tooled_wire(history);
             self.pool.spawn(async move {
                 let tools = crate::tools::defs();
                 let reply = provider

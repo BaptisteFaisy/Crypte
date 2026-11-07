@@ -300,6 +300,16 @@ impl App {
     }
 }
 
+/// Fil initial outillé : historique + guide transitoire (non persisté).
+pub fn tooled_wire(history: Vec<(String, String)>) -> Vec<WireMsg> {
+    let mut wire: Vec<WireMsg> = history
+        .into_iter()
+        .map(|(role, content)| WireMsg::text(role, content))
+        .collect();
+    wire.push(WireMsg::text(String::from("system"), String::from(GUIDE)));
+    wire
+}
+
 /// Une ligne d'appel : `nom {args…}` (args tronqués à 120 caractères).
 fn call_line(call: &ToolCall) -> String {
     format!("{} {}", call.name, truncate(&call.args, 120))
@@ -365,6 +375,86 @@ mod tests {
         assert!(line.contains("FAILED") && line.contains("boom"));
         assert!(tools_line(true).contains("tools: on (14 tools"));
         assert_eq!(tools_line(false), "tools: off");
+    }
+
+    /// App de test (provider fictif : `localhost:9` refuse tout).
+    fn test_app() -> App {
+        let cfg = crate::provider::ProviderConfig {
+            base_url: String::from("http://localhost:9/"),
+            api_key: String::from("factice"),
+            model: String::from("factice"),
+        };
+        App::from_config(cfg).unwrap()
+    }
+
+    /// Texte du dernier message affiché du chat `idx`.
+    fn last_text(app: &App, idx: usize) -> String {
+        app.sessions
+            .get(idx)
+            .unwrap()
+            .chat
+            .messages()
+            .last()
+            .map(|m| m.text.clone())
+            .unwrap_or_default()
+    }
+
+    /// Prochain `ToolDone` (scrute 2 s max, panique si timeout).
+    async fn recv_done(app: &mut App) -> Vec<Delivery> {
+        for _ in 0..100 {
+            if let Ok(Incoming::ToolDone(id, got)) = app.rx.try_recv() {
+                assert_eq!(id, 0);
+                return got;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("ToolDone arrivé");
+    }
+
+    /// Prochaine réponse `Chat` en erreur (refus `localhost:9`).
+    async fn recv_chat_err(app: &mut App) {
+        for _ in 0..100 {
+            if let Ok(Incoming::Chat(id, reply)) = app.rx.try_recv() {
+                assert_eq!(id, 0);
+                assert!(reply.is_err());
+                app.drain_chat(id, reply);
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("Chat arrivé");
+    }
+
+    #[tokio::test]
+    async fn boucle_shell_execute_livre_et_libere() {
+        let mut app = test_app();
+        app.permissions = Mode::Yolo;
+        app.sessions
+            .current_mut()
+            .history
+            .push((String::from("user"), String::from("hi")));
+        let done = crate::provider::Completion {
+            text: String::new(),
+            tool_calls: vec![ToolCall {
+                id: String::from("c1"),
+                name: String::from("shell_run"),
+                args: String::from(r#"{"cmd":"echo hi"}"#),
+            }],
+            prompt_tokens: 1,
+            completion_tokens: 1,
+        };
+        app.drain_tool_calls(0, done);
+        assert!(app.sessions.get(0).unwrap().sending);
+        let deliveries = recv_done(&mut app).await;
+        assert_eq!(deliveries.len(), 1);
+        assert!(deliveries[0].ok);
+        assert_eq!(deliveries[0].text, "hi\n");
+        app.drain_tool_done(0, deliveries);
+        assert!(last_text(&app, 0).contains("[tool shell_run → ok"));
+        recv_chat_err(&mut app).await;
+        assert!(app.tool_run.is_none());
+        assert!(!app.sessions.get(0).unwrap().sending);
+        assert!(last_text(&app, 0).starts_with("error:"));
     }
 
     #[test]

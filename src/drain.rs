@@ -67,6 +67,7 @@ impl App {
                     self.drain_tool_calls(id, done);
                     return;
                 }
+                self.tool_run = None;
                 let Some(sess) = self.sessions.get_mut(id) else {
                     return;
                 };
@@ -83,6 +84,7 @@ impl App {
                 self.fire_chat_links(id, &done.text);
             }
             Err(err) => {
+                self.tool_run = None;
                 let Some(sess) = self.sessions.get_mut(id) else {
                     return;
                 };

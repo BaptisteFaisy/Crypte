@@ -10,6 +10,8 @@ pub mod browser;
 pub mod desktop;
 pub mod exec;
 pub mod flow;
+#[cfg(test)]
+mod live;
 pub mod log;
 pub mod wire;
 
