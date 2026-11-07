@@ -13,6 +13,7 @@ use crate::apparition::Apparition;
 use crate::bus::Bus;
 use crate::chat::Role;
 use crate::connect::NOT_CONNECTED;
+use crate::events::EventLog;
 use crate::fx::Fx;
 use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
@@ -126,6 +127,7 @@ impl App {
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
             chats_path: None,
+            events: EventLog::disabled(),
             tx,
             rx,
             pool: SpawnPool::new(),

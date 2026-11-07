@@ -17,6 +17,7 @@ mod cmds;
 mod commands;
 mod connect;
 mod drain;
+mod events;
 mod fx;
 mod galerie;
 mod gfx;
@@ -36,7 +37,7 @@ mod tokens;
 mod web;
 mod workspace;
 
-use std::io;
+use std::{io, path::PathBuf};
 
 use anyhow::{Context, Result};
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
@@ -46,6 +47,7 @@ use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
 use crate::almanac::Almanac;
 use crate::app::{App, Screen};
 use crate::chat::Role;
+use crate::events::{Event, EventLog};
 use crate::provider::{Provider, ProviderConfig};
 
 const HELP: &str = "\
@@ -64,12 +66,14 @@ OPTIONS:
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
         --preview <file>  Write the 5 screens (120x36, offline) as ANSI
         --demo            Offline demo crypt, opened on the spirit hub (F7)
+        --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
 
 CONFIG (environment, wins over --config):
     KH_BASE_URL   OpenAI-compatible base (default https://api.openai.com/v1)
     KH_API_KEY    API key (never logged; --once requires it)
     KH_MODEL      Model (--once requires it)
     KH_CONTEXT_WINDOW  Context window override (tokens, integer > 0)
+    KH_EVENTS_LOG   Same as --events-log (flag wins when both are set)
     BRAVE_API_KEY / TAVILY_API_KEY  Optional premium /web backends (else free)
     With no key, no --config and no --muse-auth, the TUI still starts,
     disconnected — /connect openai|muse to connect from inside.
@@ -128,6 +132,7 @@ struct Args {
     agents_file: Option<String>,
     planche: Option<String>,
     apercu: Option<String>,
+    events_log: Option<String>,
 }
 
 /// Parse `std::env::args` : `--help`/`-h`, `--smoke`, `--config`, `--once`,
@@ -143,6 +148,7 @@ fn parse_args() -> Result<Args> {
         agents_file: None,
         planche: None,
         apercu: None,
+        events_log: None,
     };
     let mut it = std::env::args().skip(1).peekable();
     while let Some(arg) = it.next() {
@@ -170,6 +176,10 @@ fn parse_args() -> Result<Args> {
             "--planche" | "--sheet" => {
                 let path = it.next().context("--sheet expects a .png path")?;
                 args.planche = Some(path);
+            }
+            "--events-log" => {
+                let path = it.next().context("--events-log expects a file path")?;
+                args.events_log = Some(path);
             }
             other => anyhow::bail!("unknown option: {other} (see --help)"),
         }
@@ -254,6 +264,14 @@ async fn async_main() -> Result<()> {
         app.enable_history();
         app.almanac = Almanac::open_default();
     }
+    let events = EventLog::new(
+        args.events_log
+            .clone()
+            .or_else(|| std::env::var("KH_EVENTS_LOG").ok())
+            .map(PathBuf::from),
+    );
+    events.emit(&Event::started());
+    app.events = events;
     if args.demo {
         app.almanac = Almanac::demo(crate::almanac::today());
         app.populate_hub_demo();

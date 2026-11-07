@@ -9,6 +9,7 @@ use crate::bus::{LinkEnd, LinkError, QueuedAsk, QueuedTell, Target};
 use crate::chat::Role;
 use crate::commands::{self, Command, MsgTarget};
 use crate::connect::NOT_CONNECTED;
+use crate::events::Event;
 use crate::history::window_estimate;
 use crate::hub::Signal;
 use crate::provider::{provider_label, ProviderConfig};
@@ -154,6 +155,8 @@ impl App {
         };
         self.sessions
             .attach_workspace(agent_id, crate::workspace::base().as_deref());
+        self.events
+            .emit(&Event::agent_spawned(agent_id, id, deliver, &prompt));
         if deliver == id {
             self.push_system(format!("agent#{agent_id} started"));
         } else {
@@ -286,6 +289,7 @@ impl App {
         self.ensure_agents_loaded();
         let dest = self.sessions.get_mut(idx).expect("chat validé ci-dessus");
         dest.chat.push(Role::User, envelope.clone());
+        self.events.emit(&Event::user_msg(idx, &envelope));
         if dest.sending {
             dest.inbox.push_back(QueuedTell {
                 envelope,
