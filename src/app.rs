@@ -179,7 +179,7 @@ impl App {
         Self::from_config(ProviderConfig {
             base_url: String::from("http://127.0.0.1:9"),
             api_key: String::new(),
-            model: String::from("crypte-hors-ligne"),
+            model: String::from("crypt-offline"),
         })
     }
 
@@ -300,8 +300,8 @@ impl App {
         }
         if let Some(used) = self.context_over_limit(&text) {
             self.push_system(format!(
-                "contexte saturé ({}), envoi refusé : /compact pour continuer",
-                crate::tokens::fmt_context(used)
+                "context full ({}), send refused: /compact to continue",
+                crate::tokens::fmt_context(used, self.context_limit())
             ));
             return;
         }
@@ -419,13 +419,16 @@ mod tests {
     fn tell_rejette_cible_invalide_ou_occupee() {
         let mut app = test_app();
         app.run_command("/tell 9 hello");
-        assert_eq!(last_text(&app, 0), "chat 9 inexistant");
+        assert_eq!(last_text(&app, 0), "chat 9 not found");
         app.run_command("/tell 1 hello");
-        assert_eq!(last_text(&app, 0), "c'est ce chat-ci — écris directement");
+        assert_eq!(
+            last_text(&app, 0),
+            "this is the current chat — type directly"
+        );
         app.sessions.get_mut(0).unwrap().sending = true;
         app.add_chat(); // courant = chat 2
         app.run_command("/tell 1 hello");
-        assert_eq!(last_text(&app, 1), "Chat 1 occupé, réessaie");
+        assert_eq!(last_text(&app, 1), "Chat 1 busy, retry");
         // Refus = rien injecté nulle part.
         assert!(app.sessions.get(0).unwrap().history.is_empty());
     }
@@ -434,14 +437,14 @@ mod tests {
     fn ask_rejette_agent_inconnu() {
         let mut app = test_app();
         app.run_command("/ask #42 suite");
-        assert_eq!(last_text(&app, 0), "agent#42 inconnu");
+        assert_eq!(last_text(&app, 0), "agent#42 unknown");
     }
 
     #[test]
     fn agent_rejette_livraison_inexistante_sans_creer() {
         let mut app = test_app();
         app.run_command("/agent @9 fais ça");
-        assert_eq!(last_text(&app, 0), "chat 9 inexistant");
+        assert_eq!(last_text(&app, 0), "chat 9 not found");
         assert!(app.sessions.current().agents.is_empty());
     }
 
@@ -473,7 +476,7 @@ mod tests {
         assert_eq!(owner.ledger.total(), 0);
         // Ledger + message tagué sur la livraison.
         assert_eq!(app.sessions.get(1).unwrap().ledger.total(), 15);
-        assert_eq!(last_text(&app, 1), "[agent#1 de Chat 1] réponse");
+        assert_eq!(last_text(&app, 1), "[agent#1 from Chat 1] réponse");
     }
 
     #[test]
@@ -486,6 +489,6 @@ mod tests {
             app.sessions.get(0).unwrap().agents[0].status,
             AgentStatus::Failed
         );
-        assert_eq!(last_text(&app, 0), "[agent#1] erreur: boom");
+        assert_eq!(last_text(&app, 0), "[agent#1] error: boom");
     }
 }

@@ -3,7 +3,7 @@
 Chat LLM dans une crypte hantée (TUI ratatui) pensé pour Ghostty :
 multi-chats, mascotte fantôme Kiro (F5), bestiaire pixel art (F6, images
 Kitty), effets horreur, compteur tokens, sous-agents `/agent`,
-compaction `/compact`. UI et messages **en français**.
+compaction `/compact`. UI et messages **en anglais**.
 
 ## Commandes
 
@@ -63,7 +63,7 @@ max). Chaque appel LLM est déclenché par le user (pas de boucles auto).
   testée (`gfx::tests`). Après retouche : régénérer `docs/bestiaire.png`.
 - Effets (`fx.rs`) : jamais sur le texte ni dans les zones d'images
   (`ImageBank::drawn`). Aucun son (pas de BEL, pas de notification).
-- UI et messages en français ; clé API **jamais affichée ni logguée**
+- UI et messages en anglais ; clé API **jamais affichée ni logguée**
   (ni chat, ni log, ni test — les tests réseau lisent le store).
 - `AGENTS.md` chargé une fois au démarrage (`--agents-file` prime,
   sinon `./AGENTS.md` puis `./AGENT.md`, restart pour recharger) ;

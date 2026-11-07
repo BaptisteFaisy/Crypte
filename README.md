@@ -1,82 +1,84 @@
 # kiro-horror-tui
 
-Chat LLM dans une crypte hantée, pensé pour **Ghostty** : bestiaire de
-33 créatures en pixel art (images réelles via le protocole graphique
-Kitty), mascotte fantôme Kiro immobile (s'effraie via F5), apparitions
-qui réagissent au chat, effets horreur (vignette à la bougie, brume,
-static, gouttes de sang, éclair, peur 0-100), compteur de tokens
-**global** (barre de statut : chat courant + cumul session, tous
-chats et sous-agents inclus ; F2 : grimoire + âmes par chat avec
-ligne TOTAL). Terminal **≥ 80x24** requis.
+LLM chat in a haunted crypt, built for **Ghostty**: a bestiary of
+33 pixel-art creatures (real images via the Kitty graphics
+protocol), Kiro the motionless ghost mascot (scared via F5),
+apparitions that react to the chat, horror effects (candlelit
+vignette, fog, static, blood drops, lightning), a header **context
+gauge** (`ctx`, % of the model's context window), and a **global**
+token counter (status bar: current chat + session total, all
+chats and sub-agents included; F2: grimoire + souls per chat with
+a TOTAL line). Terminal **≥ 80x24** required.
 
-![Le bestiaire de la crypte](docs/bestiaire.png)
+![The crypt bestiary](docs/bestiaire.png)
 
-## Lancer
+## Run
 
-Dans Ghostty, habillé (thème + shader, compile la release au besoin) :
+In Ghostty, dressed up (theme + shader, builds release if needed):
 
 ```sh
 KH_API_KEY=... KH_MODEL=... ghostty/crypte
 ghostty/crypte --muse-auth
-ghostty/crypte --sans-shader --muse-auth
+ghostty/crypte --no-shader --muse-auth
 ```
 
-Dans le terminal courant :
+In the current terminal:
 
 ```sh
 cargo build
 KH_API_KEY=... KH_MODEL=... ./target/debug/kiro-horror-tui
 ```
 
-Appel unique non-interactif (affiche la réponse + une ligne tokens) :
+Single non-interactive call (prints the reply + a token line):
 
 ```sh
-KH_API_KEY=... KH_MODEL=... ./target/debug/kiro-horror-tui --once "<texte>"
-./target/debug/kiro-horror-tui --muse-auth --once "<texte>"
+KH_API_KEY=... KH_MODEL=... ./target/debug/kiro-horror-tui --once "<text>"
+./target/debug/kiro-horror-tui --muse-auth --once "<text>"
 ```
 
-Contrôle sans réseau ni clé (rendu headless 80x24), aperçus :
+Check with no network or key (headless 80x24 render), previews:
 
 ```sh
 ./target/debug/kiro-horror-tui --smoke
 ./target/debug/kiro-horror-tui --help
-./target/debug/kiro-horror-tui --planche docs/bestiaire.png   # PNG du bestiaire
-./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans       # 3 écrans en ANSI
-cat /tmp/crypte.ans                                           # à lire dans Ghostty
+./target/debug/kiro-horror-tui --sheet docs/bestiaire.png   # bestiary PNG
+./target/debug/kiro-horror-tui --preview /tmp/crypte.ans    # 3 screens as ANSI
+cat /tmp/crypte.ans                                         # read it in Ghostty
 ```
 
-Sans clé ni config, le TUI démarre quand même, déconnecté
-(voir `/connect` ci-dessous).
+With no key or config, the TUI still starts, disconnected
+(see `/connect` below).
 
 ## Muse Code
 
-Prérequis : CLI `muse` loggée. Branchement en 1 commande :
+Prerequisite: logged-in `muse` CLI. One-command setup:
 
 ```sh
 ./target/debug/kiro-horror-tui --muse-auth
 ```
 
-`--muse-auth` lit la clé dans `~/.config/muse/auth.json` (champ
-`providers.meta.api_key`), base défaut `https://api.meta.ai/v1`, modèle
-défaut `muse-spark-1.3-contributor`. `KH_BASE_URL` / `KH_API_KEY` /
-`KH_MODEL` restent prioritaires et surchargent ces défauts. Utilisable
-avec le TUI et avec `--once`. La clé n'est jamais affichée ni copiée.
+`--muse-auth` reads the key from `~/.config/muse/auth.json` (field
+`providers.meta.api_key`), default base `https://api.meta.ai/v1`, default
+model `muse-spark-1.3-contributor`. `KH_BASE_URL` / `KH_API_KEY` /
+`KH_MODEL` take priority and override these defaults. Works with the
+TUI and with `--once`. The key is never displayed nor copied.
 
 ## Config
 
-Variables d'environnement (prioritaires) :
+Environment variables (prioritary):
 
-| var | rôle | défaut |
+| var | role | default |
 | --- | ---- | ------ |
-| `KH_BASE_URL` | base OpenAI-compatible | `https://api.openai.com/v1` |
-| `KH_API_KEY` | clé API (**obligatoire**, jamais logguée) | — |
-| `KH_MODEL` | modèle (**obligatoire**) | — |
+| `KH_BASE_URL` | OpenAI-compatible base | `https://api.openai.com/v1` |
+| `KH_API_KEY` | API key (never logged; `--once` requires it) | — |
+| `KH_MODEL` | model (`--once` requires it) | — |
+| `KH_CONTEXT_WINDOW` | context-window override (tokens) | per-model table |
 
-Avec `--muse-auth`, les défauts deviennent base `https://api.meta.ai/v1`
-+ modèle `muse-spark-1.3-contributor` (clé lue dans `auth.json`).
+With `--muse-auth`, defaults become base `https://api.meta.ai/v1`
++ model `muse-spark-1.3-contributor` (key read from `auth.json`).
 
-Ou fichier TOML via `--config <fichier>` (clés plates ou section
-`[provider]`, surchargées par l'environnement) :
+Or a TOML file via `--config <file>` (flat keys or `[provider]`
+section, overridden by the environment):
 
 ```toml
 base_url = "https://api.meta.ai/v1"
@@ -84,153 +86,166 @@ api_key = "..."
 model = "muse-spark-1.3-contributor"
 ```
 
-## /connect (connexion depuis le TUI)
+## /connect (connect from the TUI)
 
-Plus besoin de clé au lancement : sans `KH_API_KEY`, `--config`
-ni `--muse-auth`, le TUI démarre déconnecté et les envois
-répondent `non connecté : /connect openai|muse`.
+No key needed at launch: with no `KH_API_KEY`, `--config`
+or `--muse-auth`, the TUI starts disconnected and sends
+answer `not connected: /connect openai|muse`.
 
-- `/connect` — statut (provider + modèle, ou non connecté + usage).
-- `/connect openai` — demande la clé API (saisie masquée en `•`),
-  puis le modèle (Entrée seul = `gpt-4o`).
-- `/connect muse` — lit le store `~/.config/muse/auth.json` si
-  possible, sinon bascule en saisie manuelle (`store Muse
-  illisible, saisie manuelle`, modèle défaut
+- `/connect` — status (provider + model, or not connected + usage).
+- `/connect openai` — asks for the API key (input masked with `•`),
+  then the model (empty Enter = `gpt-4o`).
+- `/connect muse` — reads the `~/.config/muse/auth.json` store if
+  possible, else switches to manual input (`Muse store
+  unreadable, manual input`, default model
   `muse-spark-1.3-contributor`).
-- `Échap` annule le flow (`connexion annulée`), le brouillon est préservé.
-- La clé n'est jamais affichée, logguée ni poussée dans le chat :
-  seule la confirmation `connecté à {provider} ({modèle})` apparaît.
+- `Esc` cancels the flow (`connection cancelled`), the draft is kept.
+- The key is never displayed, logged or pushed into the chat:
+  only the `connected to {provider} ({model})` confirmation shows.
 
-## Touches
+## Context gauge
 
-| touche | effet |
+The header `ctx` gauge shows the estimated context of the current
+chat (send window + draft input) as a % of the effective limit:
+the model's context window (known sizes in `tokens.rs`, `128k`
+fallback), capped at 1M estimated tokens. It turns from
+candle to blood past 40%, then 80%. `/usage` prints the exact
+fill figures, `/model` shows the window of the current
+model, and `KH_CONTEXT_WINDOW` overrides it for unknown models.
+Sends (chat or agent) past the limit are refused (`/compact`,
+exempt, stays the remedy).
+
+## Keys
+
+| key | effect |
 | --- | ---- |
-| Entrée | envoyer le message |
-| Échap / `q` (saisie vide) | quitter |
-| F2 | basculer chat / grimoire (tokens + âmes par chat) |
-| F3 / F4 | chat précédent / suivant |
-| Ctrl+N | nouveau chat |
-| Clic `[+]` (sidebar) | nouveau chat (souris capturée par l'app) |
-| F5 | effroi : Kiro a peur 2 s, jump scare, éclair, peur + |
-| F6 | basculer chat / bestiaire (flèches pour choisir) |
+| Enter | send the message |
+| Esc / `q` (empty input) | quit |
+| F2 | toggle chat / grimoire (tokens + souls per chat) |
+| F3 / F4 | previous / next chat |
+| Ctrl+N | new chat |
+| Click `[+]` (sidebar) | new chat (mouse captured by the app) |
+| F5 | scare: Kiro scared 2s, jump scare, lightning flash |
+| F6 | toggle chat / bestiary (arrows to pick) |
 
 ## Ghostty
 
-Ce que la crypte utilise de Ghostty (et qui dégrade proprement ailleurs) :
+What the crypt uses from Ghostty (and degrades cleanly elsewhere):
 
-- **Protocole graphique Kitty** (placeholders Unicode) : le pixel art est
-  une vraie image, détectée au démarrage (`◆ kitty` dans la barre d'état).
-  Ailleurs : demi-blocs truecolor (`◆ demi-blocs`).
-- **Truecolor** partout : vignette à la bougie, brume, dégradés, éclair.
-- **Sprites internes** : séparateurs powerline arrondis, blocs, braille
-  dessinés au pixel près ; icônes Nerd Font embarquées.
-- **OSC 11** (fond de fenêtre, padding compris), **OSC 2** (titre, pile
-  restaurée en sortie), **OSC 9;4** (barre de progression native pendant
-  qu'une réponse mijote, Ghostty seulement), **mode 2026** (rendu
-  synchronisé, animations sans déchirure).
-- `ghostty/crypte.conf` (palette, padding étendu, 120x36) +
-  `ghostty/crypte.glsl` (vignette, flamme, grain — aucun flou : chaque
-  pixel est lu à sa place).
+- **Kitty graphics protocol** (Unicode placeholders): pixel art is
+  a real image, detected at startup (`◆ kitty` in the status bar).
+  Elsewhere: truecolor halfblocks (`◆ halfblocks`).
+- **Truecolor** everywhere: candlelit vignette, fog, gradients, flash.
+- **Built-in sprites**: rounded powerline separators, blocks, braille
+  drawn pixel-perfect; embedded Nerd Font icons.
+- **OSC 11** (window background, padding included), **OSC 2** (title,
+  stack restored on exit), **OSC 9;4** (native progress bar while a
+  reply simmers, Ghostty only), **mode 2026** (synced rendering,
+  tear-free animations).
+- `ghostty/crypte.conf` (palette, extended padding, 120x36) +
+  `ghostty/crypte.glsl` (vignette, flame, grain — no blur: every
+  pixel is read at its own place).
 
-Aucun son : ni cloche, ni notification.
+No sound: no bell, no notification.
 
-## Bestiaire (pixel art)
+## Bestiary (pixel art)
 
-33 créatures d'après le shot Dribbble « Halloween icons and
-illustrations » (Getillustrations), **redessinées** en pixel art 32×32
-(aucune image d'origine dans le dépôt), + Kiro effrayé. Une grille texte
-par créature dans `assets/pixel/<slug>.txt` : 32 lignes de 32 lettres,
-`.` = transparent, sinon une couleur de `src/theme.rs` :
+33 creatures after the Dribbble shot "Halloween icons and
+illustrations" (Getillustrations), **redrawn** as 32×32 pixel art
+(no original image in the repo), + scared Kiro. One text grid per
+creature in `assets/pixel/<slug>.txt`: 32 lines of 32 letters,
+`.` = transparent, else a color from `src/theme.rs`:
 
-| lettre | couleur | lettre | couleur |
+| letter | color | letter | color |
 | --- | --- | --- | --- |
-| `W` | os | `S` | sable |
-| `U` | terre | `K` | encre |
-| `O` / `o` | citrouille / ombre | `R` / `r` | sang / séché |
-| `G` / `g` | ectoplasme / ombre | `P` / `p` | spectre / ombre |
-| `Y` / `y` | bougie / ombre | `N` | toile de jute |
+| `W` | bone | `S` | sand |
+| `U` | umber | `K` | ink |
+| `O` / `o` | pumpkin / dark | `R` / `r` | blood / dried |
+| `G` / `g` | ectoplasm / dark | `P` / `p` | spectre / dark |
+| `Y` / `y` | candle / dark | `N` | burlap |
 
-Rendu net garanti : agrandissement **entier** au plus proche voisin, sur
-un canevas de la taille pixel exacte de la zone (1 pixel image = 1 pixel
-écran en Kitty, = 1 demi-cellule en demi-blocs). Le panneau droit montre
-Kiro et une apparition : chaudron pendant une réponse, araignée pendant
-les sous-agents, main de la tombe sur erreur, cercueil après `/compact`,
-rotation lente sinon.
+Crisp rendering guaranteed: **integer** nearest-neighbour upscale on
+a canvas of the exact pixel size of the area (1 image pixel = 1
+screen pixel in Kitty, = 1 half-cell in halfblocks). The right panel
+shows Kiro and an apparition: cauldron during a reply, spider during
+sub-agents, grave hand on error, coffin after `/compact`, slow
+rotation otherwise.
 
-## Modèle
+## Model
 
-Chaque chat a son modèle (`None` = défaut du provider).
-`/model` affiche le modèle effectif, `/model <nom>` le change
-pour le chat courant, `/model reset` (ou `default`) revient
-au défaut. La barre de statut montre le nom court (après
-le dernier `/`, 14 caractères max).
+Each chat has its model (`None` = provider default).
+`/model` shows the effective model, `/model <name>` changes it
+for the current chat, `/model reset` (or `default`) goes back
+to the default. The status bar shows the short name (after
+the last `/`, 14 chars max).
 
 ## Thinking
 
-Niveau de réflexion global (envoyé comme `reasoning_effort`
-**uniquement** si `/thinking <niveau>` a été utilisé, sinon
-le champ est omis du JSON). `/thinking` affiche le niveau,
-`/thinking default` revient au défaut (omis). Niveaux :
+Global reasoning level (sent as `reasoning_effort`
+**only** if `/thinking <level>` was used, otherwise
+the field is omitted from the JSON). `/thinking` shows the level,
+`/thinking default` goes back to default (omitted). Levels:
 `default` / `low` / `medium` / `high`.
 
-## Sous-agents
+## Sub-agents
 
-`/agent [@<n>] <texte>` lance une requête annexe (sans historique mais
-avec agents.md préfixé si chargé, modèle et thinking courants) ; la
-réponse arrive en async préfixée `[agent#id]` (ou `[agent#id de Chat k]`
-si livrée ailleurs via `@<n>`) et le statut est visible dans la sidebar
-(`A{n}`) puis via `/agents` (`en cours` / `terminé` / `échoué`, tokens
-consommés). `/ask #<id> <texte>` poursuit la conversation avec un agent
-(échange gardé, 20 messages max, tête `system` conservée) ; refusé si
-l'agent est en cours. Chaque appel LLM reste déclenché par le user :
-pas de boucles automatiques entre agents.
+`/agent [@<n>] <text>` starts a side request (no history but
+agents.md prefixed if loaded, current model and thinking); the
+reply arrives async prefixed `[agent#id]` (or `[agent#id from Chat k]`
+if delivered elsewhere via `@<n>`) and the status shows in the sidebar
+(`A{n}`) then via `/agents` (`running` / `done` / `failed`, tokens
+used). `/ask #<id> <text>` continues the conversation with an agent
+(exchange kept, 20 messages max, `system` head kept); refused if
+the agent is running. Every LLM call is still user-triggered:
+no automatic loops between agents.
 
-## Dialogues entre chats
+## Dialogues between chats
 
-`/tell <n> <texte>` injecte le texte dans le chat n (préfixé `[de Chat k]`)
-et déclenche sa réponse (modèle du chat cible, thinking global) ; refusé
-si le chat cible est en cours d'envoi, inexistant, ou si c'est le chat
-courant. Combiné à `/agent @<n>`, ça fait se parler chats et sous-agents :
-délégation (chat 1 → agent → réponse livrée au chat 2), relance (`/ask`),
-concertation (`/tell` + réponse du chat cible).
+`/tell <n> <text>` injects the text into chat n (prefixed `[from Chat k]`)
+and triggers its reply (target chat model, global thinking); refused
+if the target chat is sending, missing, or is the current chat.
+Combined with `/agent @<n>`, it makes chats and sub-agents talk to
+each other: delegation (chat 1 → agent → reply delivered to chat 2),
+follow-up (`/ask`), discussion (`/tell` + target chat reply).
 
 ## Compact
 
-`/compact` (6 messages minimum) demande un résumé FR (< 20
-lignes, agents.md **exclu** du résumé méta) et remplace l'historique
-par `[agents.md pinné]` + `résumé + 4 derniers messages` ; les
-messages arrivés pendant le résumé sont préservés. En cas d'échec,
-l'historique reste intact. Envoi (chat ou agent) refusé au-delà
-d'1M tokens estimés sur la fenêtre envoyée (remplissage dans
-`/usage`) ; `/compact` (exempté) reste le remède.
+`/compact` (6 messages minimum) asks for an EN summary (< 20
+lines, agents.md **excluded** from the meta summary) and replaces history
+with `[pinned agents.md]` + `summary + last 4 messages`; messages
+arrived during the summary are preserved. On failure, history
+stays intact. Sends (chat or agent) refused past the context limit
+on the send window (fill in `/usage`); exempt `/compact` stays
+the remedy.
 
-## AGENTS.md (contexte système)
+## AGENTS.md (system context)
 
-Au démarrage, le binaire charge `./AGENTS.md` puis `./AGENT.md` dans
-le cwd (`--agents-file <fichier>` prime sur les deux), une seule fois
-(restart pour recharger). Injecté comme message `system` en tête de
-l'historique de chaque chat (nouveaux inclus, `/new` et Ctrl+N) et
-préfixé aux appels `/agent`. Exclu de `/compact` (résumé méta) et de
-`--once` (brut). Annonce au démarrage (`AGENTS.md chargé, N lignes,
-~M tokens`) et ligne dédiée dans `/usage` (`chargé` ou `absent`).
+At startup, the binary loads `./AGENTS.md` then `./AGENT.md` from
+the cwd (`--agents-file <file>` wins over both), once
+(restart to reload). Injected as a `system` message atop the
+history of every chat (new ones included, `/new` and Ctrl+N) and
+prefixed to `/agent` calls. Excluded from `/compact` (meta summary)
+and from `--once` (raw). Startup announcement (`AGENTS.md loaded,
+N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
+`missing`).
 
 ## Modules (`src/`)
 
-`main.rs` (CLI + bootstrap), `app.rs` (état + boucle 100 ms),
-`mouse.rs` (clic [+] = nouveau chat),
-`drain.rs` (routage des réponses async vers les chats),
-`chat.rs` (historique + saisie), `mascot.rs` (fantôme),
-`fx.rs` (overlay horreur), `tokens.rs` (compteur tiktoken),
-`provider.rs` (client OpenAI-compatible, timeout 60 s),
-`sessions.rs` (chats multiples + sous-agents),
-`sidebar.rs` (colonne cercueils + bouton [+] nouveau chat),
-`commands.rs` (parse des commandes `/…` + aide + usage),
+`main.rs` (CLI + bootstrap), `app.rs` (state + 100ms loop),
+`mouse.rs` ([+] click = new chat),
+`drain.rs` (routing async replies to chats),
+`chat.rs` (history + input + maskable custom prompt), `mascot.rs` (ghost),
+`fx.rs` (horror overlay), `tokens.rs` (tiktoken counter),
+`provider.rs` (OpenAI-compatible client, 60s timeout),
+`sessions.rs` (multi-chats + sub-agents),
+`sidebar.rs` (coffins column + [+] new-chat button),
+`commands.rs` (parsing `/…` commands + help + usage),
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
-`/compact` `/connect`), `connect.rs` (flow `/connect` : clé masquée → modèle),
-`agents.rs` (chargement agents.md + compaction pure testée),
-`app/ui.rs` (mise en page : en-tête, panneaux, barre powerline),
-`theme.rs` (palette unique), `bestiary.rs` (sprites + mise à l'échelle
-entière), `gfx.rs` (images Kitty / demi-blocs), `apparition.rs`
-(créature du panneau droit), `galerie.rs` (écran bestiaire F6),
-`ghostty.rs` (OSC, progression, rendu synchronisé),
-`history.rs` (fenêtre d'envoi + nommage des chats).
+`/compact` `/connect`), `connect.rs` (`/connect` flow: masked key → model),
+`agents.rs` (agents.md loading + tested pure compaction),
+`app/ui.rs` (layout: header, panels, powerline bar),
+`theme.rs` (single palette), `bestiary.rs` (sprites + integer
+scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
+(right-panel creature), `galerie.rs` (F6 bestiary screen),
+`ghostty.rs` (OSC, progress, synced rendering),
+`history.rs` (send window + chat naming).

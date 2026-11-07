@@ -41,9 +41,9 @@ pub enum Command {
 }
 
 /// Aides d'usage (commandes `/tell` `/ask` `/agent` mal formées).
-pub const TELL_USAGE: &str = "usage : /tell <n> <texte> — parler au chat n";
-pub const ASK_USAGE: &str = "usage : /ask #<id> <texte> — reparler à un agent";
-pub const AGENT_USAGE: &str = "usage : /agent [@<n>] <texte> — sous-agent (réponse au chat n)";
+pub const TELL_USAGE: &str = "usage: /tell <n> <text> — talk to chat n";
+pub const ASK_USAGE: &str = "usage: /ask #<id> <text> — follow up with an agent";
+pub const AGENT_USAGE: &str = "usage: /agent [@<n>] <text> — sub-agent (reply goes to chat n)";
 
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
@@ -158,14 +158,14 @@ pub fn usage_text(
 ) -> String {
     let (last_in, last_out) = current.last();
     format!(
-        "modèle : {model}\n\
-         thinking : {thinking}\n\
+        "model: {model}\n\
+         thinking: {thinking}\n\
          CHAT — in={} out={} total={}\n\
-         dernier appel : in={last_in} out={last_out}\n\
-         tps : dernier={} moy={}\n\
-         coût : {}\n\
-         TOTAL SESSION — in={} out={} total={}\n\
-         tps moyen : {}",
+         last call: in={last_in} out={last_out}\n\
+         tps: last={} avg={}\n\
+         cost: {}\n\
+         SESSION TOTAL — in={} out={} total={}\n\
+         avg tps: {}",
         current.prompt,
         current.completion,
         current.total(),
@@ -181,20 +181,20 @@ pub fn usage_text(
 
 /// Aide : les 11 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
-    "Commandes :\n\
-     /usage — usage tokens (chat courant + session totale)\n\
-     /new — nouveau chat (remise à zéro du chat courant)\n\
-     /thinking [niveau] — niveau de réflexion (default/low/medium/high)\n\
-     /model [nom|reset] — afficher ou changer le modèle\n\
-     /agent [@<n>] <texte> — sous-agent (réponse au chat n si ciblé)\n\
-     /agents — lister les sous-agents actifs\n\
-     /ask #<id> <texte> — reparler à un agent\n\
-     /tell <n> <texte> — parler au chat n\n\
-     /compact — compacter l'historique du chat courant\n\
-     /connect [openai|muse] — se connecter (statut si sans argument)\n\
-     /help — cette aide\n\
-     Touches : F2 grimoire · F3/F4 chats · F5 effroi · F6 bestiaire · Ctrl+N\n\
-     Contexte : ./AGENTS.md chargé au démarrage (restart pour recharger)"
+    "Commands:\n\
+     /usage — token usage (current chat + session total)\n\
+     /new — new chat (resets the current chat)\n\
+     /thinking [level] — reasoning level (default/low/medium/high)\n\
+     /model [name|reset] — show or change the model\n\
+     /agent [@<n>] <text> — sub-agent (reply goes to chat n if targeted)\n\
+     /agents — list active sub-agents\n\
+     /ask #<id> <text> — follow up with an agent\n\
+     /tell <n> <text> — talk to chat n\n\
+     /compact — compact the current chat history\n\
+     /connect [openai|muse] — connect (status if no argument)\n\
+     /help — this help\n\
+     Keys: F2 grimoire · F3/F4 chats · F5 scare · F6 bestiary · Ctrl+N\n\
+     Context: ./AGENTS.md loaded at startup (restart to reload)"
 }
 
 #[cfg(test)]

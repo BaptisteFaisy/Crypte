@@ -34,7 +34,7 @@ impl App {
                 self.apparition.advance();
             }
             Err(err) => {
-                sess.chat.push(Role::System, format!("erreur: {err:#}"));
+                sess.chat.push(Role::System, format!("error: {err:#}"));
                 self.apparition.omen(Omen::Error);
             }
         }
@@ -58,7 +58,7 @@ impl App {
                 self.apparition.omen(Omen::Error);
                 if let Some(dest) = self.sessions.get_mut(deliver) {
                     dest.chat
-                        .push(Role::System, format!("{tag} erreur: {err:#}"));
+                        .push(Role::System, format!("{tag} error: {err:#}"));
                 }
                 return;
             }
@@ -104,12 +104,12 @@ impl App {
                 sess.history = compacted;
                 let after = sess.history.len();
                 sess.chat
-                    .push(Role::System, format!("compacté : {before}→{after}"));
+                    .push(Role::System, format!("compacted: {before}→{after}"));
                 self.apparition.omen(Omen::Compact);
             }
             Err(err) => {
                 sess.chat
-                    .push(Role::System, format!("compaction échouée : {err:#}"));
+                    .push(Role::System, format!("compaction failed: {err:#}"));
                 self.apparition.omen(Omen::Error);
             }
         }
@@ -122,6 +122,6 @@ fn agent_tag(owner: usize, deliver: usize, agent_id: usize) -> String {
     if owner == deliver {
         format!("[agent#{agent_id}]")
     } else {
-        format!("[agent#{agent_id} de Chat {}]", owner + 1)
+        format!("[agent#{agent_id} from Chat {}]", owner + 1)
     }
 }

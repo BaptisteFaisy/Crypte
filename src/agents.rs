@@ -44,7 +44,7 @@ pub fn stats(content: &str) -> (usize, usize) {
 /// Annonce de démarrage : `AGENTS.md chargé (N lignes, ~M tokens)`.
 pub fn loaded_message(content: &str) -> String {
     let (lines, toks) = stats(content);
-    format!("AGENTS.md chargé ({lines} lignes, ~{toks} tokens)")
+    format!("AGENTS.md loaded ({lines} lines, ~{toks} tokens)")
 }
 
 /// Ligne `/usage` : chargé (~tokens, lignes) ou absent.
@@ -52,9 +52,9 @@ pub fn usage_line(agents_md: Option<&str>) -> String {
     match agents_md {
         Some(content) => {
             let (lines, toks) = stats(content);
-            format!("agents.md : chargé (~{toks} tokens, {lines} lignes)")
+            format!("agents.md: loaded (~{toks} tokens, {lines} lines)")
         }
-        None => String::from("agents.md : absent"),
+        None => String::from("agents.md: missing"),
     }
 }
 
@@ -81,7 +81,7 @@ pub fn compacted_history(
     }
     out.push((
         String::from("system"),
-        format!("Résumé compact : {summary}"),
+        format!("Compacted summary: {summary}"),
     ));
     out.extend(
         without_pinned(history, pinned)
@@ -122,7 +122,7 @@ mod tests {
         let out = compacted_history(&history, "tout va", true);
         assert_eq!(out.len(), 6);
         assert_eq!(out[0], msg("system", "AGENTS"));
-        assert_eq!(out[1], msg("system", "Résumé compact : tout va"));
+        assert_eq!(out[1], msg("system", "Compacted summary: tout va"));
         assert_eq!(
             out[2..],
             [
@@ -146,7 +146,7 @@ mod tests {
         ];
         let out = compacted_history(&history, "tout va", false);
         assert_eq!(out.len(), 5);
-        assert_eq!(out[0], msg("system", "Résumé compact : tout va"));
+        assert_eq!(out[0], msg("system", "Compacted summary: tout va"));
         assert_eq!(
             out[1..],
             [
@@ -194,9 +194,9 @@ mod tests {
         assert!(toks > 0);
         assert_eq!(
             loaded_message(text),
-            format!("AGENTS.md chargé (2 lignes, ~{toks} tokens)")
+            format!("AGENTS.md loaded (2 lines, ~{toks} tokens)")
         );
-        assert!(usage_line(Some(text)).starts_with("agents.md : chargé"));
-        assert_eq!(usage_line(None), "agents.md : absent");
+        assert!(usage_line(Some(text)).starts_with("agents.md: loaded"));
+        assert_eq!(usage_line(None), "agents.md: missing");
     }
 }

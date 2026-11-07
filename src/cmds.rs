@@ -17,7 +17,7 @@ use crate::sessions::AskError;
 /// Historique minimal (messages) pour lancer un compactage.
 const COMPACT_MIN: usize = 6;
 /// Instruction de résumé : FR, <20 lignes, faits/décisions/contexte.
-const COMPACT_INSTRUCTION: &str = "Résume cette conversation en moins de 20 lignes : faits établis, décisions prises, contexte utile pour la suite. Réponds uniquement avec le résumé, sans introduction.";
+const COMPACT_INSTRUCTION: &str = "Summarize this conversation in under 20 lines: established facts, decisions made, useful context for what follows. Reply with only the summary, no introduction.";
 
 impl App {
     /// Exécute une commande locale (`/usage`, `/new`, `/model`, …).
@@ -36,9 +36,9 @@ impl App {
             Some(Command::Hint(msg)) => self.push_system(msg.to_string()),
             Some(Command::Connect(arg)) => self.cmd_connect(arg),
             Some(Command::Unknown(word)) => {
-                self.push_system(format!("commande inconnue : {word} — /help pour l'aide"));
+                self.push_system(format!("unknown command: {word} — /help for help"));
             }
-            None => self.push_system(String::from("commande inconnue — /help pour l'aide")),
+            None => self.push_system(String::from("unknown command — /help for help")),
         }
     }
 
@@ -58,21 +58,35 @@ impl App {
             crate::tokens::context_estimate(&window)
         };
         msg.push('\n');
-        msg.push_str(&format!("contexte : {}", crate::tokens::fmt_context(used)));
+        msg.push_str(&format!(
+            "context: {}",
+            crate::tokens::fmt_context(used, self.context_limit())
+        ));
         self.push_system(msg);
     }
 
     /// `/model` : affiche le modèle effectif, ou change celui du chat.
     fn cmd_model(&mut self, arg: Option<String>) {
         match arg {
-            None => self.push_system(format!("modèle : {}", self.effective_model())),
+            None => self.push_system(format!(
+                "model: {} (context window: {})",
+                self.effective_model(),
+                self.context_limit()
+            )),
             Some(name) if name == "reset" || name == "default" => {
                 self.sessions.current_mut().model = None;
-                self.push_system(format!("modèle : {} (défaut)", self.effective_model()));
+                self.push_system(format!(
+                    "model: {} (default, context window: {})",
+                    self.effective_model(),
+                    self.context_limit()
+                ));
             }
             Some(name) => {
                 self.sessions.current_mut().model = Some(name.clone());
-                self.push_system(format!("modèle : {name}"));
+                self.push_system(format!(
+                    "model: {name} (context window: {})",
+                    self.context_limit()
+                ));
             }
         }
     }
@@ -80,22 +94,19 @@ impl App {
     /// `/thinking` : affiche ou change l'effort de raisonnement global.
     fn cmd_thinking(&mut self, arg: Option<String>) {
         match arg {
-            None => self.push_system(format!("thinking : {}", self.thinking_text())),
+            None => self.push_system(format!("thinking: {}", self.thinking_text())),
             Some(v) if v == "default" => {
                 self.thinking = None;
-                self.push_system(String::from("thinking : default"));
+                self.push_system(String::from("thinking: default"));
             }
             Some(v) if commands::valid_effort(&v) => {
                 self.thinking = Some(v.clone());
-                self.push_system(format!("thinking : {v}"));
+                self.push_system(format!("thinking: {v}"));
             }
             Some(v) => {
                 let mut vals = effort_values();
                 vals.push("default");
-                self.push_system(format!(
-                    "effort invalide : {v} — valeurs : {}",
-                    vals.join(", ")
-                ));
+                self.push_system(format!("invalid effort: {v} — values: {}", vals.join(", ")));
             }
         }
     }
@@ -113,7 +124,7 @@ impl App {
             None => id,
             Some(n) if self.sessions.get(n - 1).is_some() => n - 1,
             Some(n) => {
-                self.push_system(format!("chat {n} inexistant"));
+                self.push_system(format!("chat {n} not found"));
                 return;
             }
         };
@@ -123,10 +134,10 @@ impl App {
         }
         messages.push(("user".to_string(), prompt.clone()));
         let used = crate::tokens::context_estimate(&messages);
-        if used > crate::tokens::CONTEXT_LIMIT {
+        if used > self.context_limit() {
             self.push_system(format!(
-                "contexte agent saturé ({}), agent non lancé",
-                crate::tokens::fmt_context(used)
+                "agent context full ({}), agent not started",
+                crate::tokens::fmt_context(used, self.context_limit())
             ));
             return;
         }
@@ -134,9 +145,9 @@ impl App {
             return;
         };
         if deliver == id {
-            self.push_system(format!("agent#{agent_id} lancé"));
+            self.push_system(format!("agent#{agent_id} started"));
         } else {
-            self.push_system(format!("agent#{agent_id} lancé → Chat {}", deliver + 1));
+            self.push_system(format!("agent#{agent_id} started → Chat {}", deliver + 1));
         }
         let model = self.effective_model();
         let effort = self.thinking.clone();
@@ -153,7 +164,7 @@ impl App {
     fn cmd_agents(&mut self) {
         let sess = self.sessions.current();
         let text = if sess.agents.is_empty() {
-            String::from("aucun agent")
+            String::from("no agents")
         } else {
             sess.agents
                 .iter()
@@ -183,11 +194,13 @@ impl App {
         let here = self.sessions.index();
         let (owner, history) = match self.sessions.ask_agent(agent_id, text) {
             Err(AskError::Unknown) => {
-                self.push_system(format!("agent#{agent_id} inconnu"));
+                self.push_system(format!("agent#{agent_id} unknown"));
                 return;
             }
             Err(AskError::Busy) => {
-                self.push_system(format!("agent#{agent_id} en cours, attends sa réponse"));
+                self.push_system(format!(
+                    "agent#{agent_id} still running, wait for its reply"
+                ));
                 return;
             }
             Ok(ready) => ready,
@@ -213,16 +226,16 @@ impl App {
         let here = self.sessions.index();
         let idx = target - 1;
         if idx == here {
-            self.push_system(String::from("c'est ce chat-ci — écris directement"));
+            self.push_system(String::from("this is the current chat — type directly"));
             return;
         }
         match self.sessions.get(idx) {
             None => {
-                self.push_system(format!("chat {target} inexistant"));
+                self.push_system(format!("chat {target} not found"));
                 return;
             }
             Some(dest) if dest.sending => {
-                self.push_system(format!("Chat {target} occupé, réessaie"));
+                self.push_system(format!("Chat {target} busy, retry"));
                 return;
             }
             Some(_) => {}
@@ -230,7 +243,7 @@ impl App {
         let model = self.effective_model_for(idx);
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
-        let envelope = format!("[de Chat {}] {text}", here + 1);
+        let envelope = format!("[from Chat {}] {text}", here + 1);
         let history = {
             let dest = self.sessions.get_mut(idx).expect("chat validé ci-dessus");
             dest.chat.push(Role::User, envelope.clone());
@@ -245,17 +258,33 @@ impl App {
                 .await;
             let _ = tx.send(Incoming::Chat(idx, reply));
         });
-        self.push_system(format!("envoyé au Chat {target}"));
+        self.push_system(format!("sent to Chat {target}"));
     }
 
-    /// Fenêtre à envoyer si elle dépasse 1M (tokens estimés), sinon `None`.
+    /// Limite effective du chat courant : fenêtre du modèle, plafonnée à 1M.
+    pub(crate) fn context_limit(&self) -> u64 {
+        crate::tokens::context_window(&self.effective_model()).min(crate::tokens::CONTEXT_LIMIT)
+    }
+
+    /// Contexte estimé du chat courant : fenêtre d'envoi + saisie en cours.
+    pub(crate) fn context_used(&self) -> u64 {
+        let sess = self.sessions.current();
+        let mut window = sess.history.clone();
+        if !sess.chat.input.trim().is_empty() {
+            window.push(("user".to_string(), sess.chat.input.clone()));
+        }
+        let window = send_window(&window, sess.pinned_system);
+        crate::tokens::context_estimate(&window)
+    }
+
+    /// Fenêtre à envoyer si elle dépasse la limite (tokens estimés), sinon `None`.
     pub(crate) fn context_over_limit(&self, text: &str) -> Option<u64> {
         let sess = self.sessions.current();
         let mut window = sess.history.clone();
         window.push(("user".to_string(), text.to_string()));
         let window = send_window(&window, sess.pinned_system);
         let used = crate::tokens::context_estimate(&window);
-        (used > crate::tokens::CONTEXT_LIMIT).then_some(used)
+        (used > self.context_limit()).then_some(used)
     }
 
     /// `/compact` : résume l'historique (agents.md exclu du résumé méta,
@@ -271,7 +300,7 @@ impl App {
         let pinned = sess.pinned_system;
         let history = sess.history.clone();
         if history.len() < COMPACT_MIN {
-            self.push_system(String::from("rien à compacter"));
+            self.push_system(String::from("nothing to compact"));
             return;
         }
         let model = self.effective_model();
@@ -303,7 +332,7 @@ impl App {
             Some(provider) => {
                 let cfg = provider.config();
                 self.push_system(format!(
-                    "connecté à {} ({})\nusage : /connect openai|muse",
+                    "connected to {} ({})\nusage: /connect openai|muse",
                     provider_label(&cfg.base_url),
                     cfg.model
                 ));
@@ -318,7 +347,7 @@ impl App {
         match from_store {
             Ok(cfg) => self.apply_connected(cfg, "muse"),
             Err(_) => {
-                self.push_system(String::from("store Muse illisible, saisie manuelle"));
+                self.push_system(String::from("Muse store unreadable, manual input"));
                 self.start_connect_flow("muse");
             }
         }

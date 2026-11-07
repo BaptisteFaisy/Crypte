@@ -112,11 +112,11 @@ fn footer_line(chosen: &Creature, page: usize, pages: usize) -> Paragraph<'stati
         Span::styled(format!("{} ", chosen.name), key),
         Span::styled(format!("— {}   ", chosen.lore), lore),
         Span::styled("←↑↓→", key),
-        Span::styled(" choisir  ", dim),
+        Span::styled(" select  ", dim),
         Span::styled("F6", key),
-        Span::styled(" retour  ", dim),
+        Span::styled(" back  ", dim),
         Span::styled(
-            format!("page {page}/{pages} · {} créatures", BESTIARY.len()),
+            format!("page {page}/{pages} · {} creatures", BESTIARY.len()),
             dim,
         ),
     ]))

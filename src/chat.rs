@@ -157,21 +157,21 @@ impl ChatState {
     fn draw_input(&self, frame: &mut Frame, area: Rect, tick: u64) {
         let title = match &self.prompt_label {
             Some(label) => Line::from(label.clone()),
-            None => Line::styled(" ✒ parler ", Style::new().fg(CANDLE)),
+            None => Line::styled(" ✒ speak ", Style::new().fg(CANDLE)),
         };
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(CANDLE))
             .title(title)
-            .title_bottom(Line::styled(" Entrée ", Style::new().fg(ASH)).right_aligned());
+            .title_bottom(Line::styled(" Enter ", Style::new().fg(ASH)).right_aligned());
         let inner_w = area.width.saturating_sub(3) as usize;
         let cursor = if (tick / 5) % 2 == 0 { "▌" } else { " " };
         let cursor = Span::styled(cursor, Style::new().fg(CANDLE));
         let raw = self.input_preview.as_ref().unwrap_or(&self.input);
         let line = if raw.is_empty() {
             let hint = Style::new().fg(ASH).add_modifier(Modifier::ITALIC);
-            Line::from(vec![cursor, Span::styled("murmure à la crypte…", hint)])
+            Line::from(vec![cursor, Span::styled("whisper to the crypt…", hint)])
         } else {
             let shown = mask_text(raw, self.mask_input);
             let text = tail_chars(&shown, inner_w.max(1));
@@ -193,9 +193,9 @@ fn role_colour(role: Role) -> Color {
 /// Étiquette affichée en tête de chaque message.
 fn role_tag(role: Role) -> &'static str {
     match role {
-        Role::User => "toi",
-        Role::Assistant => "\u{f02a0} la crypte",
-        Role::System => "murmure",
+        Role::User => "you",
+        Role::Assistant => "\u{f02a0} the crypt",
+        Role::System => "whisper",
     }
 }
 
@@ -266,7 +266,7 @@ fn murmur_line(tick: u64) -> Line<'static> {
     Line::from(vec![
         Span::styled(GUTTER, Style::new().fg(PUMPKIN)),
         Span::styled(
-            "la crypte murmure ",
+            "the crypt murmurs ",
             Style::new().fg(SAND).add_modifier(Modifier::ITALIC),
         ),
         Span::styled(dots, Style::new().fg(CANDLE).add_modifier(Modifier::BOLD)),
@@ -278,13 +278,13 @@ fn epitaph(height: u16) -> Paragraph<'static> {
     let pad = height.saturating_sub(3) / 2;
     let mut lines = vec![Line::raw(""); pad as usize];
     lines.push(Line::from(theme::gradient(
-        "La crypte t'écoute.",
+        "The crypt is listening.",
         PUMPKIN,
         CANDLE,
         Modifier::BOLD,
     )));
     lines.push(Line::styled(
-        "pose ta question · /help pour les sortilèges",
+        "ask your question · /help for spells",
         Style::new().fg(ASH).add_modifier(Modifier::ITALIC),
     ));
     Paragraph::new(lines).alignment(Alignment::Center)
@@ -341,9 +341,9 @@ mod tests {
     fn prompt_masked_hides_key_length_only() {
         let mut chat = ChatState::new();
         chat.input.push_str("brouillon");
-        chat.set_prompt(Some(String::from("clé API muse (masquée)")), true);
+        chat.set_prompt(Some(String::from("Muse API key (masked)")), true);
         chat.set_input_preview(Some(String::from("sk-secret")));
-        assert_eq!(chat.prompt_label.as_deref(), Some("clé API muse (masquée)"));
+        assert_eq!(chat.prompt_label.as_deref(), Some("Muse API key (masked)"));
         assert!(chat.mask_input);
         let shown = mask_text(
             chat.input_preview.as_ref().unwrap_or(&chat.input),

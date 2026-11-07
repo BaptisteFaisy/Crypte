@@ -3,7 +3,7 @@ name = "kiro-horror-tui"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.74"
-description = "TUI horreur : chat LLM dans une crypte, mascotte fantome Kiro, effets sang/brouillard"
+description = "Horror TUI: LLM chat in a crypt, Kiro the ghost mascot, blood/fog effects"
 
 [dependencies]
 ratatui = { version = "0.29", features = ["crossterm"] }

@@ -66,11 +66,6 @@ impl Fx {
         }
     }
 
-    /// Niveau de peur (0-100).
-    pub fn fear(&self) -> u8 {
-        self.fear
-    }
-
     /// Un tick. En effroi la peur monte vers 100, les gouttes se multiplient
     /// et un éclair part au premier tick ; au calme la peur redescend.
     pub fn tick(&mut self, spooked: bool) {
@@ -296,7 +291,7 @@ mod tests {
         for _ in 0..50 {
             fx.tick(true);
         }
-        assert_eq!(fx.fear(), 100);
+        assert_eq!(fx.fear, 100);
     }
 
     #[test]
@@ -308,7 +303,7 @@ mod tests {
         for _ in 0..100 {
             fx.tick(false);
         }
-        assert_eq!(fx.fear(), 0);
+        assert_eq!(fx.fear, 0);
     }
 
     #[test]

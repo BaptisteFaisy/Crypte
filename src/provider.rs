@@ -49,8 +49,8 @@ impl ProviderConfig {
     /// (obligatoire), `KH_MODEL` (obligatoire).
     pub fn from_env() -> Result<Self> {
         let base_url = read_env("KH_BASE_URL").unwrap_or_else(|| OPENAI_BASE_URL.to_string());
-        let api_key = read_env("KH_API_KEY").context("KH_API_KEY manquant (requis)")?;
-        let model = read_env("KH_MODEL").context("KH_MODEL manquant (requis)")?;
+        let api_key = read_env("KH_API_KEY").context("missing KH_API_KEY (required)")?;
+        let model = read_env("KH_MODEL").context("missing KH_MODEL (required)")?;
         Ok(Self {
             base_url,
             api_key,
@@ -64,9 +64,9 @@ impl ProviderConfig {
     pub fn from_toml(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let raw = std::fs::read_to_string(path)
-            .with_context(|| format!("lecture du fichier {}", path.display()))?;
+            .with_context(|| format!("reading file {}", path.display()))?;
         let doc: TomlDoc =
-            toml::from_str(&raw).with_context(|| format!("parse TOML {}", path.display()))?;
+            toml::from_str(&raw).with_context(|| format!("parsing TOML {}", path.display()))?;
         let base_url = read_env("KH_BASE_URL")
             .or_else(|| doc.base_url())
             .unwrap_or_else(|| OPENAI_BASE_URL.to_string());
@@ -74,7 +74,7 @@ impl ProviderConfig {
             .or_else(|| doc.api_key())
             .with_context(|| {
                 format!(
-                    "clé API manquante (ni KH_API_KEY ni 'api_key' dans {})",
+                    "missing API key (neither KH_API_KEY nor 'api_key' in {})",
                     path.display()
                 )
             })?;
@@ -82,7 +82,7 @@ impl ProviderConfig {
             .or_else(|| doc.model())
             .with_context(|| {
                 format!(
-                    "modèle manquant (ni KH_MODEL ni 'model' dans {})",
+                    "missing model (neither KH_MODEL nor 'model' in {})",
                     path.display()
                 )
             })?;
@@ -95,7 +95,7 @@ impl ProviderConfig {
 
     /// Chemin du store Muse : `$HOME/.config/muse/auth.json`.
     pub fn muse_auth_path() -> Result<PathBuf> {
-        let home = read_env("HOME").context("HOME manquant (chemin auth Muse introuvable)")?;
+        let home = read_env("HOME").context("missing HOME (Muse auth path not found)")?;
         Ok(PathBuf::from(home).join(".config/muse/auth.json"))
     }
 
@@ -104,9 +104,9 @@ impl ProviderConfig {
     pub fn from_muse_auth(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let raw = std::fs::read_to_string(path)
-            .with_context(|| format!("lecture du fichier {}", path.display()))?;
-        let doc: serde_json::Value =
-            serde_json::from_str(&raw).with_context(|| format!("parse JSON {}", path.display()))?;
+            .with_context(|| format!("reading file {}", path.display()))?;
+        let doc: serde_json::Value = serde_json::from_str(&raw)
+            .with_context(|| format!("parsing JSON {}", path.display()))?;
         let file_key = doc
             .pointer("/providers/meta/api_key")
             .and_then(serde_json::Value::as_str)
@@ -116,7 +116,7 @@ impl ProviderConfig {
         let base_url = read_env("KH_BASE_URL").unwrap_or_else(|| MUSE_BASE_URL.to_string());
         let api_key = read_env("KH_API_KEY").or(file_key).with_context(|| {
             format!(
-                "clé API manquante (ni KH_API_KEY ni '/providers/meta/api_key' dans {})",
+                "missing API key (neither KH_API_KEY nor '/providers/meta/api_key' in {})",
                 path.display()
             )
         })?;
@@ -224,7 +224,7 @@ impl Provider {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(TIMEOUT_SECS))
             .build()
-            .context("construction du client HTTP")?;
+            .context("building the HTTP client")?;
         Ok(Self { config, client })
     }
 
@@ -266,19 +266,19 @@ impl Provider {
             .json(&body)
             .send()
             .await
-            .with_context(|| format!("POST {url} (modèle {model})"))?;
+            .with_context(|| format!("POST {url} (model {model})"))?;
         let status = resp.status();
         if !status.is_success() {
             let raw = resp.text().await.unwrap_or_default();
             anyhow::bail!(
-                "POST {url} (modèle {model}) -> HTTP {status} : {}",
+                "POST {url} (model {model}) -> HTTP {status}: {}",
                 truncate(&raw, MAX_ERROR_BODY)
             );
         }
         let parsed: ChatResponse = resp
             .json()
             .await
-            .with_context(|| format!("décodage JSON de {url} (modèle {model})"))?;
+            .with_context(|| format!("decoding JSON from {url} (model {model})"))?;
         Ok(Completion::from_response(parsed))
     }
 }

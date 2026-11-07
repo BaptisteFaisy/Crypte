@@ -85,7 +85,7 @@ impl ImageBank {
             ProtocolType::Kitty => "kitty",
             ProtocolType::Sixel => "sixel",
             ProtocolType::Iterm2 => "iterm2",
-            ProtocolType::Halfblocks => "demi-blocs",
+            ProtocolType::Halfblocks => "halfblocks",
         }
     }
 
@@ -131,7 +131,7 @@ mod tests {
     fn halfblocks_map_one_sprite_pixel_per_half_cell() {
         use ratatui::style::Color;
         let mut bank = ImageBank::headless();
-        assert_eq!(bank.mode(), "demi-blocs");
+        assert_eq!(bank.mode(), "halfblocks");
         let mut term = Terminal::new(TestBackend::new(32, 16)).unwrap();
         let ghost = bestiary::get("fantome");
         for _ in 0..3 {

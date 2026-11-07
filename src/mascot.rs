@@ -81,8 +81,8 @@ impl Mascot {
         let (art, caption) = ghost_rects(area);
         bank.draw(frame, art, self.creature());
         let (text, colour) = match self.state {
-            MascotState::Idle => ("Kiro veille", theme::SPECTRE),
-            MascotState::Spook => ("Kiro a peur !", theme::ECTO),
+            MascotState::Idle => ("Kiro watches", theme::SPECTRE),
+            MascotState::Spook => ("Kiro is scared!", theme::ECTO),
         };
         let style = Style::new().fg(colour).add_modifier(Modifier::BOLD);
         let line = Paragraph::new(Line::styled(text, style)).alignment(Alignment::Center);

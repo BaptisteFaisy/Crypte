@@ -39,6 +39,61 @@ pub fn estimate(text: &str) -> usize {
 
 /// Fenêtre de contexte max (tokens estimés) par envoi vers le provider.
 pub const CONTEXT_LIMIT: u64 = 1_000_000;
+/// Fallback context window (tokens) for unknown models.
+const DEFAULT_CONTEXT_WINDOW: u64 = 128_000;
+/// Env override for the context window (`> 0`, else ignored).
+const CONTEXT_WINDOW_ENV: &str = "KH_CONTEXT_WINDOW";
+/// Known windows by model-name fragment (lowercase, first match wins).
+const CONTEXT_TABLE: &[(&str, u64)] = &[
+    ("gpt-4.1", 1_000_000),
+    ("gemini", 1_000_000),
+    ("claude", 200_000),
+    ("o1", 200_000),
+    ("o3", 200_000),
+    ("o4", 200_000),
+    ("gpt-4o", 128_000),
+    ("gpt-4-turbo", 128_000),
+    ("gpt-4-32k", 32_768),
+    ("gpt-4", 8_192),
+    ("gpt-3.5-turbo-16k", 16_384),
+    ("gpt-3.5", 16_384),
+    ("mixtral", 32_768),
+    ("mistral", 128_000),
+    ("deepseek", 128_000),
+    ("qwen", 128_000),
+    ("llama", 128_000),
+    ("muse-spark", 128_000),
+    ("64k", 65_536),
+    ("32k", 32_768),
+    ("16k", 16_384),
+    ("8k", 8_192),
+];
+
+/// Context window (tokens) of `model`: `KH_CONTEXT_WINDOW` wins when set
+/// to an integer `> 0`, else the first [`CONTEXT_TABLE`] fragment found in
+/// the lowercased name, else [`DEFAULT_CONTEXT_WINDOW`].
+pub fn context_window(model: &str) -> u64 {
+    if let Some(n) = context_env_override() {
+        return n;
+    }
+    let name = model.to_lowercase();
+    for (fragment, window) in CONTEXT_TABLE {
+        if name.contains(fragment) {
+            return *window;
+        }
+    }
+    DEFAULT_CONTEXT_WINDOW
+}
+
+/// `KH_CONTEXT_WINDOW` parsed (`> 0`), else `None` (unset/invalid/zero).
+fn context_env_override() -> Option<u64> {
+    std::env::var(CONTEXT_WINDOW_ENV)
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .filter(|n| *n > 0)
+}
 
 /// Estime le contexte d'une liste de messages (somme des contenus).
 pub fn context_estimate(messages: &[(String, String)]) -> u64 {
@@ -48,10 +103,22 @@ pub fn context_estimate(messages: &[(String, String)]) -> u64 {
         .sum()
 }
 
-/// Texte de remplissage : `~X / 1M (Y%)`.
-pub fn fmt_context(used: u64) -> String {
-    let pct = used as f64 / CONTEXT_LIMIT as f64 * 100.0;
-    format!("~{used} / 1M ({pct:.1}%)")
+/// Texte de remplissage : `~used / limit (pct%)` (`limit` compact).
+pub fn fmt_context(used: u64, limit: u64) -> String {
+    let limit = limit.max(1);
+    let pct = used as f64 / limit as f64 * 100.0;
+    format!("~{used} / {} ({pct:.1}%)", fmt_limit(limit))
+}
+
+/// Limite compacte : `1M`, `128k`, sinon le nombre brut.
+fn fmt_limit(limit: u64) -> String {
+    if limit % 1_000_000 == 0 {
+        format!("{}M", limit / 1_000_000)
+    } else if limit % 1_000 == 0 {
+        format!("{}k", limit / 1_000)
+    } else {
+        format!("{limit}")
+    }
 }
 
 /// Registre d'usage tokens sur la session.
@@ -188,14 +255,14 @@ impl TokenLedger {
                 ),
             ),
             row(
-                "dernier",
+                "last",
                 format!("in={} out={}", self.last_prompt, self.last_completion),
             ),
-            row("coût", fmt_cost(self.cost())),
+            row("cost", fmt_cost(self.cost())),
             row(
                 "tps",
                 format!(
-                    "dernier={} moy={}",
+                    "last={} avg={}",
                     fmt_tps(self.last_tps()),
                     fmt_tps(self.avg_tps())
                 ),
@@ -208,7 +275,7 @@ impl TokenLedger {
             .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(theme::UMBER))
             .title(theme::title(
-                "\u{f068c} grimoire des tokens",
+                "\u{f068c} token grimoire",
                 theme::BLOOD,
                 theme::CANDLE,
             ));
@@ -220,7 +287,7 @@ impl TokenLedger {
         let total = self.total();
         if total == 0 || width == 0 {
             let dim = Style::new().fg(theme::ASH).add_modifier(Modifier::ITALIC);
-            return Line::styled("  aucune âme consommée pour l'instant", dim);
+            return Line::styled("  no souls consumed yet", dim);
         }
         let out = (self.completion as f64 / total as f64 * width as f64).round() as usize;
         Line::from(vec![
@@ -310,7 +377,32 @@ mod tests {
 
     #[test]
     fn fmt_context_shows_limit_and_percent() {
-        assert_eq!(fmt_context(500_000), "~500000 / 1M (50.0%)");
-        assert_eq!(fmt_context(0), "~0 / 1M (0.0%)");
+        assert_eq!(fmt_context(500_000, 1_000_000), "~500000 / 1M (50.0%)");
+        assert_eq!(fmt_context(0, 1_000_000), "~0 / 1M (0.0%)");
+        assert_eq!(fmt_context(64_000, 128_000), "~64000 / 128k (50.0%)");
+        assert_eq!(fmt_context(0, 200_000), "~0 / 200k (0.0%)");
+    }
+
+    #[test]
+    fn context_window_matches_known_models_and_env_override() {
+        let saved = std::env::var(CONTEXT_WINDOW_ENV).ok();
+        std::env::remove_var(CONTEXT_WINDOW_ENV);
+        assert_eq!(context_window("gpt-4.1"), 1_000_000);
+        assert_eq!(context_window("openai/gpt-4o-mini"), 128_000);
+        assert_eq!(context_window("claude-opus-4-5"), 200_000);
+        assert_eq!(context_window("o3-mini"), 200_000);
+        assert_eq!(context_window("gpt-4"), 8_192);
+        assert_eq!(context_window("muse-spark-1.3-contributor"), 128_000);
+        assert_eq!(context_window("some-unknown-model"), 128_000);
+        std::env::set_var(CONTEXT_WINDOW_ENV, "64000");
+        assert_eq!(context_window("gpt-4.1"), 64_000);
+        std::env::set_var(CONTEXT_WINDOW_ENV, "0");
+        assert_eq!(context_window("gpt-4.1"), 1_000_000);
+        std::env::set_var(CONTEXT_WINDOW_ENV, "nope");
+        assert_eq!(context_window("gpt-4.1"), 1_000_000);
+        match saved {
+            Some(v) => std::env::set_var(CONTEXT_WINDOW_ENV, v),
+            None => std::env::remove_var(CONTEXT_WINDOW_ENV),
+        }
     }
 }

@@ -19,7 +19,7 @@ const OSC_BG_RESET: &str = "\x1b]111\x1b\\";
 const TITLE_PUSH: &str = "\x1b[22;0t";
 const TITLE_POP: &str = "\x1b[23;0t";
 /// Titre de fenêtre (icône fantôme Nerd Font, embarquée par Ghostty).
-const OSC_TITLE: &str = "\x1b]2;\u{f02a0} Crypte \u{2014} kiro-horror\x1b\\";
+const OSC_TITLE: &str = "\x1b]2;\u{f02a0} Crypt \u{2014} kiro-horror\x1b\\";
 /// Progression indéterminée / effacée (ConEmu OSC 9;4, géré par Ghostty).
 const OSC_BUSY: &str = "\x1b]9;4;3\x1b\\";
 const OSC_IDLE: &str = "\x1b]9;4;0\x1b\\";
