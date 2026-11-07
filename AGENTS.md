@@ -54,11 +54,22 @@ crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 réécrit s'il est illisible) + `almanac/view.rs` (écran F8).
 `web/` (`/web` : backends → fetch → cache → synthèse, parsing pur dans
 `web/parse.rs`, pertinence dans `web/rank.rs`).
+`tools/` (outils agent : `wire.rs` types OpenAI, `browser.rs`/`desktop.rs`
+argv purs, `exec.rs` exécution + timeout + journal, `flow.rs` boucle +
+confirmations y/n, `log.rs` JSONL tailles seules, `live.rs` tests live
+ignorés).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
-Flux : `send` (user → provider, tâche async) → `drain_replies`
-(`Incoming::Chat|Agent|Compact|Web`) → almanach (`Incoming::usage`) +
-ledger + historique + affichage.
+Flux : `send` (user → provider, tâche async, outillé si `/tools on`) →
+`drain_replies` (`Incoming::Chat|Agent|Compact|Web|ToolDone`) → almanach
+(`Incoming::usage`, `None` pour `ToolDone`) + ledger + historique + affichage.
+Boucle outils : réponse avec `tool_calls` (budget 8 tours, voir
+`tools::MAX_ROUNDS`) → file séquentielle → confirmation y/n des
+modifications en mode `auto` (lectures libres, `yolo` libre, voir
+`tools::needs_confirm` + `/permissions`) → `exec::run_tool` (binaires
+existants, timeout, sortie tronquée) → `Incoming::ToolDone` → résultats
+rejoués (`tool`, `tool_call_id`) → nouvel appel, jusqu'au texte final
+(seul persisté à l'historique ; guide transitoire `tools::GUIDE`).
 Bus : `/tell`/`/msg` déposent (affiché aussitôt, déclenché si libre,
 enfilé sinon, pompé en groupe à la tombée) ; `/agent @<n>` livre ailleurs
 (`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id from Chat k]`,
