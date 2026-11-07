@@ -33,6 +33,7 @@ impl App {
     /// Dessine tout l'écran selon l'écran actif.
     pub(crate) fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
+        self.plus_btn = None;
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
         if area.width < 80 || area.height < 24 {
@@ -66,7 +67,7 @@ impl App {
             Constraint::Length(right_width(area.width)),
         ])
         .areas(area);
-        self.sessions.draw_sidebar(frame, side);
+        self.plus_btn = self.sessions.draw_sidebar(frame, side);
         let sess = self.sessions.current();
         let view = ChatView {
             title: &sess.name,

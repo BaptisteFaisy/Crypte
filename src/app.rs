@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::DefaultTerminal;
+use ratatui::{layout::Rect, DefaultTerminal};
 use tokio::sync::mpsc;
 
 use crate::agents;
@@ -68,6 +68,8 @@ pub struct App {
     pub(crate) connect_flow: Option<ConnectFlow>,
     pub(crate) agents_md: Option<String>,
     pub(crate) screen: Screen,
+    /// Rectangle du bouton [+] (mémorisé au rendu, `None` hors sidebar).
+    pub(crate) plus_btn: Option<Rect>,
     pub(crate) thinking: Option<String>,
     pub(crate) tx: mpsc::UnboundedSender<Incoming>,
     rx: mpsc::UnboundedReceiver<Incoming>,
@@ -138,6 +140,7 @@ impl App {
             connect_flow: None,
             agents_md,
             screen: Screen::Chat,
+            plus_btn: None,
             thinking: None,
             tx,
             rx,
@@ -195,10 +198,14 @@ impl App {
             self.drain_replies();
             self.sync_progress()?;
             if event::poll(Duration::from_millis(100))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == KeyEventKind::Press && !self.on_key(key) {
-                        break;
+                match event::read()? {
+                    Event::Key(key) => {
+                        if key.kind == KeyEventKind::Press && !self.on_key(key) {
+                            break;
+                        }
                     }
+                    Event::Mouse(mev) => self.on_mouse(mev),
+                    _ => {}
                 }
             }
             self.tick();

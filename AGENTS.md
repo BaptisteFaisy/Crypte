@@ -21,11 +21,13 @@ cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 ## Archi (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (état + boucle 100 ms),
+`mouse.rs` (clic [+] = nouveau chat),
 `drain.rs` (routage réponses async), `cmds.rs` (handlers `/…`),
 `commands.rs` (parse + aide + usage),
 `connect.rs` (flow `/connect` : clé masquée → modèle → provider),
 `history.rs` (fenêtre d'envoi + nommage des chats),
-`sessions.rs` (chats + sous-agents + sidebar), `chat.rs` (historique +
+`sessions.rs` (chats + sous-agents),
+`sidebar.rs` (colonne cercueils + bouton [+]), `chat.rs` (historique +
 saisie + prompt custom masquable), `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :
 chargement, pin, compaction pure), `mascot.rs` (fantôme), `fx.rs`
