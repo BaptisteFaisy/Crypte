@@ -4,6 +4,7 @@
 //! chargé au démarrage et pinné en tête d'historique).
 
 use std::collections::VecDeque;
+use std::path::PathBuf;
 
 use crate::bus::QueuedAsk;
 
@@ -48,6 +49,8 @@ pub struct SubAgent {
     pub inbox: VecDeque<QueuedAsk>,
     /// Relais auto de l'appel en vol (0 = déclenché par le user).
     pub auto_hops: u8,
+    /// Workspace disque (`None` si pas créé : HOME absent ou échec).
+    pub workspace: Option<PathBuf>,
 }
 
 impl SubAgent {
@@ -62,6 +65,7 @@ impl SubAgent {
             history,
             inbox: VecDeque::new(),
             auto_hops: 0,
+            workspace: None,
         }
     }
 

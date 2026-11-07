@@ -31,6 +31,7 @@ mod sidebar;
 mod theme;
 mod tokens;
 mod web;
+mod workspace;
 
 use std::io;
 

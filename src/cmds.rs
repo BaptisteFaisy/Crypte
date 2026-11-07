@@ -150,6 +150,8 @@ impl App {
         let Some(agent_id) = self.sessions.add_agent(id, &prompt, messages.clone()) else {
             return;
         };
+        self.sessions
+            .attach_workspace(agent_id, crate::workspace::base().as_deref());
         if deliver == id {
             self.push_system(format!("agent#{agent_id} started"));
         } else {
