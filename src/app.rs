@@ -199,7 +199,7 @@ impl App {
     /// Enfile l'input : commande locale ou complétion en tâche de fond.
     /// Un chat sans message user prend le nom du premier message
     /// (ignore le system pinné : historique non vide mais sans user).
-    fn send(&mut self) {
+    pub(crate) fn send(&mut self) {
         let id = self.sessions.index();
         let text = self.sessions.current().chat.input.trim().to_string();
         if text.is_empty() {
@@ -251,7 +251,7 @@ impl App {
 
     /// Réponses arrivées, routées vers leur chat (non bloquant, id invalide
     /// ignoré). Rend vrai si au moins un message a été routé (rendu sale).
-    fn drain_replies(&mut self) -> bool {
+    pub(crate) fn drain_replies(&mut self) -> bool {
         let mut routed = false;
         while let Ok(msg) = self.rx.try_recv() {
             routed = true;

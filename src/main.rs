@@ -31,6 +31,7 @@ mod permissions;
 mod persist;
 mod pool;
 mod provider;
+mod serve;
 mod sessions;
 mod sidebar;
 mod theme;
@@ -68,6 +69,7 @@ OPTIONS:
         --preview <file>  Write the 5 screens (120x36, offline) as ANSI
         --demo            Offline demo crypt, opened on the spirit hub (F7)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
+        --serve <addr>       Headless remote pilot (HTTP+SSE, needs KH_WATCH_TOKEN)
 
 CONFIG (environment, wins over --config):
     KH_BASE_URL   OpenAI-compatible base (default https://api.openai.com/v1)
@@ -75,6 +77,7 @@ CONFIG (environment, wins over --config):
     KH_MODEL      Model (--once requires it)
     KH_CONTEXT_WINDOW  Context window override (tokens, integer > 0)
     KH_EVENTS_LOG   Same as --events-log (flag wins when both are set)
+    KH_WATCH_TOKEN  Bearer token for --serve (required, never logged)
     BRAVE_API_KEY / TAVILY_API_KEY  Optional premium /web backends (else free)
     With no key, no --config and no --muse-auth, the TUI still starts,
     disconnected — /connect openai|muse to connect from inside.
@@ -134,6 +137,7 @@ struct Args {
     planche: Option<String>,
     apercu: Option<String>,
     events_log: Option<String>,
+    serve: Option<String>,
 }
 
 /// Parse `std::env::args` : `--help`/`-h`, `--smoke`, `--config`, `--once`,
@@ -150,6 +154,7 @@ fn parse_args() -> Result<Args> {
         planche: None,
         apercu: None,
         events_log: None,
+        serve: None,
     };
     let mut it = std::env::args().skip(1).peekable();
     while let Some(arg) = it.next() {
@@ -182,6 +187,12 @@ fn parse_args() -> Result<Args> {
                 let path = it.next().context("--events-log expects a file path")?;
                 args.events_log = Some(path);
             }
+            "--serve" => {
+                let addr = it
+                    .next()
+                    .context("--serve expects a bind addr (host:port)")?;
+                args.serve = Some(addr);
+            }
             other => anyhow::bail!("unknown option: {other} (see --help)"),
         }
     }
@@ -198,6 +209,27 @@ fn resolve_config(args: &Args) -> Result<ProviderConfig> {
         Some(path) => ProviderConfig::from_toml(path),
         None => ProviderConfig::from_env(),
     }
+}
+
+/// Mode pilotage distant : app headless + HTTP/SSE (voir `serve`).
+/// Exige une config provider valide + `KH_WATCH_TOKEN` non vide.
+async fn run_serve(args: &Args, addr: &str) -> Result<()> {
+    let token =
+        std::env::var("KH_WATCH_TOKEN").context("serve needs KH_WATCH_TOKEN (bearer token)")?;
+    anyhow::ensure!(!token.is_empty(), "serve needs a non-empty KH_WATCH_TOKEN");
+    let cfg =
+        resolve_config(args).context("serve needs a valid provider config (KH_* or --config)")?;
+    let mut app = App::from_config_with_agents_file(cfg, args.agents_file.clone())?;
+    app.enable_history();
+    let events = EventLog::new(
+        args.events_log
+            .clone()
+            .or_else(|| std::env::var("KH_EVENTS_LOG").ok())
+            .map(PathBuf::from),
+    );
+    events.emit(&Event::started());
+    app.events = events;
+    crate::serve::run(app, addr, token).await
 }
 
 /// Un appel user puis exit : affiche le texte puis la ligne d'usage.
@@ -255,6 +287,9 @@ async fn async_main() -> Result<()> {
     if let Some(prompt) = args.once.as_deref() {
         let cfg = resolve_config(&args)?;
         return run_once(&cfg, prompt).await;
+    }
+    if let Some(addr) = args.serve.as_deref() {
+        return run_serve(&args, addr).await;
     }
     let mut app = match resolve_config(&args) {
         _ if args.demo => App::offline()?,

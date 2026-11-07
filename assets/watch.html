@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crypte — Remote Watch</title>
+<!--
+  Crypte remote pilot client. SINGLE FILE, ZERO external dependency
+  (no CDN: the VPS may be offline). Served by `GET /`, talks to:
+    GET  /snapshot            (Authorization: Bearer <token>) -> full state
+    GET  /live?token=...      (Server-Sent Events, incremental updates)
+    POST /input               (Authorization: Bearer <token>) {"chat": N, "text": "..."}
+  Chats are 1-based in the protocol, 0-based in this page state.
+  Expected snapshot shape (consistent with src/events.rs + sessions model):
+    {"version": "...", "chats": [{"name": "...", "sending": false,
+      "messages": [{"role": "user|assistant|system", "text": "..."}],
+      "agents": [{"id": 7, "status": "running|done|failed", "prompt": "...",
+                  "prompt_tokens": 0, "completion_tokens": 0}],
+      "prompt_tokens": 0, "completion_tokens": 0}]}
+  Security: remote content is NEVER injected as HTML (textContent only).
+-->
+<style>
+:root {
+  --void: #0C0908; --crypt: #1E1512; --ink: #120D0B;
+  --bone: #EBDDC3; --sand: #BAA685; --umber: #4C4437; --ash: #6E6862;
+  --pumpkin: #F2701E; --blood: #D7263D; --dried: #6E101A;
+  --ecto: #7CF29A; --spectre: #9B8CFF; --candle: #FFC46B;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--void); color: var(--bone);
+  font: 14px/1.45 system-ui, sans-serif; height: 100vh;
+  display: flex; flex-direction: column;
+}
+header {
+  display: flex; gap: 8px; align-items: center; padding: 8px 12px;
+  background: var(--crypt); border-bottom: 1px solid var(--umber);
+  flex-wrap: wrap;
+}
+header h1 { font-size: 15px; margin: 0 8px 0 0; color: var(--pumpkin); }
+header input[type=password], header input[type=text] {
+  background: var(--ink); color: var(--bone); border: 1px solid var(--umber);
+  border-radius: 4px; padding: 5px 8px; width: 220px;
+}
+button {
+  background: var(--pumpkin); color: var(--void); border: 0;
+  border-radius: 4px; padding: 6px 12px; font-weight: bold; cursor: pointer;
+}
+button:disabled { opacity: .45; cursor: default; }
+#conn {
+  margin-left: auto; font-weight: bold; font-size: 12px;
+  padding: 3px 10px; border-radius: 10px; border: 1px solid var(--umber);
+}
+#conn.live { color: var(--ecto); border-color: var(--ecto); }
+#conn.off { color: var(--blood); border-color: var(--blood); }
+#err {
+  display: none; background: var(--dried); color: var(--bone);
+  padding: 6px 12px; font-size: 13px;
+}
+main { display: flex; flex: 1; min-height: 0; }
+#side {
+  width: 210px; min-width: 150px; background: var(--crypt);
+  border-right: 1px solid var(--umber); overflow-y: auto; padding: 6px;
+}
+.chat-btn {
+  display: block; width: 100%; text-align: left; margin: 2px 0;
+  background: transparent; color: var(--sand); font-weight: normal;
+  border: 1px solid transparent; border-radius: 4px; padding: 6px 8px;
+}
+.chat-btn.sel { border-color: var(--pumpkin); color: var(--bone); }
+.chat-btn .badge {
+  float: right; font-size: 11px; color: var(--candle);
+}
+.chat-btn .counts { display: block; font-size: 11px; color: var(--ash); }
+#view { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#msgs { flex: 1; overflow-y: auto; padding: 10px 14px; }
+.msg { margin: 4px 0; padding: 6px 10px; border-radius: 4px;
+  background: var(--ink); border-left: 3px solid var(--umber);
+  white-space: pre-wrap; overflow-wrap: break-word; }
+.msg .who { font-size: 11px; font-weight: bold; display: block; margin-bottom: 2px; }
+.msg.user { border-color: var(--candle); } .msg.user .who { color: var(--candle); }
+.msg.assistant { border-color: var(--spectre); } .msg.assistant .who { color: var(--spectre); }
+.msg.system { border-color: var(--ash); color: var(--sand); } .msg.system .who { color: var(--ash); }
+#agents { border-top: 1px solid var(--umber); max-height: 30%;
+  overflow-y: auto; padding: 6px 14px; background: var(--crypt); }
+#agents h2 { font-size: 12px; color: var(--sand); margin: 4px 0; }
+.agent { font-size: 12px; margin: 4px 0; padding: 4px 8px;
+  background: var(--ink); border-radius: 4px; }
+.agent .st-running { color: var(--ecto); font-weight: bold; }
+.agent .st-done { color: var(--sand); font-weight: bold; }
+.agent .st-failed { color: var(--blood); font-weight: bold; }
+.agent .tok { color: var(--ash); }
+#toks { padding: 4px 14px; font-size: 12px; color: var(--sand);
+  border-top: 1px solid var(--umber); }
+#bar { display: flex; gap: 8px; padding: 8px 12px;
+  background: var(--crypt); border-top: 1px solid var(--umber); }
+#bar select {
+  background: var(--ink); color: var(--bone);
+  border: 1px solid var(--umber); border-radius: 4px;
+}
+#bar textarea {
+  flex: 1; resize: none; height: 40px; background: var(--ink);
+  color: var(--bone); border: 1px solid var(--umber); border-radius: 4px;
+  padding: 6px 8px; font: inherit;
+}
+#bar textarea:focus { border-color: var(--candle); outline: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Crypte Watch</h1>
+  <input id="token" type="password" placeholder="Watch token" autocomplete="off">
+  <button id="connect">Connect</button>
+  <span id="conn" class="off">OFFLINE</span>
+</header>
+<div id="err" role="alert"></div>
+<main>
+  <nav id="side" aria-label="Chats"></nav>
+  <section id="view">
+    <div id="msgs"></div>
+    <div id="agents"></div>
+    <div id="toks"></div>
+    <div id="bar">
+      <select id="target" aria-label="Target chat"></select>
+      <textarea id="text" placeholder="Type a message… (Enter sends, Shift+Enter newline)"></textarea>
+      <button id="send">Send</button>
+    </div>
+  </section>
+</main>
+<script>
+"use strict";
+/* State: token in memory only, chats 0-based here (1-based on wire). */
+let token = "";
+let state = { chats: [], version: "" };
+let selected = 0;
+let source = null;
+let lastSnap = 0;
+
+const $ = (id) => document.getElementById(id);
+const side = $("side"), msgs = $("msgs"), agentsBox = $("agents"),
+      toks = $("toks"), errBox = $("err"), conn = $("conn");
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+function showErr(t) {
+  errBox.textContent = t;
+  errBox.style.display = t ? "block" : "none";
+}
+function setConn(live) {
+  conn.textContent = live ? "LIVE" : "OFFLINE";
+  conn.className = live ? "live" : "off";
+  conn.id = "conn";
+}
+function nearBottom() {
+  return msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 60;
+}
+function chatAt(n1) { return state.chats[n1 - 1]; }
+function num(v, fb) { return Number.isFinite(+v) ? +v : fb; }
+
+/* ---------- rendering (textContent only, never innerHTML) ---------- */
+function renderAll() {
+  renderSide();
+  renderMsgs();
+  renderAgents();
+  renderToks();
+  renderTarget();
+}
+function renderSide() {
+  side.textContent = "";
+  state.chats.forEach((c, i) => {
+    const b = el("button", "chat-btn" + (i === selected ? " sel" : ""));
+    b.appendChild(el("span", null, (i + 1) + " · " + (c.name || "chat")));
+    if (c.sending) b.appendChild(el("span", "badge", "● sending"));
+    const run = c.agents.filter((a) => a.status === "running").length;
+    b.appendChild(el("span", "counts",
+      c.messages.length + " msgs · " + c.agents.length +
+      " agents (" + run + " running)"));
+    b.addEventListener("click", () => {
+      selected = i; renderAll();
+      msgs.scrollTop = msgs.scrollHeight;
+    });
+    side.appendChild(b);
+  });
+}
+function renderMsgs() {
+  const stick = nearBottom();
+  msgs.textContent = "";
+  const c = state.chats[selected];
+  if (!c) return;
+  for (const m of c.messages) {
+    const d = el("div", "msg " + m.role);
+    d.appendChild(el("span", "who", m.role.toUpperCase()));
+    d.appendChild(el("span", null, m.text));
+    msgs.appendChild(d);
+  }
+  if (stick) msgs.scrollTop = msgs.scrollHeight;
+}
+function renderAgents() {
+  agentsBox.textContent = "";
+  const c = state.chats[selected];
+  if (!c || !c.agents.length) return;
+  agentsBox.appendChild(el("h2", null, "Agents (" + c.agents.length + ")"));
+  for (const a of c.agents) {
+    const d = el("div", "agent");
+    d.appendChild(el("span", null, "#" + a.id + " "));
+    d.appendChild(el("span", "st-" + a.status, a.status));
+    d.appendChild(el("span", "tok",
+      " · ↑" + a.prompt_tokens + " ↓" + a.completion_tokens + " "));
+    d.appendChild(el("span", null, a.prompt || ""));
+    if (a.last) d.appendChild(el("div", "tok", "last: " + a.last));
+    agentsBox.appendChild(d);
+  }
+}
+function renderToks() {
+  const c = state.chats[selected];
+  toks.textContent = c
+    ? "Tokens (chat " + (selected + 1) + "): ↑" + num(c.prompt_tokens, 0) +
+      " ↓" + num(c.completion_tokens, 0) + " · v" + state.version
+    : "";
+}
+function renderTarget() {
+  const t = $("target");
+  t.textContent = "";
+  state.chats.forEach((c, i) => {
+    const o = el("option", null, (i + 1) + " · " + (c.name || "chat"));
+    o.value = String(i);
+    t.appendChild(o);
+  });
+  t.value = String(selected);
+}
+
+/* ---------- snapshot ---------- */
+async function fetchJSON(url, opts, timeoutMs) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs || 10000);
+  try {
+    return await fetch(url, Object.assign({}, opts, { signal: ctl.signal }));
+  } finally { clearTimeout(t); }
+}
+function normChat(raw) {
+  const c = (raw && typeof raw === "object") ? raw : {};
+  return {
+    name: typeof c.name === "string" ? c.name : "chat",
+    sending: c.sending === true,
+    messages: Array.isArray(c.messages) ? c.messages.map((m) => ({
+      role: (m.role === "user" || m.role === "assistant") ? m.role : "system",
+      text: typeof m.text === "string" ? m.text : "",
+    })) : [],
+    agents: Array.isArray(c.agents) ? c.agents.map((a) => ({
+      id: num(a.id, 0),
+      status: (a.status === "done" || a.status === "failed") ? a.status : "running",
+      prompt: typeof a.prompt === "string" ? a.prompt : "",
+      last: typeof a.last === "string" ? a.last : "",
+      prompt_tokens: num(a.prompt_tokens, 0),
+      completion_tokens: num(a.completion_tokens, 0),
+    })) : [],
+    prompt_tokens: num(c.prompt_tokens, 0),
+    completion_tokens: num(c.completion_tokens, 0),
+  };
+}
+async function snapshot() {
+  lastSnap = Date.now();
+  let res;
+  try {
+    res = await fetchJSON("/snapshot",
+      { headers: { "Authorization": "Bearer " + token } }, 10000);
+  } catch (e) {
+    setConn(false);
+    showErr("Snapshot failed: " + (e && e.name === "AbortError" ? "timeout" : "unreachable"));
+    return false;
+  }
+  if (res.status === 401) {
+    setConn(false);
+    showErr("Bad token (401). Check the token field.");
+    return false;
+  }
+  if (!res.ok) {
+    setConn(false);
+    showErr("Snapshot failed: HTTP " + res.status);
+    return false;
+  }
+  let snap;
+  try { snap = await res.json(); }
+  catch (e) { showErr("Snapshot failed: invalid JSON"); return false; }
+  state = {
+    version: typeof snap.version === "string" ? snap.version : "?",
+    chats: Array.isArray(snap.chats) ? snap.chats.map(normChat) : [],
+  };
+  if (selected >= state.chats.length) selected = 0;
+  showErr("");
+  renderAll();
+  msgs.scrollTop = msgs.scrollHeight;
+  return true;
+}
+function resnapshotSoon() { /* throttled: SSE errors can storm */
+  if (Date.now() - lastSnap > 5000) snapshot();
+}
+
+/* ---------- incremental events ---------- */
+function pushMsg(n1, role, text) {
+  const c = chatAt(n1);
+  if (!c) return;
+  c.messages.push({ role: role, text: text });
+  if (n1 - 1 === selected) renderMsgs();
+  renderSide();
+}
+function findAgent(id) {
+  for (const c of state.chats)
+    for (const a of c.agents) if (a.id === id) return a;
+  return null;
+}
+/* Same tag as the TUI: [agent#id] (+ from Chat k when delivered away). */
+function agentTag(ev) {
+  const id = num(ev.agent, 0);
+  return ev.owner === ev.deliver
+    ? "[agent#" + id + "] "
+    : "[agent#" + id + " from Chat " + num(ev.owner, 0) + "] ";
+}
+function handleEvent(ev) {
+  if (!ev || typeof ev.type !== "string") return;
+  switch (ev.type) {
+    case "started":
+    case "lagged":
+      snapshot();
+      break;
+    case "user_msg": {
+      const c = chatAt(ev.chat);
+      if (c) c.sending = true;
+      pushMsg(ev.chat, "user", String(ev.text || ""));
+      break;
+    }
+    case "assistant_msg": {
+      const c = chatAt(ev.chat);
+      if (c) {
+        c.sending = false;
+        c.prompt_tokens += num(ev.prompt_tokens, 0);
+        c.completion_tokens += num(ev.completion_tokens, 0);
+      }
+      pushMsg(ev.chat, "assistant", String(ev.text || ""));
+      renderToks();
+      break;
+    }
+    case "assistant_error": {
+      const c = chatAt(ev.chat);
+      if (c) c.sending = false;
+      pushMsg(ev.chat, "system", "assistant error: " + String(ev.error || "?"));
+      break;
+    }
+    case "chat_created":
+      state.chats.splice(num(ev.chat, state.chats.length + 1) - 1, 0,
+        normChat({ name: String(ev.name || "chat") }));
+      renderAll();
+      break;
+    case "agent_spawned": {
+      const c = chatAt(ev.owner);
+      if (c) c.agents.push({
+        id: num(ev.agent, 0), status: "running",
+        prompt: String(ev.prompt || ""), last: "",
+        prompt_tokens: 0, completion_tokens: 0,
+      });
+      renderAll();
+      break;
+    }
+    case "agent_ask": {
+      const a = findAgent(num(ev.agent, -1));
+      if (a) a.last = String(ev.text || "").slice(0, 200);
+      renderAgents();
+      break;
+    }
+    case "agent_done": {
+      const a = findAgent(num(ev.agent, -1));
+      if (a) {
+        a.status = "done";
+        a.prompt_tokens += num(ev.prompt_tokens, 0);
+        a.completion_tokens += num(ev.completion_tokens, 0);
+        a.last = String(ev.text || "").slice(0, 200);
+      }
+      pushMsg(num(ev.deliver, 0), "assistant",
+        agentTag(ev) + String(ev.text || ""));
+      renderAll();
+      break;
+    }
+    case "agent_failed": {
+      const a = findAgent(num(ev.agent, -1));
+      if (a) { a.status = "failed"; a.last = String(ev.error || "?").slice(0, 200); }
+      pushMsg(num(ev.deliver, 0), "system",
+        agentTag(ev) + "error: " + String(ev.error || "?"));
+      renderAll();
+      break;
+    }
+    case "compacted":
+      pushMsg(ev.chat, "system",
+        "History compacted: " + num(ev.before, 0) + " → " + num(ev.after, 0) + " messages.");
+      break;
+    case "web_answer":
+      pushMsg(ev.chat, "assistant",
+        "[web:" + String(ev.backend || "?") + "] " + String(ev.text || ""));
+      break;
+    default: break; /* unknown future event: ignore */
+  }
+}
+
+/* ---------- live stream ---------- */
+const KNOWN = ["started", "lagged", "user_msg", "assistant_msg",
+  "assistant_error", "chat_created", "agent_spawned", "agent_ask",
+  "agent_done", "agent_failed", "compacted", "web_answer"];
+function connectLive() {
+  if (source) source.close();
+  source = new EventSource("/live?token=" + encodeURIComponent(token));
+  const onData = (named) => (e) => {
+    let obj;
+    try { obj = JSON.parse(e.data); }
+    catch (err) { return; }
+    if (named && (obj === null || typeof obj !== "object" || !obj.type))
+      obj = Object.assign({}, obj, { type: named });
+    handleEvent(obj);
+  };
+  source.onmessage = onData(null);
+  for (const t of KNOWN) source.addEventListener(t, onData(t));
+  source.onopen = () => { setConn(true); showErr(""); };
+  source.onerror = () => { setConn(false); resnapshotSoon(); };
+}
+
+/* ---------- input ---------- */
+async function send() {
+  const box = $("text");
+  const text = box.value.trim();
+  if (!text) return;
+  const idx = num($("target").value, selected);
+  let res;
+  try {
+    res = await fetchJSON("/input", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token,
+                 "Content-Type": "application/json" },
+      body: JSON.stringify({ chat: idx + 1, text: text }),
+    }, 10000);
+  } catch (e) {
+    showErr("Send failed: " + (e && e.name === "AbortError" ? "timeout" : "unreachable"));
+    return;
+  }
+  if (res.status === 401) { showErr("Bad token (401). Check the token field."); return; }
+  if (res.status === 400) {
+    let detail = "";
+    try { detail = (await res.json()).error || ""; } catch (e) { /* keep empty */ }
+    showErr("Send rejected (400)" + (detail ? ": " + detail : ""));
+    return;
+  }
+  if (!res.ok) { showErr("Send failed: HTTP " + res.status); return; }
+  box.value = "";
+  showErr("");
+}
+
+/* ---------- wiring ---------- */
+async function connect() {
+  token = $("token").value.trim();
+  if (!token) { showErr("Enter the watch token first."); return; }
+  $("connect").disabled = true;
+  try {
+    if (await snapshot()) connectLive();
+  } finally { $("connect").disabled = false; }
+}
+$("connect").addEventListener("click", connect);
+$("send").addEventListener("click", send);
+$("target").addEventListener("change", (e) => {
+  selected = num(e.target.value, 0); renderAll();
+  msgs.scrollTop = msgs.scrollHeight;
+});
+$("text").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+$("token").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") connect();
+});
+(function init() {
+  const q = new URLSearchParams(window.location.search).get("token");
+  if (q) $("token").value = q;
+})();
+</script>
+</body>
+</html>

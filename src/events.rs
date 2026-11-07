@@ -13,8 +13,13 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
+use tokio::sync::broadcast;
 
 use crate::provider::Completion;
+
+/// Événements gardés pour les abonnés lents (`/live`) : au-delà, le
+/// client reçoit `lagged` et refait un `/snapshot` (voir `serve`).
+const CHANNEL_CAP: usize = 256;
 
 /// Un fait observable de la session (chats + sous-agents).
 #[derive(Debug, Clone, Serialize)]
@@ -224,26 +229,36 @@ impl Event {
     }
 }
 
-/// Append-only JSONL (désactivé = `None`, émission gratuite).
-#[derive(Debug, Clone, Default)]
+/// Append-only JSONL + diffusion mémoire (`/live`) : le fichier est
+/// optionnel (`None` = pas d'écriture), la diffusion est toujours active.
+#[derive(Debug, Clone)]
 pub struct EventLog {
     path: Option<PathBuf>,
+    tx: broadcast::Sender<Event>,
 }
 
 impl EventLog {
-    /// Journal vers `path` (`None` = désactivé).
+    /// Journal vers `path` (`None` = mémoire seule, sans écriture).
     pub fn new(path: Option<PathBuf>) -> Self {
-        Self { path }
+        let (tx, _) = broadcast::channel(CHANNEL_CAP);
+        Self { path, tx }
     }
 
-    /// Journal désactivé (zéro écriture).
+    /// Journal sans fichier (diffusion mémoire seule).
     pub fn disabled() -> Self {
-        Self::default()
+        Self::new(None)
     }
 
-    /// Append une ligne JSON (échec silencieux : l'observateur ne doit
-    /// jamais casser le TUI). Fichier rouvert à chaque fois (logrotate OK).
+    /// Abonne un consommateur temps réel (`/live`).
+    pub fn subscribe(&self) -> broadcast::Receiver<Event> {
+        self.tx.subscribe()
+    }
+
+    /// Diffuse en mémoire + append une ligne JSON si un fichier est
+    /// configuré (échec silencieux : l'observateur ne doit jamais casser
+    /// le TUI). Fichier rouvert à chaque fois (logrotate OK).
     pub fn emit(&self, event: &Event) {
+        let _ = self.tx.send(event.clone());
         let Some(path) = &self.path else { return };
         let Ok(mut line) = serde_json::to_string(event) else {
             return;
@@ -296,6 +311,15 @@ mod tests {
         assert_eq!(third["agent"], 7);
         assert_eq!(third["text"], "dig");
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn emit_broadcasts_to_subscribers() {
+        let log = EventLog::disabled();
+        let mut rx = log.subscribe();
+        log.emit(&Event::user_msg(0, "hi"));
+        let got = rx.try_recv().unwrap();
+        assert!(matches!(got, Event::UserMsg { .. }));
     }
 
     #[test]

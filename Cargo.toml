@@ -35,6 +35,8 @@ rand = "0.9"
 toml = { version = "1", default-features = false, features = ["std", "parse", "serde"] }
 anyhow = "1"
 # Deja minimales, inchangees : ratatui-image/crossterm-only, image/png-only.
+axum = "0.8"
+tokio-stream = { version = "0.1", features = ["sync"] }
 ratatui-image = { version = "8", default-features = false, features = ["crossterm"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std", "serde"] }
