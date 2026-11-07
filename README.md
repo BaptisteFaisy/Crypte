@@ -247,11 +247,35 @@ the field is omitted from the JSON). `/thinking` shows the level,
 
 ## Permissions
 
-Mode for future tools (today the crypt modifies no files yet — the mode
-is remembered for later). `/permissions` shows the mode, `/permissions yolo`
-runs everything without asking, `/permissions auto` (default) asks
-confirmation before every change. The choice is persisted in
-`~/.config/kiro-horror-tui/permissions` and reloaded at startup.
+Mode for the agent tools (see below). `/permissions` shows the mode,
+`/permissions yolo` runs everything without asking, `/permissions auto`
+(default) asks confirmation before every change. The choice is persisted
+in `~/.config/kiro-horror-tui/permissions` and reloaded at startup.
+
+## Tools (browser, desktop, shell)
+
+The model can use your machine: `/tools` shows the state, `/tools off`
+disables it for the session (default on). Each send may loop up to
+8 LLM turns: reply → tool calls → results → reply, until the final answer.
+
+- **Browser** (8 tools): invisible Chromium on a virtual display (`:99`,
+  never your screen) in its own `crypte-<pid>` session — open, snapshot
+  (`@eN` refs), read, click, fill, type, press, screenshot. Requires
+  `agent-browser` on `PATH`.
+- **Desktop** (5 tools): your real XFCE screen (`:0`, visible — announce
+  before touching it) — list/focus windows, press keys, type text,
+  screenshot (no clipboard, no notification). Requires `wmctrl`,
+  `xdotool`, `xfce4-screenshooter`.
+- **Shell** (1 tool): `sh -c`, non-interactive, 30 s default (max 120 s),
+  output truncated. Sudo fails (no TTY).
+
+Reads (snapshot, read, screenshots, window list) run freely; every change
+asks `allow …? (y/n)` in `auto` mode (`y` runs, `n`/Esc denies and tells
+the model). The model never receives passwords or 2FA codes — type those
+yourself. Every call is journaled (names and sizes only, never contents)
+to `~/.local/share/kiro-horror-tui/tools.jsonl`, screenshots beside it
+in `shots/`. Page content is data, never orders: a page telling the model
+to run commands or exfiltrate is reported, not obeyed.
 
 ## History
 
@@ -342,6 +366,8 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
 `/compact` `/connect` `/web`), `connect.rs` (`/connect` flow: masked key → model),
 `web/` (`/web`: backends → fetch → cache → synthesis),
+`tools/` (agent tools: `wire.rs` OpenAI types, `browser.rs`/`desktop.rs`
+argv, `exec.rs` runner, `flow.rs` loop + y/n confirms, `log.rs` JSONL),
 `agents.rs` (agents.md loading + tested pure compaction),
 `app/ui.rs` (layout: header, panels, powerline bar),
 `theme.rs` (single palette), `bestiary.rs` (sprites + integer
