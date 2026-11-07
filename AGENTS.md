@@ -16,6 +16,7 @@ cargo fmt --check                # formatage propre exigé
 ./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 5 écrans en ANSI
 ./target/debug/kiro-horror-tui --muse-auth --once "Reply with exactly: OK"
 cargo build --release            # met à jour `kiro-horror-tui` (symlink)
+ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
 ```
 
 ## Archi (`src/`)
@@ -23,15 +24,20 @@ cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 `main.rs` (CLI + bootstrap), `app.rs` (état + boucle 10 ms, tick 100 ms),
 `app/ctors.rs` (constructeurs),
 `bus.rs` (adressage, files, liens auto, plafond 8 relais),
-`mouse.rs` (clic [+] = nouveau chat),
+`mouse.rs` (clics : [+] = nouveau chat, lignes sidebar = choisir,
+onglets = écrans),
 `drain.rs` (routage réponses async + pompes + retransmissions),
-`cmds.rs` (handlers `/…`), `commands.rs` (parse + aide + usage),
+`events.rs` (flux JSONL temps réel `--events-log`/`KH_EVENTS_LOG` :
+chats + sous-agents, silencieux si désactivé),
+`cmds.rs` (handlers `/…`), `cmds_web.rs` (handler `/web`),
+`commands.rs` (parse + aide + usage),
 `permissions.rs` (mode yolo/auto + persistance fichier + handler),
 `persist.rs` (chats : autosave JSON ~5 s + sortie, restauration silencieuse,
 fichier illisible préservé en `.corrupt`),
 `connect.rs` (flow `/connect` : clé masquée → modèle → provider),
 `history.rs` (fenêtre d'envoi + nommage des chats),
 `sessions.rs` + `sessions/` (chats `chat.rs` + sous-agents `subagents.rs`),
+`workspace.rs` (workspaces `<session>/agent`, zéro token),
 `sidebar.rs` (colonne cercueils + bouton [+]), `chat.rs` (historique +
 saisie + prompt custom masquable), `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :
@@ -48,11 +54,22 @@ crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 réécrit s'il est illisible) + `almanac/view.rs` (écran F8).
 `web/` (`/web` : backends → fetch → cache → synthèse, parsing pur dans
 `web/parse.rs`, pertinence dans `web/rank.rs`).
+`tools/` (outils agent : `wire.rs` types OpenAI, `browser.rs`/`desktop.rs`
+argv purs, `exec.rs` exécution + timeout + journal, `flow.rs` boucle +
+confirmations y/n, `log.rs` JSONL tailles seules, `live.rs` tests live
+ignorés).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
-Flux : `send` (user → provider, tâche async) → `drain_replies`
-(`Incoming::Chat|Agent|Compact|Web`) → almanach (`Incoming::usage`) +
-ledger + historique + affichage.
+Flux : `send` (user → provider, tâche async, outillé si `/tools on`) →
+`drain_replies` (`Incoming::Chat|Agent|Compact|Web|ToolDone`) → almanach
+(`Incoming::usage`, `None` pour `ToolDone`) + ledger + historique + affichage.
+Boucle outils : réponse avec `tool_calls` (budget 8 tours, voir
+`tools::MAX_ROUNDS`) → file séquentielle → confirmation y/n des
+modifications en mode `auto` (lectures libres, `yolo` libre, voir
+`tools::needs_confirm` + `/permissions`) → `exec::run_tool` (binaires
+existants, timeout, sortie tronquée) → `Incoming::ToolDone` → résultats
+rejoués (`tool`, `tool_call_id`) → nouvel appel, jusqu'au texte final
+(seul persisté à l'historique ; guide transitoire `tools::GUIDE`).
 Bus : `/tell`/`/msg` déposent (affiché aussitôt, déclenché si libre,
 enfilé sinon, pompé en groupe à la tombée) ; `/agent @<n>` livre ailleurs
 (`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id from Chat k]`,

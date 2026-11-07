@@ -9,13 +9,19 @@ mod subagents;
 pub use chat::ChatSession;
 pub use subagents::{AgentStatus, AskError, SubAgent};
 
+use std::path::Path;
+
 use crate::tokens::TokenLedger;
 
 /// Chats ouverts + position du courant (jamais vide, index toujours valide).
+/// Accès direct par index (`Vec`), sans table secondaire : quelques chats,
+/// `select`/`get` en O(1) sans surcoût mémoire d'index redondant.
 pub struct Sessions {
     chats: Vec<ChatSession>,
     current: usize,
     next_agent_id: usize,
+    /// Namespace des workspaces agents (`<unix_secs>-<pid>`, un par run).
+    session: String,
 }
 
 impl Sessions {
@@ -25,6 +31,7 @@ impl Sessions {
             chats: vec![ChatSession::new(String::from("Chat 1"))],
             current: 0,
             next_agent_id: 1,
+            session: crate::workspace::session_id(),
         }
     }
 
@@ -49,6 +56,7 @@ impl Sessions {
     }
 
     /// Crée un sous-agent `Running` sur le chat `idx`, rend son id unique.
+    /// `history` = échange seul (système re-préfixé à chaque appel).
     /// `None` si hors bornes (l'id n'est pas consommé).
     pub fn add_agent(
         &mut self,
@@ -61,6 +69,18 @@ impl Sessions {
         chat.agents.push(SubAgent::new(id, prompt, history));
         self.next_agent_id += 1;
         Some(id)
+    }
+
+    /// Attache le workspace disque de l'agent (`<session>/agent-<id>`,
+    /// créé en pur code, zéro appel LLM). Silencieux si pas de base,
+    /// id inconnu ou échec disque — l'agent tourne quand même. Base
+    /// `None` = pas de workspace (tests).
+    pub fn attach_workspace(&mut self, agent_id: usize, base: Option<&Path>) {
+        let session = self.session.clone();
+        let (Some(dir), Some((_, agent))) = (base, self.find_agent_mut(agent_id)) else {
+            return;
+        };
+        agent.workspace = crate::workspace::create(dir, &session, agent_id).ok();
     }
 
     /// Retrouve un agent par son id global : `(chat idx, agent)`.
@@ -122,6 +142,7 @@ impl Sessions {
             chats,
             current,
             next_agent_id: 1,
+            session: crate::workspace::session_id(),
         }
     }
 
@@ -166,10 +187,9 @@ impl Sessions {
         self.chats.len()
     }
 
-    /// Registre cumulé = somme des registres des chats.
+    /// Registre cumulé = somme des registres des chats, sans copie.
     pub fn total_ledger(&self) -> TokenLedger {
-        let ledgers: Vec<TokenLedger> = self.chats.iter().map(|c| c.ledger.clone()).collect();
-        TokenLedger::total_of(&ledgers)
+        TokenLedger::total_of_iter(self.chats.iter().map(|c| &c.ledger))
     }
 
     /// Cumul global : tokens de tous les chats (agents et compacts
@@ -177,13 +197,6 @@ impl Sessions {
     pub fn grand_total(&self) -> u64 {
         self.iter()
             .map(|c| c.ledger.total())
-            .fold(0, u64::saturating_add)
-    }
-
-    /// Cumul global des sous-agents (déjà inclus dans `grand_total`).
-    pub fn agents_grand_total(&self) -> u64 {
-        self.iter()
-            .map(|c| c.agents_total())
             .fold(0, u64::saturating_add)
     }
 }
@@ -254,23 +267,45 @@ mod tests {
     }
 
     #[test]
-    fn grand_total_covers_chats_and_agents_once() {
+    fn grand_total_sums_all_chats() {
         let mut s = Sessions::new();
         s.current_mut().ledger.record(10, 20, 1.0);
-        s.add_agent(0, "prompt test", user("u1")).unwrap();
-        {
-            let agent = s.find_agent_mut(1).unwrap().1;
-            agent.prompt_tokens = 5;
-            agent.completion_tokens = 7;
-            agent.status = AgentStatus::Done;
-        }
         s.current_mut().ledger.record(5, 7, 0.0);
-        assert_eq!(s.get(0).unwrap().agents_total(), 12);
         assert_eq!(s.grand_total(), 42);
-        assert_eq!(s.agents_grand_total(), 12);
         s.add();
         s.current_mut().ledger.record(100, 0, 1.0);
         assert_eq!(s.grand_total(), 142);
-        assert_eq!(s.agents_grand_total(), 12);
+    }
+
+    #[test]
+    fn attach_workspace_pose_le_dossier_ou_rien() {
+        let mut s = Sessions::new();
+        s.add_agent(0, "loin", user("u")).unwrap();
+        // Id inconnu : rien ne se passe.
+        s.attach_workspace(42, None);
+        // Sans base : pas de workspace, agent intact.
+        s.attach_workspace(1, None);
+        assert!(s.find_agent_mut(1).unwrap().1.workspace.is_none());
+        // Avec base : dossier créé sous la session, chemin stocké.
+        let session = s.session.clone();
+        let base = std::env::temp_dir().join(format!("kh-ws-{}-attach", std::process::id()));
+        s.attach_workspace(1, Some(&base));
+        let ws = s.find_agent_mut(1).unwrap().1.workspace.clone().unwrap();
+        assert_eq!(ws, base.join(&session).join("agent-1"));
+        assert!(ws.is_dir());
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn from_chats_restaure_avec_namespace_frais_et_courant_borne() {
+        let chats = vec![
+            ChatSession::new(String::from("a")),
+            ChatSession::new(String::from("b")),
+        ];
+        let s = Sessions::from_chats(chats, 9);
+        assert!(!s.session.is_empty());
+        assert_eq!(s.current().name, "b");
+        let vide = Sessions::from_chats(Vec::new(), 0);
+        assert_eq!(vide.current().name, "Chat 1");
     }
 }

@@ -6,7 +6,7 @@
 //! via le protocole Kitty (voir `gfx`).
 
 use ratatui::{
-    layout::{Alignment, Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
@@ -26,14 +26,13 @@ use crate::tokens::fmt_tps;
 pub enum Screen {
     #[default]
     Chat,
-    Tokens,
     Bestiary,
     Hub,
     Almanac,
 }
 
 impl Screen {
-    /// `target` si on n'y est pas déjà, sinon retour au chat (F2, F6, F8).
+    /// `target` si on n'y est pas déjà, sinon retour au chat (F6, F8).
     pub(crate) fn toggle(self, target: Screen) -> Self {
         if self == target {
             Screen::Chat
@@ -46,11 +45,15 @@ impl Screen {
 /// Huitièmes de bloc pour une jauge lisse.
 const EIGHTHS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
 /// Largeur de la jauge de contexte (cellules).
-const CTX_W: usize = 12;
+const FEAR_W: usize = 12;
+/// Taille minimale du terminal : 70x17 (compact sous 80 colonnes).
+pub(crate) const MIN_W: u16 = 70;
+pub(crate) const MIN_H: u16 = 17;
+/// Seuil compact : sous 80 colonnes, sidebar réduite, panneau droit masqué.
+const COMPACT_W: u16 = 80;
 /// Onglets de l'en-tête : écran, libellé, touche.
-const TABS: [(Screen, &str, &str); 5] = [
+const TABS: [(Screen, &str, &str); 4] = [
     (Screen::Chat, "chat", ""),
-    (Screen::Tokens, "grimoire", "F2"),
     (Screen::Bestiary, "bestiary", "F6"),
     (Screen::Hub, "hub", "F7"),
     (Screen::Almanac, "almanac", "F8"),
@@ -64,10 +67,12 @@ impl App {
     pub(crate) fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         self.plus_btn = None;
+        self.side_rows = None;
+        self.tab_hits.clear();
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
-        if area.width < 80 || area.height < 24 {
-            let msg = "Terminal too small: 80x24 required (Esc to quit)";
+        if area.width < MIN_W || area.height < MIN_H {
+            let msg = "Terminal too small: 70x17 required (q to quit)";
             let style = Style::new().fg(CANDLE);
             frame.render_widget(Paragraph::new(msg).style(style), area);
             return;
@@ -81,7 +86,6 @@ impl App {
         self.draw_header(frame, head);
         match self.screen {
             Screen::Chat => self.draw_chat(frame, body),
-            Screen::Tokens => self.draw_tokens(frame, body),
             Screen::Bestiary => self.galerie.draw(frame, body, &mut self.bank),
             Screen::Hub => self.draw_hub(frame, body),
             Screen::Almanac => self.draw_almanac(frame, body),
@@ -91,7 +95,11 @@ impl App {
     }
 
     /// Corps chat : cercueils | discussion | Kiro + apparition.
+    /// Sous 80 colonnes : cercueils réduits | discussion (droit masqué).
     fn draw_chat(&mut self, frame: &mut Frame, area: Rect) {
+        if area.width < COMPACT_W {
+            return self.draw_chat_compact(frame, area);
+        }
         let side_w = if area.width >= 110 { 22 } else { 18 };
         let [side, chat, right] = Layout::horizontal([
             Constraint::Length(side_w),
@@ -99,7 +107,9 @@ impl App {
             Constraint::Length(right_width(area.width)),
         ])
         .areas(area);
-        self.plus_btn = self.sessions.draw_sidebar(frame, side);
+        let hits = self.sessions.draw_sidebar(frame, side);
+        self.side_rows = hits.chats;
+        self.plus_btn = hits.plus;
         let sess = self.sessions.current();
         let view = ChatView {
             title: &sess.name,
@@ -121,6 +131,23 @@ impl App {
         draw_card(frame, omen, creature, accent, &mut self.bank);
     }
 
+    /// Corps compact (< 80 col.) : sidebar 14 + discussion au reste.
+    /// Kiro et apparitions masqués : le chat reste pleinement utilisable.
+    fn draw_chat_compact(&mut self, frame: &mut Frame, area: Rect) {
+        let [side, chat] =
+            Layout::horizontal([Constraint::Length(14), Constraint::Min(30)]).areas(area);
+        let hits = self.sessions.draw_sidebar(frame, side);
+        self.side_rows = hits.chats;
+        self.plus_btn = hits.plus;
+        let sess = self.sessions.current();
+        let view = ChatView {
+            title: &sess.name,
+            tick: self.tick,
+            sending: sess.sending,
+        };
+        sess.chat.draw(frame, chat, view);
+    }
+
     /// Panneau de Kiro : spectre au repos, ectoplasme quand il a peur.
     fn draw_kiro(&mut self, frame: &mut Frame, area: Rect) {
         let colour = match self.mascot.state() {
@@ -137,97 +164,9 @@ impl App {
         self.mascot.draw(frame, inner, &mut self.bank);
     }
 
-    /// Écran tokens : grimoire + la lanterne qui veille.
-    fn draw_tokens(&mut self, frame: &mut Frame, area: Rect) {
-        let [book, card] = Layout::horizontal([
-            Constraint::Min(40),
-            Constraint::Length(right_width(area.width)),
-        ])
-        .areas(area);
-        let [ledger, souls] =
-            Layout::vertical([Constraint::Length(9), Constraint::Min(4)]).areas(book);
-        self.sessions.current().ledger.draw(frame, ledger);
-        self.draw_souls(frame, souls);
-        draw_card(
-            frame,
-            card,
-            bestiary::get("citrouille-bougies"),
-            CANDLE,
-            &mut self.bank,
-        );
-    }
-
-    /// Âmes par chat : tokens de chaque chat + barre relative au plus gourmand.
-    fn draw_souls(&self, frame: &mut Frame, area: Rect) {
-        let max = self
-            .sessions
-            .iter()
-            .map(|c| c.ledger.total())
-            .max()
-            .unwrap_or(0);
-        let bar_w = area.width.saturating_sub(48).max(4) as u64;
-        let mut lines = vec![Line::styled(
-            format!("  {:<18}{:>8}{:>8}{:>9}", "chat", "in", "out", "total"),
-            Style::new().fg(ASH),
-        )];
-        for (i, chat) in self.sessions.iter().enumerate() {
-            let current = i == self.sessions.index();
-            let (bar, ink) = if current {
-                (PUMPKIN, BONE)
-            } else {
-                (UMBER, SAND)
-            };
-            let l = &chat.ledger;
-            let filled = (l.total() * bar_w).checked_div(max).unwrap_or(0) as usize;
-            let name: String = chat.name.chars().take(16).collect();
-            lines.push(Line::from(vec![
-                Span::styled("▍ ", Style::new().fg(bar)),
-                Span::styled(format!("{name:<18}"), Style::new().fg(ink)),
-                Span::styled(
-                    format!("{:>6}{:>8}{:>9}  ", l.prompt, l.completion, l.total()),
-                    Style::new().fg(BONE),
-                ),
-                Span::styled("█".repeat(filled), Style::new().fg(bar)),
-            ]));
-        }
-        lines.push(self.souls_total_line(bar_w));
-        lines.push(Line::styled(
-            format!("  incl. agents: {}", self.sessions.agents_grand_total()),
-            Style::new().fg(ASH),
-        ));
-        let block = Block::new()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(UMBER))
-            .title(theme::title("souls per chat", SAND, BONE));
-        frame.render_widget(Paragraph::new(lines).block(block), area);
-    }
-
-    /// Ligne TOTAL des âmes : cumul session (in/out/total + barre
-    /// pleine, le total valant toujours au moins le max des chats).
-    fn souls_total_line(&self, bar_w: u64) -> Line<'static> {
-        let total = self.sessions.total_ledger();
-        Line::from(vec![
-            Span::styled("▍ ", Style::new().fg(PUMPKIN)),
-            Span::styled(
-                format!("{:<18}", "TOTAL"),
-                Style::new().fg(BONE).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!(
-                    "{:>6}{:>8}{:>9}  ",
-                    total.prompt,
-                    total.completion,
-                    total.total()
-                ),
-                Style::new().fg(BONE),
-            ),
-            Span::styled("█".repeat(bar_w as usize), Style::new().fg(PUMPKIN)),
-        ])
-    }
-
-    /// En-tête : titre en dégradé, onglets, jauge de contexte à droite.
-    fn draw_header(&self, frame: &mut Frame, area: Rect) {
+    /// En-tête : titre en dégradé, onglets (cliquables, voir `mouse`),
+    /// jauge de contexte à droite.
+    fn draw_header(&mut self, frame: &mut Frame, area: Rect) {
         let mut spans = vec![Span::raw(" ")];
         spans.extend(theme::gradient(
             "\u{f068c} CRYPT",
@@ -236,17 +175,20 @@ impl App {
             Modifier::BOLD,
         ));
         spans.push(Span::styled("  ", Style::new()));
-        let gauge = ctx_gauge(self.context_used(), self.context_limit());
+        let gauge = fear_gauge(self.ctx_used, self.ctx_limit);
         let used = spans_width(&spans) + spans_width(&gauge) + 1;
-        spans.extend(self.tabs((area.width as usize).saturating_sub(used)));
+        let room = (area.width as usize).saturating_sub(used);
+        let x = area.x + spans_width(&spans) as u16;
+        spans.extend(self.tabs(room, Position::new(x, area.y)));
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
         let gauge = Paragraph::new(Line::from(gauge)).alignment(Alignment::Right);
         frame.render_widget(gauge, area);
     }
 
-    /// Onglets d'écran ; sans les touches (F2…) s'ils ne tiennent pas
-    /// dans `room` colonnes (la jauge ctx reste entière à 80 colonnes).
-    fn tabs(&self, room: usize) -> Vec<Span<'static>> {
+    /// Onglets d'écran ; sans les touches (F6…) s'ils ne tiennent pas
+    /// dans `room` colonnes (la jauge fear reste entière à 80 colonnes).
+    /// Enregistre leurs rectangles (`tab_hits`, clic = écran, voir `mouse`).
+    fn tabs(&mut self, room: usize, at: Position) -> Vec<Span<'static>> {
         let build = |keys: bool| -> Vec<Span<'static>> {
             TABS.iter()
                 .flat_map(|&(screen, label, key)| {
@@ -254,12 +196,19 @@ impl App {
                 })
                 .collect()
         };
-        let full = build(true);
-        if spans_width(&full) <= room {
-            full
-        } else {
-            build(false)
+        let keys = spans_width(&build(true)) <= room;
+        let mut spans = Vec::new();
+        let mut x = at.x;
+        self.tab_hits.clear();
+        for &(screen, label, key) in TABS.iter() {
+            let t = tab(label, if keys { key } else { "" }, self.screen == screen);
+            let w = spans_width(&t);
+            self.tab_hits
+                .push((screen, Rect::new(x, at.y, w as u16, 1)));
+            x = x.saturating_add(w as u16);
+            spans.extend(t);
         }
+        spans
     }
 
     /// Écran almanach : tokens par nuit + la faucheuse qui tient le compte.
@@ -275,7 +224,10 @@ impl App {
     }
 
     /// Barre d'état : pastilles powerline à gauche, raccourcis à droite.
+    /// Sous 80 colonnes : pastilles courtes (rate compact, modèle à 10,
+    /// mode court) pour tenir à 70.
     fn draw_status(&self, frame: &mut Frame, area: Rect) {
+        let compact = area.width < COMPACT_W;
         let sess = self.sessions.current();
         let mut left = Vec::new();
         let chat = format!(
@@ -284,24 +236,43 @@ impl App {
             self.sessions.count()
         );
         left.extend(pill(&chat, PUMPKIN, VOID));
-        left.extend(pill(&short_model(&self.effective_model()), UMBER, BONE));
-        let rate = format!(
-            "{} tok · {} total · {}",
-            sess.ledger.total(),
-            self.sessions.grand_total(),
-            fmt_tps(sess.ledger.last_tps())
-        );
+        let model = short_model(self.effective_model_ref());
+        let model = if compact {
+            model.chars().take(10).collect::<String>()
+        } else {
+            model.into_owned()
+        };
+        left.extend(pill(&model, UMBER, BONE));
+        let rate = if compact {
+            format!(
+                "{} tok · {}",
+                sess.ledger.total(),
+                fmt_tps(sess.ledger.last_tps())
+            )
+        } else {
+            format!(
+                "{} tok · {} total · {}",
+                sess.ledger.total(),
+                self.sessions.grand_total(),
+                fmt_tps(sess.ledger.last_tps())
+            )
+        };
         left.extend(pill(&rate, theme::lerp(VOID, UMBER, 0.5), SAND));
-        let mode = self.bank.mode();
+        let mode = short_mode(self.bank.mode());
         let mode_fg = if mode == "kitty" { ECTO } else { ASH };
-        left.push(Span::styled(format!(" ◆ {mode}"), Style::new().fg(mode_fg)));
+        let mode_style = Style::new().fg(mode_fg);
+        left.push(Span::styled(" ◆ ", mode_style));
+        left.push(Span::styled(mode, mode_style));
         let used: usize = left.iter().map(|s| s.width()).sum();
         frame.render_widget(Paragraph::new(Line::from(left)), area);
-        let hints = key_hints();
-        let hints_w: usize = hints.iter().map(|s| s.width()).sum();
-        if used + hints_w + 2 <= area.width as usize {
-            let right = Paragraph::new(Line::from(hints)).alignment(Alignment::Right);
-            frame.render_widget(right, area);
+        let width = area.width as usize;
+        for hints in [key_hints(false), key_hints(true)] {
+            let hints_w: usize = hints.iter().map(|s| s.width()).sum();
+            if used + hints_w + 2 <= width {
+                let right = Paragraph::new(Line::from(hints)).alignment(Alignment::Right);
+                frame.render_widget(right, area);
+                break;
+            }
         }
     }
 }
@@ -344,14 +315,15 @@ fn spans_width(spans: &[Span]) -> usize {
 }
 
 /// Onglet : pastille citrouille si actif, texte sable sinon (+ touche).
-fn tab(label: &str, key: &str, active: bool) -> Vec<Span<'static>> {
+/// `key` est un littéral statique (emprunté, jamais copié).
+fn tab(label: &str, key: &'static str, active: bool) -> Vec<Span<'static>> {
     let mut spans = if active {
         pill(label, PUMPKIN, VOID)
     } else {
         vec![Span::styled(format!(" {label} "), Style::new().fg(SAND))]
     };
     if !key.is_empty() {
-        spans.push(Span::styled(key.to_string(), Style::new().fg(UMBER)));
+        spans.push(Span::styled(key, Style::new().fg(UMBER)));
     }
     spans.push(Span::raw(" "));
     spans
@@ -371,18 +343,19 @@ fn pill(text: &str, bg: Color, fg: Color) -> Vec<Span<'static>> {
     ]
 }
 
-/// Context gauge: `ctx ██████▍      042`, candle to blood.
+/// Fear gauge: `fear ██████▍      42%`, candle to blood.
 /// `used` = estimated tokens of the current chat, `max` = model window.
-fn ctx_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
+fn fear_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
     let max = max.max(1);
     let ratio = used as f32 / max as f32;
-    let filled = ratio.min(1.0) * CTX_W as f32;
+    let filled = ratio.min(1.0) * FEAR_W as f32;
     let track = Style::new().bg(theme::lerp(VOID, UMBER, 0.35));
-    let mut spans = vec![Span::styled("ctx ", Style::new().fg(SAND))];
-    for i in 0..CTX_W {
+    let mut spans = Vec::with_capacity(FEAR_W + 2);
+    spans.push(Span::styled("fear ", Style::new().fg(SAND)));
+    for i in 0..FEAR_W {
         let part = (filled - i as f32).clamp(0.0, 1.0);
         let glyph = EIGHTHS[(part * 8.0).round() as usize];
-        let fg = theme::lerp(CANDLE, BLOOD, i as f32 / (CTX_W - 1) as f32);
+        let fg = theme::lerp(CANDLE, BLOOD, i as f32 / (FEAR_W - 1) as f32);
         spans.push(Span::styled(glyph, track.fg(fg)));
     }
     let pct = (used.saturating_mul(100) / max).min(999);
@@ -392,18 +365,29 @@ fn ctx_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
         _ => ASH,
     };
     let num = Style::new().fg(colour).add_modifier(Modifier::BOLD);
-    spans.push(Span::styled(format!(" {pct:03} "), num));
+    spans.push(Span::styled(format!("{pct:>3}% "), num));
     spans
 }
 
-/// Raccourcis rappelés dans la barre d'état.
-fn key_hints() -> Vec<Span<'static>> {
+/// Nom de mode d'image court pour la barre d'état compacte.
+fn short_mode(mode: &str) -> &str {
+    match mode {
+        "demi-blocs" => "blocs",
+        other => other,
+    }
+}
+
+/// Raccourcis rappelés dans la barre d'état (courts si `short`).
+fn key_hints(short: bool) -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
+    if short {
+        return vec![Span::styled("F5 F6", key)];
+    }
     let word = Style::new().fg(ASH);
-    let mut spans = Vec::new();
-    for (k, w) in [("F5", "scare"), ("Esc", "flee")] {
+    let mut spans = Vec::with_capacity(4);
+    for (k, w) in [("F5", " scare  "), ("q", " quit  ")] {
         spans.push(Span::styled(k, key));
-        spans.push(Span::styled(format!(" {w}  "), word));
+        spans.push(Span::styled(w, word));
     }
     spans
 }
@@ -415,33 +399,40 @@ mod tests {
     use ratatui::{backend::TestBackend, Terminal};
 
     #[test]
-    fn ctx_gauge_is_fixed_width_and_monotonic() {
-        let width = |u| ctx_gauge(u, 1000).iter().map(|s| s.width()).sum::<usize>();
+    fn fear_gauge_is_fixed_width_and_monotonic() {
+        let width = |u| fear_gauge(u, 1000).iter().map(|s| s.width()).sum::<usize>();
         assert_eq!(width(0), width(1000));
         assert_eq!(width(0), width(9999));
+        assert!(fear_gauge(420, 1000)
+            .iter()
+            .any(|s| s.content.contains('%')));
         let full = |u| {
-            ctx_gauge(u, 1000)
+            fear_gauge(u, 1000)
                 .iter()
                 .filter(|s| s.content == "█")
                 .count()
         };
         assert!(full(0) <= full(500) && full(500) <= full(1000));
-        assert_eq!(full(1000), CTX_W);
-        assert_eq!(full(5000), CTX_W);
+        assert_eq!(full(1000), FEAR_W);
+        assert_eq!(full(5000), FEAR_W);
     }
 
     #[test]
-    fn header_fits_five_tabs_and_gauge_at_80_columns() {
+    fn header_fits_four_tabs_and_gauge_at_80_columns() {
         let mut app = App::offline().unwrap();
-        for (w, keys) in [(80, false), (120, true)] {
+        for w in [70, 80, 120] {
             let mut term = Terminal::new(TestBackend::new(w, 24)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();
             let buf = term.backend().buffer();
             let head: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
-            for word in ["chat", "grimoire", "bestiary", "hub", "almanac", "ctx"] {
+            for word in ["chat", "bestiary", "hub", "almanac", "fear"] {
                 assert!(head.contains(word), "{w} cols: {word} missing in {head:?}");
             }
-            assert_eq!(head.contains("F8"), keys, "{w} cols: {head:?}");
+            assert!(!head.contains("grimoire"), "{w} cols: {head:?}");
+            // 4 onglets : les touches (F6/F7/F8) tiennent dès 80 colonnes.
+            if w >= 80 {
+                assert!(head.contains("F8"), "{w} cols: {head:?}");
+            }
         }
     }
 
@@ -453,19 +444,38 @@ mod tests {
             .current_mut()
             .chat
             .push(Role::Assistant, "les os craquent sous la lune");
-        for (w, h) in [(80, 24), (120, 40), (200, 60), (60, 20)] {
+        for (w, h) in [(70, 17), (80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [
-                Screen::Chat,
-                Screen::Tokens,
-                Screen::Bestiary,
-                Screen::Almanac,
-            ] {
+            for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
                 app.screen = screen;
                 app.spook();
                 app.tick();
                 term.draw(|f| app.draw(f)).unwrap();
             }
+        }
+    }
+
+    #[test]
+    fn minimum_70x17_shows_ui_not_too_small() {
+        let mut app = App::offline().unwrap();
+        app.almanac = crate::almanac::Almanac::demo(crate::almanac::today());
+        for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
+            app.screen = screen;
+            let mut term = Terminal::new(TestBackend::new(70, 17)).unwrap();
+            term.draw(|f| app.draw(f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let top: String = (0..70).map(|x| buf[(x, 0)].symbol()).collect();
+            assert!(top.contains("CRYPT"), "header absent à 70x17 : {top:?}");
+            assert!(!top.contains("too small"), "gate à 70x17 : {top:?}");
+            let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
+            assert!(filled > 60, "frame presque vide à 70x17 : {filled}");
+        }
+        for (w, h) in [(69, 17), (70, 16)] {
+            let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+            term.draw(|f| app.draw(f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let top: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
+            assert!(top.contains("too small"), "pas de gate à {w}x{h} : {top:?}");
         }
     }
 }

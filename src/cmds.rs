@@ -9,7 +9,8 @@ use crate::bus::{LinkEnd, LinkError, QueuedAsk, QueuedTell, Target};
 use crate::chat::Role;
 use crate::commands::{self, Command, MsgTarget};
 use crate::connect::NOT_CONNECTED;
-use crate::history::send_window;
+use crate::events::Event;
+use crate::history::window_estimate;
 use crate::hub::Signal;
 use crate::provider::{provider_label, ProviderConfig};
 use crate::sessions::AskError;
@@ -41,6 +42,7 @@ impl App {
             Some(Command::Connect(arg)) => self.cmd_connect(arg),
             Some(Command::Permissions(arg)) => self.cmd_permissions(arg),
             Some(Command::Web(query)) => self.cmd_web(query),
+            Some(Command::Tools(arg)) => self.cmd_tools(arg),
             Some(Command::Unknown(word)) => {
                 self.push_system(format!("unknown command: {word} — /help for help"));
             }
@@ -54,20 +56,19 @@ impl App {
         let model = self.effective_model();
         let thinking = self.thinking_text();
         let mut msg =
-            commands::usage_text(&self.sessions.current().ledger, &total, &model, &thinking);
+            crate::tokens::usage_text(&self.sessions.current().ledger, &total, &model, &thinking);
         msg.push('\n');
         msg.push_str(&agents::usage_line(self.agents_md.as_deref()));
-        let used = {
-            let sess = self.sessions.current();
-            let window = sess.history.clone();
-            let window = send_window(&window, sess.pinned_system);
-            crate::tokens::context_estimate(&window)
-        };
+        let sess = self.sessions.current();
+        let used = window_estimate(&sess.history, sess.pinned_system, None);
         msg.push('\n');
         msg.push_str(&format!(
-            "context: {}",
-            crate::tokens::fmt_context(used, self.context_limit())
+            "context: {} | heap (chat): {} o",
+            crate::tokens::fmt_context(used, self.context_limit()),
+            self.sessions.current().heap_bytes()
         ));
+        let (flight, cap) = (self.pool.in_flight(), self.pool.cap());
+        msg.push_str(&format!("\npool: {flight}/{cap} llm in flight"));
         self.push_system(msg);
     }
 
@@ -110,7 +111,7 @@ impl App {
                 self.push_system(format!("thinking: {v}"));
             }
             Some(v) => {
-                let mut vals = effort_values();
+                let mut vals = commands::effort_values();
                 vals.push("default");
                 self.push_system(format!("invalid effort: {v} — values: {}", vals.join(", ")));
             }
@@ -149,9 +150,14 @@ impl App {
             ));
             return;
         }
-        let Some(agent_id) = self.sessions.add_agent(id, &prompt, messages.clone()) else {
+        let exchange = vec![(String::from("user"), prompt.clone())];
+        let Some(agent_id) = self.sessions.add_agent(id, &prompt, exchange) else {
             return;
         };
+        self.sessions
+            .attach_workspace(agent_id, crate::workspace::base().as_deref());
+        self.events
+            .emit(&Event::agent_spawned(agent_id, id, deliver, &prompt));
         if deliver == id {
             self.push_system(format!("agent#{agent_id} started"));
         } else {
@@ -160,11 +166,11 @@ impl App {
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&messages, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply));
+            let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply)).await;
         });
     }
 
@@ -284,6 +290,7 @@ impl App {
         self.ensure_agents_loaded();
         let dest = self.sessions.get_mut(idx).expect("chat validé ci-dessus");
         dest.chat.push(Role::User, envelope.clone());
+        self.events.emit(&Event::user_msg(idx, &envelope));
         if dest.sending {
             dest.inbox.push_back(QueuedTell {
                 envelope,
@@ -292,7 +299,7 @@ impl App {
             });
             return true;
         }
-        dest.history.push((String::from("user"), envelope));
+        dest.push_history("user", envelope);
         dest.auto_hops = hops;
         self.launch_chat(idx);
         false
@@ -385,24 +392,19 @@ impl App {
         crate::tokens::context_window(&self.effective_model()).min(crate::tokens::CONTEXT_LIMIT)
     }
 
-    /// Contexte estimé du chat courant : fenêtre d'envoi + saisie en cours.
+    /// Contexte estimé du chat courant : fenêtre d'envoi + saisie en
+    /// cours, sans copie (même somme que la fenêtre réellement envoyée).
     pub(crate) fn context_used(&self) -> u64 {
         let sess = self.sessions.current();
-        let mut window = sess.history.clone();
-        if !sess.chat.input.trim().is_empty() {
-            window.push(("user".to_string(), sess.chat.input.clone()));
-        }
-        let window = send_window(&window, sess.pinned_system);
-        crate::tokens::context_estimate(&window)
+        let input = sess.chat.input.trim();
+        let pending = if input.is_empty() { None } else { Some(input) };
+        window_estimate(&sess.history, sess.pinned_system, pending)
     }
 
     /// Fenêtre à envoyer si elle dépasse la limite (tokens estimés), sinon `None`.
     pub(crate) fn context_over_limit(&self, text: &str) -> Option<u64> {
         let sess = self.sessions.current();
-        let mut window = sess.history.clone();
-        window.push(("user".to_string(), text.to_string()));
-        let window = send_window(&window, sess.pinned_system);
-        let used = crate::tokens::context_estimate(&window);
+        let used = window_estimate(&sess.history, sess.pinned_system, Some(text));
         (used > self.context_limit()).then_some(used)
     }
 
@@ -417,8 +419,7 @@ impl App {
         let id = self.sessions.index();
         let sess = self.sessions.current();
         let pinned = sess.pinned_system;
-        let history = sess.history.clone();
-        if history.len() < COMPACT_MIN {
+        if sess.history.len() < COMPACT_MIN {
             self.push_system(String::from("nothing to compact"));
             return;
         }
@@ -426,12 +427,16 @@ impl App {
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
         let mut messages = vec![(String::from("system"), String::from(COMPACT_INSTRUCTION))];
-        messages.extend(agents::without_pinned(&history, pinned).iter().cloned());
-        tokio::spawn(async move {
+        messages.extend(
+            agents::without_pinned(&sess.history, pinned)
+                .iter()
+                .cloned(),
+        );
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&messages, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Compact(id, reply));
+            let _ = tx.send(Incoming::Compact(id, reply)).await;
         });
     }
 
@@ -471,30 +476,4 @@ impl App {
             }
         }
     }
-
-    /// `/web <query>` : web search + LLM synthesis with cited sources.
-    /// Async (`Incoming::Web`) ; works disconnected too (raw results).
-    fn cmd_web(&mut self, query: String) {
-        let id = self.sessions.index();
-        let provider = self.provider.clone();
-        let model = self.effective_model();
-        let effort = self.thinking.clone();
-        let tx = self.tx.clone();
-        self.push_system(format!("web search: {query}…"));
-        tokio::spawn(async move {
-            let reply =
-                crate::web::answer(query, provider.as_deref(), &model, effort.as_deref()).await;
-            let _ = tx.send(Incoming::Web(id, reply));
-        });
-    }
-}
-
-/// Valeurs d'effort reconnues (sondées via `valid_effort`, source unique).
-fn effort_values() -> Vec<&'static str> {
-    [
-        "minimal", "none", "low", "medium", "high", "xhigh", "max", "auto",
-    ]
-    .into_iter()
-    .filter(|v| commands::valid_effort(v))
-    .collect()
 }

@@ -2,15 +2,15 @@
 //!
 //! Chain (first non-empty wins): Tavily → Brave → DuckDuckGo → Wikipedia
 //! (FR+EN). 8 s per backend, 20 s global deadline, fetch skipped when
-//! snippets are rich, 10 min cache. Keys never logged. Pure parsing in
-//! [`parse`], relevance shaping in [`rank`].
+//! snippets are rich, 10 min cache. Keys never logged. Result cache in
+//! [`cache`], pure parsing in [`parse`], relevance shaping in [`rank`].
 
+mod cache;
 mod parse;
 mod rank;
 
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::sync::OnceLock;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use tokio::task::JoinSet;
@@ -18,6 +18,7 @@ use tokio::time::timeout;
 
 use crate::provider::Provider;
 
+use self::cache::{cached_search, ddg_cooling, note_ddg_challenge, store_search};
 use self::parse::{parse_ddg_html, parse_json_results, parse_wiki_generator, strip_html};
 use self::rank::{build_context, dedup_results, fr_first, need_fetch, pick_passages};
 
@@ -35,12 +36,6 @@ const MAX_PAGE_CHARS: usize = 1200;
 pub(super) const MAX_CONTEXT_CHARS: usize = 6000;
 /// Bytes read per page before stripping (stream cut, never over-read).
 const MAX_BODY_BYTES: usize = 64 * 1024;
-/// Search cache TTL (query → full research, pages included).
-const CACHE_TTL: Duration = Duration::from_secs(600);
-/// Search cache capacity (cleared when full).
-const CACHE_CAP: usize = 50;
-/// DuckDuckGo skip window after an anti-bot challenge page.
-const DDG_COOLDOWN: Duration = Duration::from_secs(600);
 /// Global research deadline (search + fetch, synthesis excluded).
 const RESEARCH_DEADLINE: Duration = Duration::from_secs(20);
 /// DuckDuckGo HTML endpoint (free, no key, sometimes bot-blocked).
@@ -258,7 +253,8 @@ impl WebClient {
 
     /// Full pipeline: cache → search → fetch (skipped when snippets
     /// are rich) → context. Query case preserved (only the cache key is
-    /// normalized). Stores the research in the cache (swept, cap: clear).
+    /// normalized). Stores the research in the cache (expired swept,
+    /// oldest half evicted).
     async fn research(&self, query: &str) -> Result<Research> {
         let asked = query.trim();
         if asked.is_empty() {
@@ -281,16 +277,7 @@ impl WebClient {
             context,
             backend,
         };
-        if let Ok(mut guard) = SEARCH_CACHE
-            .get_or_init(|| Mutex::new(HashMap::new()))
-            .lock()
-        {
-            guard.retain(|_, (at, _)| at.elapsed() < CACHE_TTL);
-            if guard.len() >= CACHE_CAP {
-                guard.clear();
-            }
-            guard.insert(key, (Instant::now(), found.clone()));
-        }
+        store_search(key, &found);
         Ok(found)
     }
 
@@ -379,31 +366,6 @@ fn raw_text(head: &str, results: &[SearchResult]) -> String {
     text
 }
 
-/// Vrai si un challenge DDG récent impose de sauter ce backend.
-fn ddg_cooling() -> bool {
-    DDG_BLOCKED
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .ok()
-        .and_then(|guard| *guard)
-        .is_some_and(|at| at.elapsed() < DDG_COOLDOWN)
-}
-
-/// Mémorise un challenge anti-bot (prochains `/web` sautent DDG).
-fn note_ddg_challenge() {
-    if let Ok(mut guard) = DDG_BLOCKED.get_or_init(|| Mutex::new(None)).lock() {
-        *guard = Some(Instant::now());
-    }
-}
-
-/// Cache hit (normalized query → full research), `None` if absent/expired.
-fn cached_search(key: &str) -> Option<Research> {
-    let cache = SEARCH_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let guard = cache.lock().ok()?;
-    let (at, found) = guard.get(key)?;
-    (at.elapsed() < CACHE_TTL).then(|| found.clone())
-}
-
 /// Query → researched answer: LLM synthesis + `Sources:` footer, or raw
 /// results when there is no provider (or when synthesis itself fails).
 pub async fn answer(
@@ -449,14 +411,8 @@ pub async fn answer(
     }
 }
 
-/// Query cache: normalized query → (insertion time, full research).
-static SEARCH_CACHE: OnceLock<Mutex<HashMap<String, (Instant, Research)>>> = OnceLock::new();
-
 /// Shared HTTP client: one pool (TLS + connections reused across `/web`).
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-
-/// Last DuckDuckGo anti-bot challenge (skip DDG while cooling down).
-static DDG_BLOCKED: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
 
 #[cfg(test)]
 mod tests {

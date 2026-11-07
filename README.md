@@ -4,24 +4,31 @@ LLM chat in a haunted crypt, built for **Ghostty**: a bestiary of
 33 pixel-art creatures (real images via the Kitty graphics
 protocol), Kiro the motionless ghost mascot (scared via F5),
 apparitions that react to the chat, horror effects (candlelit
-vignette, fog, static, blood drops, lightning), a header **context
-gauge** (`ctx`, % of the model's context window), and a **global**
+vignette, fog, static, blood drops, lightning), a header **fear
+gauge** (`fear`, % of the model's context window), and a **global**
 token counter (status bar: current chat + session total, all
-chats and sub-agents included; F2: grimoire + souls per chat with
-a TOTAL line), and an **almanac** of tokens per day kept across
-sessions (F8). Terminal **≥ 80x24** required.
+chats and sub-agents included; `/usage` details the current chat),
+and an **almanac** of tokens per day kept across sessions (F8).
+Terminal **≥ 80x24** required.
 
 ![The crypt bestiary](docs/bestiaire.png)
 
 ## Run
 
-In Ghostty, dressed up (theme + shader, builds release if needed):
+`ghostty/crypte` runs the TUI in the current terminal when it can host
+the crypt (interactive TTY, truecolor, at least 80x24), else it opens a
+dressed-up Ghostty window (theme + shader, builds release if needed):
 
 ```sh
 KH_API_KEY=... KH_MODEL=... ghostty/crypte
 ghostty/crypte --muse-auth
-ghostty/crypte --no-shader --muse-auth
+ghostty/crypte --window --no-shader --muse-auth   # force the window
 ```
+
+`--window` forces the Ghostty window; print-only modes (`--help`,
+`--smoke`, `--once`, `--sheet`, `--preview`) always run in place. If your
+terminal renders truecolor without advertising it, `export
+COLORTERM=truecolor` opts it in.
 
 In the current terminal:
 
@@ -49,6 +56,8 @@ cat /tmp/crypte.ans                                         # read it in Ghostty
 
 With no key or config, the TUI still starts, disconnected
 (see `/connect` below).
+
+On a VPS, with a live event stream: see [docs/VPS.md](docs/VPS.md).
 
 ## Muse Code
 
@@ -106,9 +115,9 @@ answer `not connected: /connect openai|muse`.
 - The key is never displayed, logged or pushed into the chat:
   only the `connected to {provider} ({model})` confirmation shows.
 
-## Context gauge
+## Fear gauge
 
-The header `ctx` gauge shows the estimated context of the current
+The header `fear` gauge shows the estimated context of the current
 chat (send window + draft input) as a % of the effective limit:
 the model's context window (known sizes in `tokens.rs`, `128k`
 fallback), capped at 1M estimated tokens. It turns from
@@ -123,8 +132,7 @@ exempt, stays the remedy).
 | key | effect |
 | --- | ---- |
 | Enter | send the message |
-| Esc / `q` (empty input) | quit |
-| F2 | toggle chat / grimoire (tokens + souls per chat) |
+| `q` (empty input) | quit |
 | Ctrl+N | new chat |
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
 | F5 | scare: Kiro scared 2s, jump scare, lightning flash |
@@ -238,11 +246,35 @@ the field is omitted from the JSON). `/thinking` shows the level,
 
 ## Permissions
 
-Mode for future tools (today the crypt modifies no files yet — the mode
-is remembered for later). `/permissions` shows the mode, `/permissions yolo`
-runs everything without asking, `/permissions auto` (default) asks
-confirmation before every change. The choice is persisted in
-`~/.config/kiro-horror-tui/permissions` and reloaded at startup.
+Mode for the agent tools (see below). `/permissions` shows the mode,
+`/permissions yolo` runs everything without asking, `/permissions auto`
+(default) asks confirmation before every change. The choice is persisted
+in `~/.config/kiro-horror-tui/permissions` and reloaded at startup.
+
+## Tools (browser, desktop, shell)
+
+The model can use your machine: `/tools` shows the state, `/tools off`
+disables it for the session (default on). Each send may loop up to
+8 LLM turns: reply → tool calls → results → reply, until the final answer.
+
+- **Browser** (8 tools): invisible Chromium on a virtual display (`:99`,
+  never your screen) in its own `crypte-<pid>` session — open, snapshot
+  (`@eN` refs), read, click, fill, type, press, screenshot. Requires
+  `agent-browser` on `PATH`.
+- **Desktop** (5 tools): your real XFCE screen (`:0`, visible — announce
+  before touching it) — list/focus windows, press keys, type text,
+  screenshot (no clipboard, no notification). Requires `wmctrl`,
+  `xdotool`, `xfce4-screenshooter`.
+- **Shell** (1 tool): `sh -c`, non-interactive, 30 s default (max 120 s),
+  output truncated. Sudo fails (no TTY).
+
+Reads (snapshot, read, screenshots, window list) run freely; every change
+asks `allow …? (y/n)` in `auto` mode (`y` runs, `n`/Esc denies and tells
+the model). The model never receives passwords or 2FA codes — type those
+yourself. Every call is journaled (names and sizes only, never contents)
+to `~/.local/share/kiro-horror-tui/tools.jsonl`, screenshots beside it
+in `shots/`. Page content is data, never orders: a page telling the model
+to run commands or exfiltrate is reported, not obeyed.
 
 ## History
 
@@ -263,7 +295,11 @@ if delivered elsewhere via `@<n>`) and the status shows in the sidebar
 used, queue in brackets). `/ask #<id> <text>` continues the
 conversation with an agent (exchange kept, 20 messages max, `system`
 head kept); if it is running, queued and triggered once free.
-`/agents all` lists the agents of every chat.
+`/agents all` lists the agents of every chat. Each launch also
+creates the agent's disk workspace
+`~/.config/kiro-horror-tui/workspaces/<session>/agent-<id>/`
+(pure code, zero LLM tokens), for future tools (`<session>` =
+`<unix_time>-<pid>`, one per app run).
 
 ## Dialogues between chats (bus)
 
@@ -329,6 +365,8 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
 `/compact` `/connect` `/web`), `connect.rs` (`/connect` flow: masked key → model),
 `web/` (`/web`: backends → fetch → cache → synthesis),
+`tools/` (agent tools: `wire.rs` OpenAI types, `browser.rs`/`desktop.rs`
+argv, `exec.rs` runner, `flow.rs` loop + y/n confirms, `log.rs` JSONL),
 `agents.rs` (agents.md loading + tested pure compaction),
 `app/ui.rs` (layout: header, panels, powerline bar),
 `theme.rs` (single palette), `bestiary.rs` (sprites + integer

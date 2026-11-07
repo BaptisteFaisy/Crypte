@@ -5,10 +5,12 @@
 mod ctors;
 mod esprits;
 mod keys;
+mod send;
 mod ui;
 
 pub use self::ui::Screen;
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -22,28 +24,33 @@ use crate::almanac::Almanac;
 use crate::apparition::Apparition;
 use crate::bus::Bus;
 use crate::chat::Role;
-use crate::commands;
-use crate::connect::{ConnectFlow, NOT_CONNECTED};
+use crate::connect::ConnectFlow;
+use crate::events::EventLog;
 use crate::fx::Fx;
 use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
 use crate::ghostty;
-use crate::history::{send_window, short_name};
+
 use crate::hub::Hub;
 use crate::mascot::{Mascot, MascotState};
 use crate::permissions::Mode;
+use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
+use crate::tools::flow::Delivery;
+use crate::tools::flow::ToolRun;
 use crate::web::WebAnswer;
 
 /// Message async d'une tâche provider : chat (`idx`), agent
 /// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
-/// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]).
+/// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]),
+/// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]).
 pub(crate) enum Incoming {
     Chat(usize, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
     Compact(usize, Result<Completion>),
     Web(usize, Result<WebAnswer>),
+    ToolDone(usize, Vec<Delivery>),
 }
 
 /// État global de l'application.
@@ -56,6 +63,11 @@ pub struct App {
     galerie: Galerie,
     tick: u64,
     busy: bool,
+    /// Jauge contexte mise en cache (tokens estimés + fenêtre modèle),
+    /// rafraîchie 1×/s : le calcul (BPE + clones) est trop coûteux à
+    /// chaque frame (10 Hz). Voir `refresh_ctx_cache`.
+    ctx_used: u64,
+    ctx_limit: u64,
     pub(crate) sessions: Sessions,
     /// Tokens par jour (F8) ; mémoire seule tant que `main` n'ouvre pas le fichier.
     pub(crate) almanac: Almanac,
@@ -70,23 +82,31 @@ pub struct App {
     pub(crate) screen: Screen,
     /// Rectangle du bouton [+] (mémorisé au rendu, `None` hors sidebar).
     pub(crate) plus_btn: Option<Rect>,
+    /// Bloc des lignes de chats de la sidebar (mémorisé au rendu, une
+    /// ligne par chat, `None` hors écran chat) : clic = choisir le chat.
+    pub(crate) side_rows: Option<Rect>,
+    /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
+    /// clic = aller à l'écran (chat, bestiaire, hub, almanach).
+    pub(crate) tab_hits: Vec<(Screen, Rect)>,
     pub(crate) thinking: Option<String>,
     pub(crate) permissions: Mode,
     /// Fichier de persistance du mode (`None` si `HOME` manquant).
     pub(crate) permissions_path: Option<PathBuf>,
+    /// Envois outillés (`/tools on`, défaut) ; boucle agent dans `tool_run`.
+    pub(crate) tools_on: bool,
+    /// Boucle agent en cours (`None` = aucun envoi outillé actif).
+    pub(crate) tool_run: Option<ToolRun>,
     /// Fichier de persistance des chats (`None` = off : tests, smoke, demo).
     pub(crate) chats_path: Option<PathBuf>,
-    pub(crate) tx: mpsc::UnboundedSender<Incoming>,
-    rx: mpsc::UnboundedReceiver<Incoming>,
+    /// Journal d'événements temps réel (`--events-log`, désactivé sinon).
+    pub(crate) events: EventLog,
+    pub(crate) tx: mpsc::Sender<Incoming>,
+    pub(crate) rx: mpsc::Receiver<Incoming>,
+    /// Pool borné d'appels LLM (plafond `CRYPTE_MAX_FLIGHT`, défaut 4).
+    pub(crate) pool: SpawnPool,
 }
 
 impl App {
-    /// Nouveau chat + pin agents.md si chargé (Ctrl+N, `/new`).
-    pub(crate) fn add_chat(&mut self) {
-        self.sessions.add();
-        self.pin_current();
-    }
-
     /// Branche le vrai terminal (après `ratatui::init`) : protocole
     /// d'images (Kitty dans Ghostty) + habillage de la fenêtre.
     pub fn attach_terminal(&mut self) -> Result<()> {
@@ -141,8 +161,11 @@ impl App {
     }
 
     /// Traite une touche ; renvoie false pour quitter.
-    /// Flow `/connect` actif : touches dédiées (pas de quit direct).
+    /// Confirmation outil ou flow `/connect` : touches dédiées (pas de quit).
     fn on_key(&mut self, key: KeyEvent) -> bool {
+        if self.tool_run.as_ref().is_some_and(|run| run.confirming) {
+            return self.on_tool_key(key);
+        }
         if self.connect_flow.is_some() {
             return self.on_flow_key(key);
         }
@@ -154,13 +177,11 @@ impl App {
             _ => {}
         }
         match key.code {
-            KeyCode::Esc => false,
             KeyCode::Char('q') if !ctrl && empty => false,
             KeyCode::Char('n' | 'N') if ctrl => self.cmd(|s| s.add_chat()),
             KeyCode::Char(c) if !ctrl => self.cmd(|s| s.sessions.current_mut().chat.input_push(c)),
             KeyCode::Backspace => self.cmd(|s| s.sessions.current_mut().chat.input_pop()),
             KeyCode::Enter => self.cmd(|s| s.send()),
-            KeyCode::F(2) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Tokens)),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Bestiary)),
             KeyCode::F(7) => self.cmd(|s| s.open_hub()),
@@ -182,58 +203,6 @@ impl App {
         true
     }
 
-    /// Enfile l'input : commande locale ou complétion en tâche de fond.
-    /// Un chat sans message user prend le nom du premier message
-    /// (ignore le system pinné : historique non vide mais sans user).
-    fn send(&mut self) {
-        let id = self.sessions.index();
-        let text = self.sessions.current().chat.input.trim().to_string();
-        if text.is_empty() {
-            return;
-        }
-        if commands::is_command(&text) {
-            self.sessions.current_mut().chat.take_input();
-            self.run_command(&text);
-            return;
-        }
-        let Some(provider) = self.provider.clone() else {
-            self.push_system(String::from(NOT_CONNECTED));
-            return;
-        };
-        if self.sessions.current().sending {
-            return;
-        }
-        // Premier envoi réel : lecture unique d'agents.md (pin + annonce).
-        self.ensure_agents_loaded();
-        if let Some(used) = self.context_over_limit(&text) {
-            self.push_system(format!(
-                "context full ({}), send refused: /compact to continue",
-                crate::tokens::fmt_context(used, self.context_limit())
-            ));
-            return;
-        }
-        let model = self.effective_model();
-        let effort = self.thinking.clone();
-        let tx = self.tx.clone();
-        let sess = self.sessions.current_mut();
-        sess.chat.take_input();
-        if !sess.history.iter().any(|(role, _)| role == "user") {
-            sess.name = short_name(&text);
-        }
-        sess.chat.push(Role::User, text.clone());
-        sess.history.push(("user".to_string(), text));
-        let history = send_window(&sess.history, sess.pinned_system);
-        sess.sending = true;
-        sess.auto_hops = 0;
-        sess.sending_since = Some(Instant::now());
-        tokio::spawn(async move {
-            let reply = provider
-                .complete_full(&history, &model, effort.as_deref())
-                .await;
-            let _ = tx.send(Incoming::Chat(id, reply));
-        });
-    }
-
     /// Réponses arrivées, routées vers leur chat (non bloquant, id invalide
     /// ignoré). Rend vrai si au moins un message a été routé (rendu sale).
     fn drain_replies(&mut self) -> bool {
@@ -250,6 +219,7 @@ impl App {
                 }
                 Incoming::Compact(id, reply) => self.drain_compact(id, reply),
                 Incoming::Web(id, reply) => self.drain_web(id, reply),
+                Incoming::ToolDone(id, deliveries) => self.drain_tool_done(id, deliveries),
             }
         }
         routed
@@ -257,18 +227,29 @@ impl App {
 
     /// Modèle effectif : celui du chat courant, sinon le défaut provider.
     pub(crate) fn effective_model(&self) -> String {
-        self.effective_model_for(self.sessions.index())
+        self.effective_model_ref().to_string()
     }
 
     /// Modèle effectif du chat `idx` (le sien, sinon le défaut provider).
     pub(crate) fn effective_model_for(&self, idx: usize) -> String {
-        if let Some(model) = self.sessions.get(idx).and_then(|c| c.model.clone()) {
+        self.effective_model_ref_for(idx).to_string()
+    }
+
+    /// Modèle effectif du chat courant, emprunté (barre d'état, zéro alloc).
+    pub(crate) fn effective_model_ref(&self) -> &str {
+        self.effective_model_ref_for(self.sessions.index())
+    }
+
+    /// Modèle effectif du chat `idx`, emprunté : le sien, sinon le
+    /// défaut provider, sinon `—`.
+    fn effective_model_ref_for(&self, idx: usize) -> &str {
+        if let Some(model) = self.sessions.get(idx).and_then(|c| c.model.as_deref()) {
             return model;
         }
         self.provider
             .as_ref()
-            .map(|p| p.config().model.clone())
-            .unwrap_or_else(|| String::from("—"))
+            .map(|p| p.config().model.as_str())
+            .unwrap_or("—")
     }
 
     /// Thinking affiché (`None` → "default").
@@ -292,23 +273,33 @@ impl App {
         self.hub.sync(&self.sessions);
         self.hub.step();
         self.fx.tick(self.mascot.state() == MascotState::Spook);
+        if self.tick % 10 == 0 {
+            self.refresh_ctx_cache();
+        }
+    }
+
+    /// Rafraîchit la jauge contexte mise en cache (1×/s depuis `tick`,
+    /// + 1× à la construction) : la frame ne fait plus que lire.
+    pub(crate) fn refresh_ctx_cache(&mut self) {
+        self.ctx_used = self.context_used();
+        self.ctx_limit = self.context_limit();
     }
 }
 
 /// Nom court de modèle : après le dernier '/', max 14 caractères.
-pub fn short_model(model: &str) -> String {
-    model
-        .rsplit('/')
-        .next()
-        .unwrap_or(model)
-        .chars()
-        .take(14)
-        .collect()
+/// Emprunté quand rien n'est tronqué (cas courant, zéro alloc).
+pub fn short_model(model: &str) -> Cow<'_, str> {
+    let base = model.rsplit('/').next().unwrap_or(model);
+    match base.char_indices().map(|(i, _)| i).nth(14) {
+        Some(end) => Cow::Owned(base[..end].to_string()),
+        None => Cow::Borrowed(base),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands;
     use crate::provider::ProviderConfig;
     use crate::sessions::AgentStatus;
 
@@ -339,6 +330,7 @@ mod tests {
         let mut app = test_app();
         let done = |p, c| Completion {
             text: String::from("ok"),
+            tool_calls: Vec::new(),
             prompt_tokens: p,
             completion_tokens: c,
         };
@@ -349,11 +341,11 @@ mod tests {
             completion_tokens: 0,
         };
         let tx = app.tx.clone();
-        tx.send(Incoming::Chat(0, Ok(done(10, 5)))).unwrap();
-        tx.send(Incoming::Compact(7, Ok(done(3, 2)))).unwrap();
-        tx.send(Incoming::Chat(0, Err(anyhow::anyhow!("boom"))))
+        tx.try_send(Incoming::Chat(0, Ok(done(10, 5)))).unwrap();
+        tx.try_send(Incoming::Compact(7, Ok(done(3, 2)))).unwrap();
+        tx.try_send(Incoming::Chat(0, Err(anyhow::anyhow!("boom"))))
             .unwrap();
-        tx.send(Incoming::Web(0, Ok(raw_web))).unwrap();
+        tx.try_send(Incoming::Web(0, Ok(raw_web))).unwrap();
         app.drain_replies();
         let tonight = app.almanac.day(crate::almanac::today());
         assert_eq!((tonight.total(), tonight.calls), (20, 2));
@@ -433,6 +425,7 @@ mod tests {
         let id = app.sessions.add_agent(0, "prompt", history).unwrap();
         let done = Completion {
             text: String::from("réponse"),
+            tool_calls: Vec::new(),
             prompt_tokens: 10,
             completion_tokens: 5,
         };

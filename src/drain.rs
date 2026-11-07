@@ -14,6 +14,7 @@ use crate::app::{App, Incoming};
 use crate::apparition::Omen;
 use crate::bus::{LinkEnd, QueuedAsk, QueuedTell, MAX_AUTO_HOPS};
 use crate::chat::Role;
+use crate::events::Event;
 use crate::history::send_window;
 use crate::hub::Signal;
 use crate::provider::Completion;
@@ -25,6 +26,7 @@ impl Incoming {
     /// recherche web brute (aucun appel LLM).
     pub(crate) fn usage(&self) -> Option<(u64, u64)> {
         let billed = match self {
+            Incoming::ToolDone(..) => return None,
             Incoming::Chat(_, r) | Incoming::Compact(_, r) | Incoming::Agent(_, _, _, r) => {
                 let done = r.as_ref().ok()?;
                 (done.prompt_tokens, done.completion_tokens)
@@ -43,29 +45,52 @@ impl App {
     /// Réponse chat : ledger + historique + message (ou erreur système),
     /// puis file d'attente et liens auto (voir [`crate::bus`]).
     pub(crate) fn drain_chat(&mut self, id: usize, reply: Result<Completion>) {
-        let Some(sess) = self.sessions.get_mut(id) else {
-            return;
+        let elapsed = {
+            let Some(sess) = self.sessions.get_mut(id) else {
+                return;
+            };
+            sess.sending = false;
+            let elapsed = sess
+                .sending_since
+                .map(|t| t.elapsed().as_secs_f64())
+                .unwrap_or(0.0);
+            sess.sending_since = None;
+            elapsed
         };
-        sess.sending = false;
-        let elapsed = sess
-            .sending_since
-            .map(|t| t.elapsed().as_secs_f64())
-            .unwrap_or(0.0);
-        sess.sending_since = None;
         match reply {
             Ok(done) => {
-                sess.ledger
-                    .record(done.prompt_tokens, done.completion_tokens, elapsed);
-                sess.history
-                    .push(("assistant".to_string(), done.text.clone()));
+                if let Some(sess) = self.sessions.get_mut(id) {
+                    sess.ledger
+                        .record(done.prompt_tokens, done.completion_tokens, elapsed);
+                }
+                if !done.tool_calls.is_empty() && self.tool_budget_left() {
+                    self.drain_tool_calls(id, done);
+                    return;
+                }
+                self.tool_run = None;
+                let Some(sess) = self.sessions.get_mut(id) else {
+                    return;
+                };
+                if !done.tool_calls.is_empty() {
+                    sess.chat
+                        .push(Role::System, String::from("(tool limit reached)"));
+                }
+                sess.push_history("assistant", done.text.clone());
                 sess.chat.push(Role::Assistant, done.text.clone());
+                self.events.emit(&Event::assistant_msg(id, &done));
                 self.hub.signal(Signal::Reply { chat: id });
                 self.apparition.advance();
                 self.pump_chat_inbox(id);
                 self.fire_chat_links(id, &done.text);
             }
             Err(err) => {
-                sess.chat.push(Role::System, format!("error: {err:#}"));
+                self.tool_run = None;
+                let Some(sess) = self.sessions.get_mut(id) else {
+                    return;
+                };
+                let error = format!("{err:#}");
+                sess.chat.push(Role::System, format!("error: {error}"));
+                self.events.emit(&Event::assistant_error(id, &error));
                 self.apparition.omen(Omen::Error);
                 self.pump_chat_inbox(id);
             }
@@ -89,9 +114,12 @@ impl App {
             Err(err) => {
                 self.fail_agent(owner, agent_id);
                 self.apparition.omen(Omen::Error);
+                let error = format!("{err:#}");
+                self.events
+                    .emit(&Event::agent_failed(owner, agent_id, deliver, &error));
                 if let Some(dest) = self.sessions.get_mut(deliver) {
                     dest.chat
-                        .push(Role::System, format!("{tag} error: {err:#}"));
+                        .push(Role::System, format!("{tag} error: {error}"));
                 }
                 self.pump_agent_inbox(agent_id);
                 return;
@@ -105,10 +133,12 @@ impl App {
                 agent.push_assistant(done.text.clone());
             }
         }
+        self.events
+            .emit(&Event::agent_done(owner, agent_id, deliver, &done));
         if let Some(dest) = self.sessions.get_mut(deliver) {
             dest.ledger
                 .record(done.prompt_tokens, done.completion_tokens, 0.0);
-            let tagged = format!("{tag} {}", done.text.clone());
+            let tagged = format!("{tag} {}", done.text);
             dest.chat.push(Role::Assistant, tagged.clone());
             if dest.sending {
                 dest.inbox.push_back(QueuedTell {
@@ -117,7 +147,7 @@ impl App {
                     trigger: false,
                 });
             } else {
-                dest.history.push((String::from("user"), tagged));
+                dest.push_history("user", tagged);
             }
             self.hub.signal(Signal::Deliver {
                 agent: agent_id,
@@ -154,6 +184,7 @@ impl App {
                 let after = sess.history.len();
                 sess.chat
                     .push(Role::System, format!("compacted: {before}→{after}"));
+                self.events.emit(&Event::compacted(id, before, after));
                 self.apparition.omen(Omen::Compact);
             }
             Err(err) => {
@@ -182,26 +213,33 @@ impl App {
         let model = self.effective_model_for(idx);
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&history, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Chat(idx, reply));
+            let _ = tx.send(Incoming::Chat(idx, reply)).await;
         });
     }
 
-    /// Appel agent (échange déjà à jour) : tâche async, réponse livrée
-    /// à `deliver`. Sans provider : rien (l'agent garde son état).
+    /// Appel agent (échange déjà à jour) : tâche async sous permis,
+    /// réponse livrée à `deliver`. Le contexte système agents.md est
+    /// re-préfixé ici (une seule copie, en vol) : il n'est jamais
+    /// stocké dans l'agent (voir `cmd_agent`). Sans provider : rien.
     pub(crate) fn launch_agent(
         &mut self,
         owner: usize,
         agent_id: usize,
         deliver: usize,
-        history: Vec<(String, String)>,
+        mut history: Vec<(String, String)>,
     ) {
         let Some(provider) = self.provider.clone() else {
             return;
         };
+        if let Some(md) = &self.agents_md {
+            history.insert(0, (String::from("system"), md.clone()));
+        }
+        self.events
+            .emit(&Event::agent_ask(owner, agent_id, deliver, &history));
         self.hub.signal(Signal::Ask {
             from: deliver,
             agent: agent_id,
@@ -209,11 +247,13 @@ impl App {
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&history, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Agent(owner, agent_id, deliver, reply));
+            let _ = tx
+                .send(Incoming::Agent(owner, agent_id, deliver, reply))
+                .await;
         });
     }
 
@@ -238,7 +278,7 @@ impl App {
                 trigger = true;
                 hops = hops.max(queued.hops);
             }
-            sess.history.push((String::from("user"), queued.envelope));
+            sess.push_history("user", queued.envelope);
         }
         if !trigger {
             return;
@@ -387,6 +427,8 @@ impl App {
                     Role::Assistant,
                     format!("[web:{}] {}", done.backend, done.text),
                 );
+                self.events
+                    .emit(&Event::web_answer(id, done.backend, &done.text));
                 self.apparition.advance();
             }
             Err(err) => {
@@ -395,6 +437,37 @@ impl App {
                 self.apparition.omen(Omen::Error);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::events::EventLog;
+
+    /// `drain_chat` OK append une ligne `assistant_msg` au journal.
+    #[test]
+    fn drain_chat_ok_emits_assistant_msg() {
+        let path =
+            std::env::temp_dir().join(format!("crypte-drain-test-{}.jsonl", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut app = App::offline().unwrap();
+        app.events = EventLog::new(Some(path.clone()));
+        let done = Completion {
+            text: String::from("boo"),
+            tool_calls: Vec::new(),
+            prompt_tokens: 3,
+            completion_tokens: 5,
+        };
+        app.drain_chat(0, Ok(done));
+        let content = std::fs::read_to_string(&path).unwrap();
+        let line = content.lines().next().unwrap();
+        let v: serde_json::Value = serde_json::from_str(line).unwrap();
+        assert_eq!(v["type"], "assistant_msg");
+        assert_eq!(v["chat"], 1);
+        assert_eq!(v["text"], "boo");
+        assert_eq!(v["completion_tokens"], 5);
+        let _ = std::fs::remove_file(&path);
     }
 }
 

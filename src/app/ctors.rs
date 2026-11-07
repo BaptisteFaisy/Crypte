@@ -13,11 +13,13 @@ use crate::apparition::Apparition;
 use crate::bus::Bus;
 use crate::chat::Role;
 use crate::connect::NOT_CONNECTED;
+use crate::events::EventLog;
 use crate::fx::Fx;
 use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
 use crate::hub::Hub;
 use crate::mascot::Mascot;
+use crate::pool::{SpawnPool, INCOMING_CAP};
 use crate::provider::{Provider, ProviderConfig};
 use crate::sessions::Sessions;
 
@@ -97,7 +99,7 @@ impl App {
         lazy: bool,
         hint_connect: bool,
     ) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(INCOMING_CAP);
         let mut app = Self {
             mascot: Mascot::new(),
             fx: Fx::new(),
@@ -107,6 +109,8 @@ impl App {
             galerie: Galerie::new(),
             tick: 0,
             busy: false,
+            ctx_used: 0,
+            ctx_limit: 0,
             sessions: Sessions::new(),
             almanac: Almanac::memory(),
             bus: Bus::new(),
@@ -117,18 +121,25 @@ impl App {
             agents_tried: !lazy,
             screen: Screen::Chat,
             plus_btn: None,
+            side_rows: None,
+            tab_hits: Vec::new(),
             thinking: None,
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
+            tools_on: true,
+            tool_run: None,
             chats_path: None,
+            events: EventLog::disabled(),
             tx,
             rx,
+            pool: SpawnPool::new(),
         };
         app.pin_current();
         app.announce_agents_md();
         if hint_connect {
             app.push_system(String::from(NOT_CONNECTED));
         }
+        app.refresh_ctx_cache();
         app
     }
 
@@ -147,10 +158,20 @@ impl App {
         self.announce_agents_md();
     }
 
+    /// Nouveau chat + pin agents.md si chargé (Ctrl+N, `/new`).
+    pub(crate) fn add_chat(&mut self) {
+        self.sessions.add();
+        self.pin_current();
+        let at = self.sessions.index();
+        let name = self.sessions.current().name.clone();
+        self.events
+            .emit(&crate::events::Event::chat_created(at, &name));
+    }
+
     /// Épingle agents.md en tête du chat courant (si chargé).
     pub(super) fn pin_current(&mut self) {
-        if let Some(content) = self.agents_md.clone() {
-            self.sessions.current_mut().pin_system(&content);
+        if let Some(content) = &self.agents_md {
+            self.sessions.current_mut().pin_system(content);
         }
     }
 

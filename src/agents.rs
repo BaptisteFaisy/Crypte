@@ -41,9 +41,15 @@ pub fn stats(content: &str) -> (usize, usize) {
     (content.lines().count(), crate::tokens::estimate(content))
 }
 
+/// `(lignes, ~tokens)` heuristiques, sans charger l'encodeur BPE (~32 Mo
+/// économisés à l'idle quand agents.md est présent).
+pub fn stats_fast(content: &str) -> (usize, usize) {
+    (content.lines().count(), crate::tokens::heuristic(content))
+}
+
 /// Annonce de chargement : `AGENTS.md loaded (N lines, ~M tokens)`.
 pub fn loaded_message(content: &str) -> String {
-    let (lines, toks) = stats(content);
+    let (lines, toks) = stats_fast(content);
     format!("AGENTS.md loaded ({lines} lines, ~{toks} tokens)")
 }
 
@@ -192,11 +198,26 @@ mod tests {
         let (lines, toks) = stats(text);
         assert_eq!(lines, 2);
         assert!(toks > 0);
+        let (fast_lines, fast_toks) = stats_fast(text);
+        assert_eq!((fast_lines, fast_toks), (2, text.len().div_ceil(4)));
         assert_eq!(
             loaded_message(text),
-            format!("AGENTS.md loaded (2 lines, ~{toks} tokens)")
+            format!("AGENTS.md loaded (2 lines, ~{fast_toks} tokens)")
         );
         assert!(usage_line(Some(text)).starts_with("agents.md: loaded"));
         assert_eq!(usage_line(None), "agents.md: missing");
+    }
+
+    #[test]
+    fn boot_announce_uses_heuristic_not_bpe() {
+        // `anticonstitutionnellement` : 25 lettres → heuristique 7,
+        // BPE o200k ≈ 4-5 : l'annonce de démarrage affiche 7.
+        let text = "anticonstitutionnellement";
+        assert_eq!(stats_fast(text).1, 7);
+        assert_eq!(
+            loaded_message(text),
+            "AGENTS.md loaded (1 lines, ~7 tokens)"
+        );
+        assert_ne!(stats(text).1, 7);
     }
 }

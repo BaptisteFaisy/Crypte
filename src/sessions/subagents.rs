@@ -4,6 +4,7 @@
 //! chargé au démarrage et pinné en tête d'historique).
 
 use std::collections::VecDeque;
+use std::path::PathBuf;
 
 use crate::bus::QueuedAsk;
 
@@ -34,7 +35,9 @@ pub enum AskError {
 }
 
 /// Un sous-agent : requête annexe dont la réponse arrive en async.
-/// `history` garde l'échange complet (pour `/ask` : suite de conversation).
+/// `history` garde l'échange user/assistant (`/ask` : suite de
+/// conversation) ; le système agents.md n'y est pas stocké
+/// (re-préfixé à chaque appel, voir `launch_agent`).
 #[derive(Debug, Clone)]
 pub struct SubAgent {
     pub id: usize,
@@ -48,6 +51,8 @@ pub struct SubAgent {
     pub inbox: VecDeque<QueuedAsk>,
     /// Relais auto de l'appel en vol (0 = déclenché par le user).
     pub auto_hops: u8,
+    /// Workspace disque (`None` si pas créé : HOME absent ou échec).
+    pub workspace: Option<PathBuf>,
 }
 
 impl SubAgent {
@@ -62,6 +67,7 @@ impl SubAgent {
             history,
             inbox: VecDeque::new(),
             auto_hops: 0,
+            workspace: None,
         }
     }
 
