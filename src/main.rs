@@ -60,13 +60,13 @@ USAGE:
 
 OPTIONS:
     -h, --help            Show this help
-        --smoke           Headless check render (80x24, no network, no key)
+        --smoke           Headless check render (80x24 + 70x17, no network, no key)
         --config <file>   Provider TOML file (flat keys or [provider])
         --once <text>     One user call then exit (prints text + usage)
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 4 screens (120x36, offline) as ANSI
+        --preview <file>  Write the 4 screens (120x36 + 70x17, offline) as ANSI
         --demo            Offline demo crypt, opened on the spirit hub (F7)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
 
@@ -90,7 +90,7 @@ AGENTS.MD (system context, read once at first send):
     Pinned atop every chat + /agent calls (see /usage)
     Excluded from /compact (meta summary) and from --once (raw)
 
-KEYS (terminal >= 80x24):
+KEYS (terminal >= 70x17):
     Enter  send    q  quit    F5  scare
     F3/F4  previous/next chat    Ctrl+N or click [+]  new chat    F6  bestiary    F7  hub
     F8  almanac (tokens per day, kept across sessions)
@@ -318,8 +318,8 @@ fn render(app: &mut App, screen: Screen, w: u16, h: u16) -> Result<Buffer> {
     Ok(term.backend().buffer().clone())
 }
 
-/// Controle headless : une frame 80x24 de l'UI complète (chat, Kiro,
-/// apparition, effets), sans reseau ni cle API. Echec = `Err`.
+/// Controle headless : frames 80x24 (chat + almanach) + 70x17
+/// (minimum, 4 écrans), sans reseau ni cle API. Echec = `Err`.
 fn smoke() -> Result<()> {
     let mut app = demo_app()?;
     let buf = render(&mut app, Screen::Chat, 80, 24)?;
@@ -330,6 +330,20 @@ fn smoke() -> Result<()> {
     let bars = buf.content.iter().filter(|c| c.symbol() == "█").count();
     anyhow::ensure!(bars > 0, "almanac frame has no bars");
     println!("smoke OK: almanac 80x24, {bars} bar cells");
+    for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
+        let buf = render(&mut app, screen, 70, 17)?;
+        let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
+        anyhow::ensure!(
+            filled > 60,
+            "70x17 frame almost empty ({filled} cells, {screen:?})"
+        );
+        let top: String = (0..70).map(|x| buf[(x, 0)].symbol()).collect();
+        anyhow::ensure!(
+            top.contains("CRYPT"),
+            "header missing at 70x17 ({screen:?})"
+        );
+    }
+    println!("smoke OK: 70x17 frames, 4 screens");
     println!(
         "smoke OK: tokens estimate('hello')={}",
         crate::tokens::estimate("hello")
@@ -337,17 +351,27 @@ fn smoke() -> Result<()> {
     Ok(())
 }
 
-/// Écrit les 4 écrans (120x36, hors ligne) en ANSI truecolor dans `path` :
+/// Écrit les 8 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
 /// `cat <fichier>` dans Ghostty montre l'UI sans clé ni réseau.
 fn apercu(path: &str) -> Result<()> {
     let mut app = demo_app()?;
     let mut out = String::new();
-    for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
-        out.push_str(&to_ansi(&render(&mut app, screen, 120, 36)?));
+    for (screen, w, h) in [
+        (Screen::Chat, 120, 36),
+        (Screen::Bestiary, 120, 36),
+        (Screen::Hub, 120, 36),
+        (Screen::Almanac, 120, 36),
+        (Screen::Chat, 70, 17),
+        (Screen::Bestiary, 70, 17),
+        (Screen::Hub, 70, 17),
+        (Screen::Almanac, 70, 17),
+    ] {
+        out.push_str(&format!("=== {screen:?} {w}x{h} ===\n"));
+        out.push_str(&to_ansi(&render(&mut app, screen, w, h)?));
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (4 screens 120x36)");
+    println!("preview: {path} (120x36 + 70x17, 4 screens)");
     Ok(())
 }
 
