@@ -1,11 +1,13 @@
 //! Commandes slash du chat (`/usage`, `/new`, `/thinking`, `/model`,
-//! `/agent`, `/agents`, `/ask`, `/tell`, `/compact`, `/connect`, `/help`).
+//! `/agent`, `/agents`, `/ask`, `/tell`, `/msg`, `/link`, `/links`,
+//! `/unlink`, `/compact`, `/connect`, `/help`).
 //!
-//! `parse` matche le premier mot ; `/agent`, `/ask` et `/tell` consomment
-//! le reste de la ligne (cible + texte), sinon le reste est ignoré.
-//! `usage_text` met en forme le registre du chat courant et le registre
-//! cumulé de la session.
+//! `parse` matche le premier mot ; `/agent`, `/ask`, `/tell`, `/msg`,
+//! `/link` et `/unlink` consomment le reste de la ligne (cible + texte),
+//! sinon le reste est ignoré. `usage_text` met en forme le registre du
+//! chat courant et le registre cumulé de la session.
 
+use crate::bus::{LinkEnd, Target};
 use crate::tokens::{fmt_cost, fmt_tps, TokenLedger};
 
 /// Vrai si la saisie est une commande (commence par `/` après trim).
@@ -25,7 +27,9 @@ pub enum Command {
         target: Option<usize>,
         prompt: String,
     },
-    Agents,
+    Agents {
+        all: bool,
+    },
     Ask {
         agent: usize,
         text: String,
@@ -34,16 +38,40 @@ pub enum Command {
         target: usize,
         text: String,
     },
+    Msg {
+        to: MsgTarget,
+        text: String,
+    },
+    Link {
+        from: LinkEnd,
+        to: LinkEnd,
+    },
+    Links,
+    Unlink {
+        from: LinkEnd,
+        to: LinkEnd,
+    },
     Compact,
     Hint(&'static str),
     Connect(Option<String>),
     Unknown(String),
 }
 
-/// Aides d'usage (commandes `/tell` `/ask` `/agent` mal formées).
+/// Cible `/msg` : une cible (`2`, `@2`, `#3`) ou tous les autres chats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MsgTarget {
+    One(Target),
+    All,
+}
+
+/// Aides d'usage (commandes `/tell` `/ask` `/agent` `/msg` `/link`
+/// `/unlink` mal formées).
 pub const TELL_USAGE: &str = "usage: /tell <n> <text> — talk to chat n";
 pub const ASK_USAGE: &str = "usage: /ask #<id> <text> — follow up with an agent";
 pub const AGENT_USAGE: &str = "usage: /agent [@<n>] <text> — sub-agent (reply goes to chat n)";
+pub const MSG_USAGE: &str = "usage: /msg <n|@n|#id|all> <text> — talk to a chat, an agent, all";
+pub const LINK_USAGE: &str = "usage: /link <n|#id> <n|#id> — replies from one go to the other";
+pub const UNLINK_USAGE: &str = "usage: /unlink <n|#id> <n|#id> — remove a link";
 
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
@@ -63,12 +91,18 @@ pub fn parse(input: &str) -> Option<Command> {
         "/help" => Some(Command::Help),
         "/thinking" => Some(Command::Thinking(opt_arg(&mut parts))),
         "/model" => Some(Command::Model(opt_arg(&mut parts))),
-        "/agents" => Some(Command::Agents),
+        "/agents" => Some(Command::Agents {
+            all: opt_arg(&mut parts).as_deref() == Some("all"),
+        }),
         "/compact" => Some(Command::Compact),
         "/connect" => Some(Command::Connect(opt_arg(&mut parts))),
+        "/links" => Some(Command::Links),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),
         "/tell" => parse_tell(trimmed, word),
+        "/msg" => parse_msg(trimmed, word),
+        "/link" => parse_link(trimmed, word),
+        "/unlink" => parse_unlink(trimmed, word),
         _ => Some(Command::Unknown(word.to_string())),
     }
 }
@@ -144,6 +178,55 @@ fn parse_tell(trimmed: &str, word: &str) -> Option<Command> {
     }
 }
 
+/// `/msg <cible|all> <texte...>` : `2`/`@2` chat, `#3` agent, `all`
+/// tous les autres chats ; mal formé → aide d'usage.
+fn parse_msg(trimmed: &str, word: &str) -> Option<Command> {
+    let rest = trimmed[word.len()..].trim();
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let token = parts.next().unwrap_or("").trim();
+    let text = parts.next().map(str::trim).unwrap_or("");
+    if text.is_empty() {
+        return Some(Command::Hint(MSG_USAGE));
+    }
+    if token.eq_ignore_ascii_case("all") {
+        return Some(Command::Msg {
+            to: MsgTarget::All,
+            text: text.to_string(),
+        });
+    }
+    match crate::bus::parse_target(token) {
+        Some(target) => Some(Command::Msg {
+            to: MsgTarget::One(target),
+            text: text.to_string(),
+        }),
+        None => Some(Command::Hint(MSG_USAGE)),
+    }
+}
+
+/// Deux extrémités (`2`/`@2`/`#3`) séparées par un espace, rien de plus.
+fn parse_two_ends(rest: &str) -> Option<(LinkEnd, LinkEnd)> {
+    let mut parts = rest.split_whitespace();
+    let from = crate::bus::parse_target(parts.next()?).map(LinkEnd::from_target)?;
+    let to = crate::bus::parse_target(parts.next()?).map(LinkEnd::from_target)?;
+    parts.next().is_none().then_some((from, to))
+}
+
+/// `/link <a> <b>` : les réponses de `a` vont à `b` ; mal formé → aide.
+fn parse_link(trimmed: &str, word: &str) -> Option<Command> {
+    match parse_two_ends(trimmed[word.len()..].trim()) {
+        Some((from, to)) => Some(Command::Link { from, to }),
+        None => Some(Command::Hint(LINK_USAGE)),
+    }
+}
+
+/// `/unlink <a> <b>` : retire le lien ; mal formé → aide.
+fn parse_unlink(trimmed: &str, word: &str) -> Option<Command> {
+    match parse_two_ends(trimmed[word.len()..].trim()) {
+        Some((from, to)) => Some(Command::Unlink { from, to }),
+        None => Some(Command::Hint(UNLINK_USAGE)),
+    }
+}
+
 /// Niveaux d'effort acceptés : default/low/medium/high uniquement.
 pub fn valid_effort(s: &str) -> bool {
     matches!(s, "default" | "low" | "medium" | "high")
@@ -179,7 +262,7 @@ pub fn usage_text(
     )
 }
 
-/// Aide : les 11 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 15 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (current chat + session total)\n\
@@ -187,9 +270,13 @@ pub fn help_text() -> &'static str {
      /thinking [level] — reasoning level (default/low/medium/high)\n\
      /model [name|reset] — show or change the model\n\
      /agent [@<n>] <text> — sub-agent (reply goes to chat n if targeted)\n\
-     /agents — list active sub-agents\n\
+     /agents [all] — list sub-agents (all = every chat)\n\
      /ask #<id> <text> — follow up with an agent\n\
      /tell <n> <text> — talk to chat n\n\
+     /msg <n|@n|#id|all> <text> — talk to a chat, an agent, all\n\
+     /link <a> <b> — replies from a go to b (auto)\n\
+     /links — list auto links\n\
+     /unlink <a> <b> — remove a link\n\
      /compact — compact the current chat history\n\
      /connect [openai|muse] — connect (status if no argument)\n\
      /help — this help\n\
@@ -241,7 +328,9 @@ mod tests {
             parse("/agent   "),
             Some(Command::Unknown(String::from("/agent")))
         );
-        assert_eq!(parse("/agents"), Some(Command::Agents));
+        assert_eq!(parse("/agents"), Some(Command::Agents { all: false }));
+        assert_eq!(parse("/agents all"), Some(Command::Agents { all: true }));
+        assert_eq!(parse("/agents x"), Some(Command::Agents { all: false }));
         assert_eq!(parse("/compact"), Some(Command::Compact));
         assert_eq!(parse("/connect"), Some(Command::Connect(None)));
         assert_eq!(
@@ -286,6 +375,68 @@ mod tests {
         assert_eq!(parse("/ask"), Some(Command::Hint(ASK_USAGE)));
         assert_eq!(parse("/ask #3"), Some(Command::Hint(ASK_USAGE)));
         assert_eq!(parse("/ask x suite"), Some(Command::Hint(ASK_USAGE)));
+    }
+
+    #[test]
+    fn parse_msg_cible_chat_agent_ou_diffusion() {
+        assert_eq!(
+            parse("/msg 2 bonjour"),
+            Some(Command::Msg {
+                to: MsgTarget::One(Target::Chat(2)),
+                text: String::from("bonjour")
+            })
+        );
+        assert_eq!(
+            parse("/msg @2 bonjour"),
+            Some(Command::Msg {
+                to: MsgTarget::One(Target::Chat(2)),
+                text: String::from("bonjour")
+            })
+        );
+        assert_eq!(
+            parse("/msg #3 suite"),
+            Some(Command::Msg {
+                to: MsgTarget::One(Target::Agent(3)),
+                text: String::from("suite")
+            })
+        );
+        assert_eq!(
+            parse("/msg ALL go"),
+            Some(Command::Msg {
+                to: MsgTarget::All,
+                text: String::from("go")
+            })
+        );
+        assert_eq!(parse("/msg"), Some(Command::Hint(MSG_USAGE)));
+        assert_eq!(parse("/msg 2"), Some(Command::Hint(MSG_USAGE)));
+        assert_eq!(parse("/msg x bonjour"), Some(Command::Hint(MSG_USAGE)));
+        assert_eq!(parse("/msg 0 bonjour"), Some(Command::Hint(MSG_USAGE)));
+        assert_eq!(parse("/links"), Some(Command::Links));
+    }
+
+    #[test]
+    fn parse_link_unlink_deux_bouts_stricts() {
+        let chat = LinkEnd::Chat(0);
+        let agent = LinkEnd::Agent(3);
+        assert_eq!(
+            parse("/link 1 #3"),
+            Some(Command::Link {
+                from: chat,
+                to: agent
+            })
+        );
+        assert_eq!(
+            parse("/unlink #3 @1"),
+            Some(Command::Unlink {
+                from: agent,
+                to: chat
+            })
+        );
+        assert_eq!(parse("/link 1"), Some(Command::Hint(LINK_USAGE)));
+        assert_eq!(parse("/link 1 2 x"), Some(Command::Hint(LINK_USAGE)));
+        assert_eq!(parse("/link x 2"), Some(Command::Hint(LINK_USAGE)));
+        assert_eq!(parse("/unlink"), Some(Command::Hint(UNLINK_USAGE)));
+        assert_eq!(parse("/unlink 1"), Some(Command::Hint(UNLINK_USAGE)));
     }
 
     #[test]

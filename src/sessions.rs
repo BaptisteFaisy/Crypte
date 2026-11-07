@@ -3,8 +3,10 @@
 //! `Sessions` garde les chats ouverts et le courant ; le rendu de la
 //! colonne gauche vit dans `sidebar` (`Sessions::draw_sidebar`).
 
+use std::collections::VecDeque;
 use std::time::Instant;
 
+use crate::bus::{QueuedAsk, QueuedTell};
 use crate::chat::ChatState;
 use crate::tokens::TokenLedger;
 
@@ -22,6 +24,10 @@ pub struct ChatSession {
     pub agents: Vec<SubAgent>,
     /// Vrai si `history[0]` est le contexte agents.md pinné.
     pub pinned_system: bool,
+    /// Tells en attente (affichés aussitôt, déclenchés dès que libre).
+    pub inbox: VecDeque<QueuedTell>,
+    /// Relais auto de la réponse en vol (0 = déclenchée par le user).
+    pub auto_hops: u8,
 }
 
 impl ChatSession {
@@ -37,6 +43,8 @@ impl ChatSession {
             model: None,
             agents: Vec::new(),
             pinned_system: false,
+            inbox: VecDeque::new(),
+            auto_hops: 0,
         }
     }
 
@@ -94,6 +102,10 @@ pub struct SubAgent {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub history: Vec<(String, String)>,
+    /// Asks en attente (déclenchés dès que l'agent est libre).
+    pub inbox: VecDeque<QueuedAsk>,
+    /// Relais auto de l'appel en vol (0 = déclenché par le user).
+    pub auto_hops: u8,
 }
 
 impl SubAgent {
@@ -106,6 +118,8 @@ impl SubAgent {
             prompt_tokens: 0,
             completion_tokens: 0,
             history,
+            inbox: VecDeque::new(),
+            auto_hops: 0,
         }
     }
 
@@ -199,6 +213,13 @@ impl Sessions {
                 .find(|a| a.id == agent_id)
                 .map(|a| (i, a))
         })
+    }
+
+    /// Vrai si un agent porte cet id global (validation des liens).
+    pub fn has_agent(&self, agent_id: usize) -> bool {
+        self.chats
+            .iter()
+            .any(|c| c.agents.iter().any(|a| a.id == agent_id))
     }
 
     /// Prépare une suite de conversation `/ask` : pousse le texte user,

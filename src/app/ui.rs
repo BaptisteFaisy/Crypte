@@ -13,13 +13,33 @@ use ratatui::{
     Frame,
 };
 
-use super::{short_model, App, Screen};
+use super::{short_model, App};
 use crate::bestiary::{self, Creature};
 use crate::chat::ChatView;
 use crate::gfx::ImageBank;
 use crate::mascot::MascotState;
 use crate::theme::{self, ASH, BLOOD, BONE, CANDLE, ECTO, PUMPKIN, SAND, SPECTRE, UMBER, VOID};
 use crate::tokens::fmt_tps;
+
+/// Écran affiché dans la zone principale.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Screen {
+    #[default]
+    Chat,
+    Tokens,
+    Bestiary,
+}
+
+impl Screen {
+    /// `target` si on n'y est pas déjà, sinon retour au chat (F2, F6).
+    pub(crate) fn toggle(self, target: Screen) -> Self {
+        if self == target {
+            Screen::Chat
+        } else {
+            target
+        }
+    }
+}
 
 /// Huitièmes de bloc pour une jauge lisse.
 const EIGHTHS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];

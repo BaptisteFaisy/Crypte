@@ -194,19 +194,23 @@ agents.md prefixed if loaded, current model and thinking); the
 reply arrives async prefixed `[agent#id]` (or `[agent#id from Chat k]`
 if delivered elsewhere via `@<n>`) and the status shows in the sidebar
 (`A{n}`) then via `/agents` (`running` / `done` / `failed`, tokens
-used). `/ask #<id> <text>` continues the conversation with an agent
-(exchange kept, 20 messages max, `system` head kept); refused if
-the agent is running. Every LLM call is still user-triggered:
-no automatic loops between agents.
+used, queue in brackets). `/ask #<id> <text>` continues the
+conversation with an agent (exchange kept, 20 messages max, `system`
+head kept); if it is running, queued and triggered once free.
+`/agents all` lists the agents of every chat.
 
-## Dialogues between chats
+## Dialogues between chats (bus)
 
-`/tell <n> <text>` injects the text into chat n (prefixed `[from Chat k]`)
-and triggers its reply (target chat model, global thinking); refused
-if the target chat is sending, missing, or is the current chat.
-Combined with `/agent @<n>`, it makes chats and sub-agents talk to
-each other: delegation (chat 1 → agent → reply delivered to chat 2),
-follow-up (`/ask`), discussion (`/tell` + target chat reply).
+`/tell <n> <text>` injects the text into chat n (prefixed `[from Chat k]`,
+shown at once) and triggers its reply (target chat model, global thinking);
+if it is busy, queued (grouped reply once free) — never refused, zero
+retry. Only refused if the target is missing or is the current chat.
+`/msg <n|@n|#id|all> <text>` talks to a chat, an agent (delivered here)
+or every other chat in a parallel fan-out. `/link <a> <b>` automatically
+forwards every reply from `a` to `b` (chat or agent, `[auto …]`, triggers
+its reply); `/links` lists the rules + counters, `/unlink` removes. Auto
+chains are capped at 8 hops (loop guard, note at the source). Every chain
+stays user-originated (command or user-made link): no infinite loops.
 
 ## Compact
 
