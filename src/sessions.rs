@@ -151,10 +151,9 @@ impl Sessions {
         self.chats.len()
     }
 
-    /// Registre cumulé = somme des registres des chats.
+    /// Registre cumulé = somme des registres des chats, sans copie.
     pub fn total_ledger(&self) -> TokenLedger {
-        let ledgers: Vec<TokenLedger> = self.chats.iter().map(|c| c.ledger.clone()).collect();
-        TokenLedger::total_of(&ledgers)
+        TokenLedger::total_of_iter(self.chats.iter().map(|c| &c.ledger))
     }
 
     /// Cumul global : tokens de tous les chats (agents et compacts
