@@ -37,16 +37,20 @@ use crate::permissions::Mode;
 use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
+use crate::tools::flow::Delivery;
+use crate::tools::flow::ToolRun;
 use crate::web::WebAnswer;
 
 /// Message async d'une tâche provider : chat (`idx`), agent
 /// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
-/// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]).
+/// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]),
+/// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]).
 pub(crate) enum Incoming {
     Chat(usize, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
     Compact(usize, Result<Completion>),
     Web(usize, Result<WebAnswer>),
+    ToolDone(usize, Vec<Delivery>),
 }
 
 /// État global de l'application.
@@ -88,6 +92,10 @@ pub struct App {
     pub(crate) permissions: Mode,
     /// Fichier de persistance du mode (`None` si `HOME` manquant).
     pub(crate) permissions_path: Option<PathBuf>,
+    /// Envois outillés (`/tools on`, défaut) ; boucle agent dans `tool_run`.
+    pub(crate) tools_on: bool,
+    /// Boucle agent en cours (`None` = aucun envoi outillé actif).
+    pub(crate) tool_run: Option<ToolRun>,
     /// Fichier de persistance des chats (`None` = off : tests, smoke, demo).
     pub(crate) chats_path: Option<PathBuf>,
     /// Journal d'événements temps réel (`--events-log`, désactivé sinon).
@@ -153,8 +161,11 @@ impl App {
     }
 
     /// Traite une touche ; renvoie false pour quitter.
-    /// Flow `/connect` actif : touches dédiées (pas de quit direct).
+    /// Confirmation outil ou flow `/connect` : touches dédiées (pas de quit).
     fn on_key(&mut self, key: KeyEvent) -> bool {
+        if self.tool_run.as_ref().is_some_and(|run| run.confirming) {
+            return self.on_tool_key(key);
+        }
         if self.connect_flow.is_some() {
             return self.on_flow_key(key);
         }
@@ -239,12 +250,30 @@ impl App {
         sess.sending = true;
         sess.auto_hops = 0;
         sess.sending_since = Some(Instant::now());
-        self.pool.spawn(async move {
-            let reply = provider
-                .complete_full(&history, &model, effort.as_deref())
-                .await;
-            let _ = tx.send(Incoming::Chat(id, reply)).await;
-        });
+        if self.tools_on {
+            let mut wire: Vec<crate::tools::WireMsg> = history
+                .into_iter()
+                .map(|(role, content)| crate::tools::WireMsg::text(role, content))
+                .collect();
+            wire.push(crate::tools::WireMsg::text(
+                String::from("system"),
+                String::from(crate::tools::GUIDE),
+            ));
+            self.pool.spawn(async move {
+                let tools = crate::tools::defs();
+                let reply = provider
+                    .complete_with_tools(&wire, &tools, &model, effort.as_deref())
+                    .await;
+                let _ = tx.send(Incoming::Chat(id, reply)).await;
+            });
+        } else {
+            self.pool.spawn(async move {
+                let reply = provider
+                    .complete_full(&history, &model, effort.as_deref())
+                    .await;
+                let _ = tx.send(Incoming::Chat(id, reply)).await;
+            });
+        }
     }
 
     /// Réponses arrivées, routées vers leur chat (non bloquant, id invalide
@@ -263,6 +292,7 @@ impl App {
                 }
                 Incoming::Compact(id, reply) => self.drain_compact(id, reply),
                 Incoming::Web(id, reply) => self.drain_web(id, reply),
+                Incoming::ToolDone(id, deliveries) => self.drain_tool_done(id, deliveries),
             }
         }
         routed
@@ -372,6 +402,7 @@ mod tests {
         let mut app = test_app();
         let done = |p, c| Completion {
             text: String::from("ok"),
+            tool_calls: Vec::new(),
             prompt_tokens: p,
             completion_tokens: c,
         };
@@ -466,6 +497,7 @@ mod tests {
         let id = app.sessions.add_agent(0, "prompt", history).unwrap();
         let done = Completion {
             text: String::from("réponse"),
+            tool_calls: Vec::new(),
             prompt_tokens: 10,
             completion_tokens: 5,
         };

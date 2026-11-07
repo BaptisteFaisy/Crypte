@@ -126,6 +126,8 @@ impl App {
             thinking: None,
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
+            tools_on: true,
+            tool_run: None,
             chats_path: None,
             events: EventLog::disabled(),
             tx,
