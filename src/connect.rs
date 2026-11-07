@@ -16,7 +16,7 @@ use crate::app::App;
 use crate::provider::{connect_defaults, provider_label, Provider, ProviderConfig};
 
 /// Message quand un envoi exige une connexion absente.
-pub(crate) const NOT_CONNECTED: &str = "not connected: /connect openai|muse";
+pub(crate) const NOT_CONNECTED: &str = "not connected: /connect <provider> or /settings";
 
 /// Étape du flow de connexion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,12 +67,21 @@ impl App {
                     cfg.model
                 ));
             }
-            None => self.push_system(String::from(NOT_CONNECTED)),
+            None => {
+                let keyed = self.settings.keyed_count();
+                self.push_system(String::from(NOT_CONNECTED));
+                self.push_system(format!(
+                    "{keyed} provider keys saved — /settings to list and edit"
+                ));
+            }
         }
     }
 
-    /// `/connect muse` : store Muse si lisible, sinon saisie manuelle.
+    /// `/connect muse` : clé du coffre, sinon store Muse, sinon saisie.
     fn cmd_connect_muse(&mut self) {
+        if let Some(cfg) = self.settings.config_for("muse") {
+            return self.connect_saved(cfg, "muse");
+        }
         let from_store = ProviderConfig::muse_auth_path().and_then(ProviderConfig::from_muse_auth);
         match from_store {
             Ok(cfg) => self.apply_connected(cfg, "muse"),
@@ -86,9 +95,14 @@ impl App {
     /// Démarre le flow (étape clé, saisie masquée).
     /// Provider inconnu → erreur système + valeurs valides, sans flow.
     pub(crate) fn start_connect_flow(&mut self, provider: &str) {
+        // A key saved through `/settings` connects straight away.
+        if let Some(cfg) = self.settings.config_for(provider) {
+            self.connect_saved(cfg, provider);
+            return;
+        }
         if connect_defaults(provider).is_none() {
             self.push_system(format!(
-                "unknown provider: {provider} — values: openai, muse"
+                "unknown provider: {provider} — /settings lists every provider"
             ));
             return;
         }

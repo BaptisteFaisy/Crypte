@@ -2,7 +2,7 @@
 //!
 //! Extrait de `commands.rs` (limite 500 lignes) : pur, sans état.
 
-/// Aide : les 20 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 22 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (chat + session + all-time almanac)\n\
@@ -19,7 +19,9 @@ pub fn help_text() -> &'static str {
      /links — list auto links\n\
      /unlink <a> <b> — remove a link\n\
      /compact — compact the current chat history\n\
-     /connect [openai|muse] — connect (status if no argument)\n\
+     /connect [openai|muse] — connect (status if no argument)
+     /settings [name] — providers screen: encrypted API keys
+     /settings add <name> <base_url> [model] — custom provider\n\
      /permissions [yolo|auto] — tools mode: ask or run free (remembered)\n\
      /web <query> — web search + summary with cited sources\n\
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\

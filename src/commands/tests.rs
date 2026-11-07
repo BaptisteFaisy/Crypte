@@ -221,3 +221,22 @@ fn parse_agent_cible_optionnelle() {
     );
     assert_eq!(parse("/agent @0 x"), Some(Command::Hint(AGENT_USAGE)));
 }
+
+#[test]
+fn parse_settings_et_alias() {
+    assert_eq!(parse("/settings"), Some(Command::Settings(String::new())));
+    assert_eq!(
+        parse("  /setting  "),
+        Some(Command::Settings(String::new()))
+    );
+    assert_eq!(
+        parse("/params openai"),
+        Some(Command::Settings(String::from("openai")))
+    );
+    assert_eq!(
+        parse("/settings add ds http://127.0.0.1:9/v1 m"),
+        Some(Command::Settings(String::from(
+            "add ds http://127.0.0.1:9/v1 m"
+        )))
+    );
+}

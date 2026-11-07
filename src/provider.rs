@@ -137,7 +137,8 @@ pub fn connect_defaults(provider: &str) -> Option<(&'static str, &'static str)> 
     match provider {
         "openai" => Some((OPENAI_BASE_URL, OPENAI_DEFAULT_MODEL)),
         "muse" => Some((MUSE_BASE_URL, MUSE_DEFAULT_MODEL)),
-        _ => None,
+        // Anything shipped by `/settings` (fireworks, groq, local, …).
+        other => crate::settings::known_defaults(other),
     }
 }
 

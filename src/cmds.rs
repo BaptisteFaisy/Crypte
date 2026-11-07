@@ -41,6 +41,7 @@ impl App {
             Some(Command::Compact) => self.cmd_compact(),
             Some(Command::Hint(msg)) => self.push_system(msg.to_string()),
             Some(Command::Connect(arg)) => self.cmd_connect(arg),
+            Some(Command::Settings(arg)) => self.open_settings(arg),
             Some(Command::Permissions(arg)) => self.cmd_permissions(arg),
             Some(Command::Web(query)) => self.cmd_web(query),
             Some(Command::Tools(arg)) => self.cmd_tools(arg),

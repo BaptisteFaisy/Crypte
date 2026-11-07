@@ -27,6 +27,7 @@ pub enum Screen {
     #[default]
     Chat,
     Hub,
+    Settings,
 }
 
 /// Huitièmes de bloc pour une jauge lisse.
@@ -69,6 +70,7 @@ impl App {
         match self.screen {
             Screen::Chat => self.draw_chat(frame, body),
             Screen::Hub => self.draw_hub(frame, body),
+            Screen::Settings => self.settings.draw(frame, body),
         }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
@@ -426,7 +428,7 @@ mod tests {
             .push(Role::Assistant, "les os craquent sous la lune");
         for (w, h) in [(70, 17), (80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [Screen::Chat, Screen::Hub] {
+            for screen in [Screen::Chat, Screen::Hub, Screen::Settings] {
                 app.screen = screen;
                 app.spook();
                 app.tick();
@@ -438,7 +440,7 @@ mod tests {
     #[test]
     fn minimum_70x17_shows_ui_not_too_small() {
         let mut app = App::offline().unwrap();
-        for screen in [Screen::Chat, Screen::Hub] {
+        for screen in [Screen::Chat, Screen::Hub, Screen::Settings] {
             app.screen = screen;
             let mut term = Terminal::new(TestBackend::new(70, 17)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();
