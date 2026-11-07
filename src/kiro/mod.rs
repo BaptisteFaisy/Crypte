@@ -15,6 +15,7 @@ pub mod ignore;
 pub mod mcp;
 pub mod mcp_client;
 pub mod mcp_conn;
+pub mod mcp_pool;
 pub mod spec;
 pub mod spec_cmds;
 pub mod spec_prompts;
