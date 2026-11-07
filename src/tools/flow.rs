@@ -219,28 +219,27 @@ impl App {
         let model = self.effective_model_for(chat);
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let tools = defs();
             let reply = provider
                 .complete_with_tools(&wire, &tools, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Chat(chat, reply));
+            let _ = tx.send(Incoming::Chat(chat, reply)).await;
         });
     }
 
     /// Exécute un appel (ligne `running`, tâche async, livraison `ToolDone`).
+    /// Hors pool LLM : un exécutable local (jusqu'à 90 s) ne doit pas
+    /// occuper un permis réseau ; le canal borné garde la backpressure.
     fn tool_spawn_exec(&mut self, chat: usize, call: ToolCall) {
         self.push_tool_line(chat, format!("[tool {}]", call_line(&call)));
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let started = std::time::Instant::now();
             let out = exec::run_tool(chat, &call.name, &call.args).await;
-            let delivery = Delivery::from_outcome(
-                call,
-                out,
-                started.elapsed().as_millis().min(9_999_999) as u64,
-            );
-            let _ = tx.send(Incoming::ToolDone(chat, vec![delivery]));
+            let ms = started.elapsed().as_millis().min(9_999_999) as u64;
+            let delivery = Delivery::from_outcome(call, out, ms);
+            let _ = tx.send(Incoming::ToolDone(chat, vec![delivery])).await;
         });
     }
 
