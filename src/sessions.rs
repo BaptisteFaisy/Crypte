@@ -49,6 +49,7 @@ impl Sessions {
     }
 
     /// Crée un sous-agent `Running` sur le chat `idx`, rend son id unique.
+    /// `history` = échange seul (système re-préfixé à chaque appel).
     /// `None` si hors bornes (l'id n'est pas consommé).
     pub fn add_agent(
         &mut self,

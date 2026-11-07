@@ -172,17 +172,22 @@ impl App {
     }
 
     /// Appel agent (échange déjà à jour) : tâche async sous permis,
-    /// réponse livrée à `deliver`. Sans provider : rien.
+    /// réponse livrée à `deliver`. Le contexte système agents.md est
+    /// re-préfixé ici (une seule copie, en vol) : il n'est jamais
+    /// stocké dans l'agent (voir `cmd_agent`). Sans provider : rien.
     pub(crate) fn launch_agent(
         &mut self,
         owner: usize,
         agent_id: usize,
         deliver: usize,
-        history: Vec<(String, String)>,
+        mut history: Vec<(String, String)>,
     ) {
         let Some(provider) = self.provider.clone() else {
             return;
         };
+        if let Some(md) = &self.agents_md {
+            history.insert(0, (String::from("system"), md.clone()));
+        }
         self.hub.signal(Signal::Ask {
             from: deliver,
             agent: agent_id,

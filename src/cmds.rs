@@ -149,7 +149,8 @@ impl App {
             ));
             return;
         }
-        let Some(agent_id) = self.sessions.add_agent(id, &prompt, messages.clone()) else {
+        let exchange = vec![(String::from("user"), prompt.clone())];
+        let Some(agent_id) = self.sessions.add_agent(id, &prompt, exchange) else {
             return;
         };
         if deliver == id {
