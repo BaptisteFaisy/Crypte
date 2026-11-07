@@ -104,7 +104,7 @@ impl App {
         let [side, chat, right] = Layout::horizontal([
             Constraint::Length(side_w),
             Constraint::Min(36),
-            Constraint::Length(right_width(area.width)),
+            Constraint::Length(right_width(area.width, side_w + 36, self.right_delta)),
         ])
         .areas(area);
         let hits = self.sessions.draw_sidebar(frame, side);
@@ -215,7 +215,7 @@ impl App {
     fn draw_almanac(&mut self, frame: &mut Frame, area: Rect) {
         let [book, card] = Layout::horizontal([
             Constraint::Min(40),
-            Constraint::Length(right_width(area.width)),
+            Constraint::Length(right_width(area.width, 40, self.right_delta)),
         ])
         .areas(area);
         self.almanac.draw(frame, book, crate::almanac::today());
@@ -277,9 +277,13 @@ impl App {
     }
 }
 
-/// Largeur du panneau droit (Kiro + apparitions) selon la largeur totale.
-fn right_width(total: u16) -> u16 {
-    (total * 3 / 10).clamp(24, 56)
+/// Largeur du panneau droit : 30 % borné 24..=56, ajusté de `delta`
+/// (Ctrl+←/→), borné 16..=80 sans manger les `keep` cellules du reste.
+fn right_width(total: u16, keep: u16, delta: i16) -> u16 {
+    let auto = (total * 3 / 10).clamp(24, 56);
+    let max = total.saturating_sub(keep).max(16);
+    let tuned = (auto as i16 + delta).clamp(16, 80) as u16;
+    tuned.min(max)
 }
 
 /// Carte illustrée : nom en titre, image, légende en bas.
@@ -384,8 +388,13 @@ fn key_hints(short: bool) -> Vec<Span<'static>> {
         return vec![Span::styled("F3/F4 F5 F6", key)];
     }
     let word = Style::new().fg(ASH);
-    let mut spans = Vec::with_capacity(6);
-    for (k, w) in [("F3/F4", " chats  "), ("F5", " scare  "), ("q", " quit  ")] {
+    let mut spans = Vec::with_capacity(8);
+    for (k, w) in [
+        ("F3/F4", " chats  "),
+        ("F5", " scare  "),
+        ("Ctrl+←/→", " column  "),
+        ("q", " quit  "),
+    ] {
         spans.push(Span::styled(k, key));
         spans.push(Span::styled(w, word));
     }
@@ -415,6 +424,22 @@ mod tests {
         assert!(full(0) <= full(500) && full(500) <= full(1000));
         assert_eq!(full(1000), FEAR_W);
         assert_eq!(full(5000), FEAR_W);
+    }
+
+    #[test]
+    fn colonne_droite_delta_borne_et_reste_preserve() {
+        // Sans réglage : comportement auto inchangé (30 %, 24..=56).
+        assert_eq!(right_width(80, 54, 0), 24);
+        assert_eq!(right_width(200, 58, 0), 56);
+        assert_eq!(right_width(80, 40, 0), 24);
+        // Delta borné 16..=80.
+        assert_eq!(right_width(200, 58, 40), 80);
+        assert_eq!(right_width(200, 58, -50), 16);
+        // Le reste est préservé : chat 80 (18+36), almanach 80 (40).
+        assert_eq!(right_width(80, 54, 64), 26);
+        assert_eq!(right_width(80, 40, 64), 40);
+        // Petit terminal : plancher 16 même si le reste est serré.
+        assert_eq!(right_width(60, 54, -64), 16);
     }
 
     #[test]
