@@ -277,6 +277,21 @@ to `~/.local/share/kiro-horror-tui/tools.jsonl`, screenshots beside it
 in `shots/`. Page content is data, never orders: a page telling the model
 to run commands or exfiltrate is reported, not obeyed.
 
+## Kiro (.kiro/ compatibility)
+
+Crypte reads the same `.kiro/` files as Kiro (project `./.kiro/` plus
+global `~/.kiro/`), so a project moves back and forth between both:
+
+- **Steering** (`.kiro/steering/*.md`, 4 inclusion modes) : `always`
+  files join the pinned AGENTS.md context at first send.
+- **Specs** (`.kiro/specs/<name>/`) : requirements, design and tasks
+  checklists are read (execution comes next).
+- **Hooks** (`.kiro/hooks/*.json`, v1) and **MCP**
+(`.kiro/settings/mcp.json`, stdio + remote) : parsed, engines next.
+- **Ignore** (`.kiroignore`) : loaded, enforced with hooks.
+
+`/kiro` shows what was loaded (steering, specs, hooks, servers).
+
 ## History
 
 Chats survive restarts: display, provider context, model, agents.md pin

@@ -29,8 +29,59 @@ pub fn load_from_dir(dir: &Path) -> Option<String> {
         .find_map(|name| read_non_empty(&dir.join(name)))
 }
 
+/// Contexte fusionné : agents.md + steering Kiro `always`.
+pub struct Merged {
+    pub text: Option<String>,
+    pub agents: bool,
+    pub steering: usize,
+}
+
+/// Charge agents.md (`explicit` prime) + steering `always` (projet +
+/// global), joints par `\n\n` (steering taggés par nom).
+pub fn load_merged(explicit: Option<&str>) -> Merged {
+    let agents = load(explicit);
+    let picked = crate::kiro::steering::combined(&crate::kiro::steering::load_all(), &[]);
+    let has_agents = agents.is_some();
+    let mut parts = Vec::new();
+    if let Some(content) = agents {
+        parts.push(content);
+    }
+    for (name, body) in &picked {
+        parts.push(format!("<!-- steering: {name} -->\n{body}"));
+    }
+    Merged {
+        text: if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("\n\n"))
+        },
+        agents: has_agents,
+        steering: picked.len(),
+    }
+}
+
+/// Annonce honnête (agents.md et/ou steering, `None` si rien).
+pub fn merged_message(merged: &Merged) -> Option<String> {
+    let content = merged.text.as_ref()?;
+    if merged.agents && merged.steering == 0 {
+        return Some(loaded_message(content));
+    }
+    let (lines, toks) = stats_fast(content);
+    let mut bits = Vec::new();
+    if merged.agents {
+        bits.push(String::from("AGENTS.md"));
+    }
+    if merged.steering > 0 {
+        bits.push(format!("{} kiro steering", merged.steering));
+    }
+    Some(format!(
+        "{} loaded ({lines} lines, ~{toks} tokens)",
+        bits.join(" + ")
+    ))
+}
+
 /// Lit un fichier, `None` si illisible ou blanc (évite un system vide).
-fn read_non_empty(path: &Path) -> Option<String> {
+pub(crate) fn read_non_empty(path: &Path) -> Option<String> {
     std::fs::read_to_string(path)
         .ok()
         .filter(|s| !s.trim().is_empty())
@@ -112,6 +163,45 @@ mod tests {
     /// Dossier temporaire unique par test (pas de dep `tempfile`).
     fn tmp_dir(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("kh-agents-{}-{name}", std::process::id()))
+    }
+
+    #[test]
+    fn merged_joint_agents_et_steering_always() {
+        let dir = tmp_dir("merged");
+        std::fs::create_dir_all(dir.join(".kiro/steering")).unwrap();
+        std::fs::write(dir.join(".kiro/steering/a.md"), "règle A").unwrap();
+        let agents_path = dir.join("AGENTS.md");
+        std::fs::write(&agents_path, "agents").unwrap();
+        let saved_project = std::env::var("KH_KIRO_PROJECT").ok();
+        let saved_global = std::env::var("KH_KIRO_GLOBAL").ok();
+        let empty = dir.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        std::env::set_var("KH_KIRO_PROJECT", &dir);
+        std::env::set_var("KH_KIRO_GLOBAL", &empty);
+        let merged = load_merged(Some(agents_path.to_str().unwrap()));
+        match saved_project {
+            Some(v) => std::env::set_var("KH_KIRO_PROJECT", v),
+            None => std::env::remove_var("KH_KIRO_PROJECT"),
+        }
+        match saved_global {
+            Some(v) => std::env::set_var("KH_KIRO_GLOBAL", v),
+            None => std::env::remove_var("KH_KIRO_GLOBAL"),
+        }
+        assert!(merged.agents);
+        assert_eq!(merged.steering, 1);
+        let text = merged.text.as_ref().unwrap();
+        assert!(text.contains("agents"), "{text}");
+        assert!(text.contains("<!-- steering: a -->"), "{text}");
+        assert!(merged_message(&merged)
+            .unwrap()
+            .contains("AGENTS.md + 1 kiro steering"));
+        assert!(merged_message(&Merged {
+            text: None,
+            agents: false,
+            steering: 0
+        })
+        .is_none());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
