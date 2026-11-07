@@ -56,6 +56,15 @@ impl ChatSession {
             .push((String::from("system"), content.to_string()));
         self.pinned_system = true;
     }
+
+    /// Tokens des sous-agents du chat (in + out ; un agent `Running`
+    /// vaut 0 tant que sa réponse n'est pas arrivée).
+    pub fn agents_total(&self) -> u64 {
+        self.agents
+            .iter()
+            .map(|a| a.prompt_tokens.saturating_add(a.completion_tokens))
+            .fold(0, u64::saturating_add)
+    }
 }
 
 /// Statut d'un sous-agent.
@@ -271,6 +280,21 @@ impl Sessions {
         TokenLedger::total_of(&ledgers)
     }
 
+    /// Cumul global : tokens de tous les chats (agents et compacts
+    /// inclus, déjà comptés dans chaque registre).
+    pub fn grand_total(&self) -> u64 {
+        self.iter()
+            .map(|c| c.ledger.total())
+            .fold(0, u64::saturating_add)
+    }
+
+    /// Cumul global des sous-agents (déjà inclus dans `grand_total`).
+    pub fn agents_grand_total(&self) -> u64 {
+        self.iter()
+            .map(|c| c.agents_total())
+            .fold(0, u64::saturating_add)
+    }
+
     /// Sidebar « cercueils » : une ligne par chat (nom + tokens + `…` si
     /// envoi + ` A{n}`), le chat courant marqué d'une barre citrouille.
     pub fn draw_sidebar(&self, frame: &mut Frame, area: Rect) {
@@ -427,5 +451,26 @@ mod tests {
         }
         assert_eq!(a.history.len(), AGENT_HISTORY_MAX);
         assert_eq!(a.history[0].1, "u10");
+    }
+
+    #[test]
+    fn grand_total_covers_chats_and_agents_once() {
+        let mut s = Sessions::new();
+        s.current_mut().ledger.record(10, 20, 1.0);
+        s.add_agent(0, "prompt test", user("u1")).unwrap();
+        {
+            let agent = s.find_agent_mut(1).unwrap().1;
+            agent.prompt_tokens = 5;
+            agent.completion_tokens = 7;
+            agent.status = AgentStatus::Done;
+        }
+        s.current_mut().ledger.record(5, 7, 0.0);
+        assert_eq!(s.get(0).unwrap().agents_total(), 12);
+        assert_eq!(s.grand_total(), 42);
+        assert_eq!(s.agents_grand_total(), 12);
+        s.add();
+        s.current_mut().ledger.record(100, 0, 1.0);
+        assert_eq!(s.grand_total(), 142);
+        assert_eq!(s.agents_grand_total(), 12);
     }
 }

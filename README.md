@@ -4,8 +4,10 @@ Chat LLM dans une crypte hantée, pensé pour **Ghostty** : bestiaire de
 33 créatures en pixel art (images réelles via le protocole graphique
 Kitty), mascotte fantôme Kiro immobile (s'effraie via F5), apparitions
 qui réagissent au chat, effets horreur (vignette à la bougie, brume,
-static, gouttes de sang, éclair, peur 0-100), compteur de tokens, écran
-grimoire dédié. Terminal **≥ 80x24** requis.
+static, gouttes de sang, éclair, peur 0-100), compteur de tokens
+**global** (barre de statut : chat courant + cumul session, tous
+chats et sous-agents inclus ; F2 : grimoire + âmes par chat avec
+ligne TOTAL). Terminal **≥ 80x24** requis.
 
 ![Le bestiaire de la crypte](docs/bestiaire.png)
 
