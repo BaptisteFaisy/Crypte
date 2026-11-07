@@ -50,8 +50,9 @@ impl Galerie {
             height: area.height - 1,
             ..area
         };
+        let card_h = if grid.height < 20 { 7 } else { CARD_H };
         let cols = (grid.width / CARD_W).max(1);
-        let rows = (grid.height / CARD_H).max(1);
+        let rows = (grid.height / card_h).max(1);
         self.per_row = usize::from(cols);
         let per_page = usize::from(cols * rows);
         let page = self.selected / per_page;
@@ -67,7 +68,7 @@ impl Galerie {
         }
         let pages = BESTIARY.len().div_ceil(per_page);
         let footer = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
-        let line = footer_line(&BESTIARY[self.selected], page + 1, pages);
+        let line = footer_line(&BESTIARY[self.selected], page + 1, pages, footer.width);
         frame.render_widget(line, footer);
     }
 }
@@ -101,24 +102,42 @@ fn draw_card(frame: &mut Frame, rect: Rect, i: usize, selected: bool, bank: &mut
     bank.draw(frame, inner, creature);
 }
 
-/// Pied de page : légende de la créature choisie, aide clavier, page.
-fn footer_line(chosen: &Creature, page: usize, pages: usize) -> Paragraph<'static> {
+/// Pied de page : légende tronquée + page toujours visible.
+/// L'aide clavier n'apparaît qu'à 100+ colonnes.
+fn footer_line(chosen: &Creature, page: usize, pages: usize, width: u16) -> Paragraph<'static> {
     let key = Style::new().fg(theme::PUMPKIN).add_modifier(Modifier::BOLD);
     let dim = Style::new().fg(theme::ASH);
     let lore = Style::new()
         .fg(theme::CANDLE)
         .add_modifier(Modifier::ITALIC);
+    let page_txt = format!("p.{page}/{pages}");
+    let left_w = width.saturating_sub(page_txt.chars().count() as u16 + 1) as usize;
+    let mut left = format!("{} — {}", chosen.name, chosen.lore);
+    if left.chars().count() > left_w {
+        left = format!(
+            "{}…",
+            left.chars()
+                .take(left_w.saturating_sub(1))
+                .collect::<String>()
+        );
+    }
+    if width >= 100 {
+        return Paragraph::new(Line::from(vec![
+            Span::styled(format!("{left}   "), lore),
+            Span::styled("←↑↓→", key),
+            Span::styled(" select  ", dim),
+            Span::styled("F6", key),
+            Span::styled(" back  ", dim),
+            Span::styled(
+                format!("page {page}/{pages} · {} creatures", BESTIARY.len()),
+                dim,
+            ),
+        ]))
+        .alignment(Alignment::Center);
+    }
     Paragraph::new(Line::from(vec![
-        Span::styled(format!("{} ", chosen.name), key),
-        Span::styled(format!("— {}   ", chosen.lore), lore),
-        Span::styled("←↑↓→", key),
-        Span::styled(" select  ", dim),
-        Span::styled("F6", key),
-        Span::styled(" back  ", dim),
-        Span::styled(
-            format!("page {page}/{pages} · {} creatures", BESTIARY.len()),
-            dim,
-        ),
+        Span::styled(left, lore),
+        Span::styled(format!(" {page_txt}"), dim),
     ]))
     .alignment(Alignment::Center)
 }
@@ -150,5 +169,17 @@ mod tests {
             g.step(1, 0);
         }
         assert_eq!(g.selected, 0);
+    }
+
+    #[test]
+    fn footer_70_colonnes_garde_la_page_visible() {
+        let mut bank = ImageBank::headless();
+        let mut g = Galerie::new();
+        let mut term = Terminal::new(TestBackend::new(70, 15)).unwrap();
+        term.draw(|f| g.draw(f, f.area(), &mut bank)).unwrap();
+        assert!(g.per_row >= 1);
+        let buf = term.backend().buffer().clone();
+        let last: String = (0..70).map(|x| buf[(x, 14)].symbol()).collect();
+        assert!(last.contains("p.1/"), "page invisible à 70 : {last:?}");
     }
 }
