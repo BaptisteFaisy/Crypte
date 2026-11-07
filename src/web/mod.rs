@@ -34,7 +34,7 @@ const MAX_CONTEXT_CHARS: usize = 8000;
 const MAX_BODY_BYTES: usize = 64 * 1024;
 /// Search cache TTL (query → full research, pages included).
 const CACHE_TTL: Duration = Duration::from_secs(600);
-/// Search cache capacity (cleared when full).
+/// Search cache capacity (oldest half evicted when full).
 const CACHE_CAP: usize = 50;
 /// DuckDuckGo HTML endpoint (free, no key, sometimes bot-blocked).
 const DDG_ENDPOINT: &str = "https://html.duckduckgo.com/html/";
@@ -253,7 +253,7 @@ impl WebClient {
     }
 
     /// Full pipeline: cache → search → parallel top-3 fetch → context.
-    /// Stores the research in the cache (expired entries swept, cap: clear).
+    /// Stores the research in the cache (expired swept, oldest half evicted).
     async fn research(&self, query: &str) -> Result<Research> {
         let key = query.trim().to_lowercase();
         if key.is_empty() {
@@ -292,7 +292,12 @@ impl WebClient {
         {
             guard.retain(|_, (at, _)| at.elapsed() < CACHE_TTL);
             if guard.len() >= CACHE_CAP {
-                guard.clear();
+                let mut old: Vec<(Instant, String)> =
+                    guard.iter().map(|(k, (at, _))| (*at, k.clone())).collect();
+                old.sort();
+                for (_, k) in old.into_iter().take(CACHE_CAP / 2) {
+                    guard.remove(&k);
+                }
             }
             guard.insert(key, (Instant::now(), found.clone()));
         }
