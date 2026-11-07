@@ -21,6 +21,7 @@ mod galerie;
 mod gfx;
 mod ghostty;
 mod history;
+mod hub;
 mod mascot;
 mod mouse;
 mod provider;
@@ -54,7 +55,8 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 3 screens (120x36, offline) as ANSI
+        --preview <file>  Write the 4 screens (120x36, offline) as ANSI
+        --demo            Offline demo crypt, opened on the spirit hub (F7)
 
 CONFIG (environment, wins over --config):
     KH_BASE_URL   OpenAI-compatible base (default https://api.openai.com/v1)
@@ -76,7 +78,7 @@ AGENTS.MD (system context, loaded once — restart to reload):
 
 KEYS (terminal >= 80x24):
     Enter  send    Esc/q  quit    F2  grimoire (tokens)    F5  scare
-    F3/F4  previous/next chat    Ctrl+N or click [+]  new chat    F6  bestiary
+    F3/F4  previous/next chat    Ctrl+N or click [+]  new chat    F6  bestiary    F7  hub
 
 GHOSTTY:
     Images via the Kitty protocol (halfblocks elsewhere), window
@@ -103,6 +105,7 @@ COMMANDS (in chat):
 struct Args {
     help: bool,
     smoke: bool,
+    demo: bool,
     config: Option<String>,
     once: Option<String>,
     muse_auth: bool,
@@ -117,6 +120,7 @@ fn parse_args() -> Result<Args> {
     let mut args = Args {
         help: false,
         smoke: false,
+        demo: false,
         config: None,
         once: None,
         muse_auth: false,
@@ -129,6 +133,7 @@ fn parse_args() -> Result<Args> {
         match arg.as_str() {
             "-h" | "--help" => args.help = true,
             "--smoke" => args.smoke = true,
+            "--demo" => args.demo = true,
             "--config" => {
                 let path = it.next().context("--config expects a file path")?;
                 args.config = Some(path);
@@ -208,9 +213,14 @@ async fn main() -> Result<()> {
     }
     let agents_md = crate::agents::load(args.agents_file.as_deref());
     let mut app = match resolve_config(&args) {
+        _ if args.demo => App::offline()?,
         Ok(cfg) => App::from_config_with_agents(cfg, agents_md)?,
         Err(_) => App::disconnected_with_agents(agents_md),
     };
+    if args.demo {
+        app.populate_hub_demo();
+        app.open_hub();
+    }
     let mut terminal = ratatui::init();
     let _ = execute!(io::stdout(), EnableMouseCapture);
     let result = match app.attach_terminal() {
@@ -230,6 +240,10 @@ fn demo_app() -> Result<App> {
     let chat = &mut app.sessions.current_mut().chat;
     chat.push(Role::User, "smoke: who haunts this crypt?");
     chat.push(Role::Assistant, "smoke: the CI ghost, and it bleeds.");
+    app.populate_hub_demo();
+    for _ in 0..60 {
+        app.tick();
+    }
     app.spook();
     for _ in 0..5 {
         app.tick();
@@ -260,17 +274,17 @@ fn smoke() -> Result<()> {
     Ok(())
 }
 
-/// Écrit les 3 écrans (120x36, hors ligne) en ANSI truecolor dans `path` :
+/// Écrit les 4 écrans (120x36, hors ligne) en ANSI truecolor dans `path` :
 /// `cat <fichier>` dans Ghostty montre l'UI sans clé ni réseau.
 fn apercu(path: &str) -> Result<()> {
     let mut app = demo_app()?;
     let mut out = String::new();
-    for screen in [Screen::Chat, Screen::Tokens, Screen::Bestiary] {
+    for screen in [Screen::Chat, Screen::Tokens, Screen::Bestiary, Screen::Hub] {
         out.push_str(&to_ansi(&render(&mut app, screen, 120, 36)?));
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (3 screens 120x36)");
+    println!("preview: {path} (4 screens 120x36)");
     Ok(())
 }
 

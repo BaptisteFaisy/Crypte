@@ -270,6 +270,13 @@ impl Sessions {
         self.current = (self.current + 1) % self.chats.len();
     }
 
+    /// Rend le chat `idx` courant (ignoré hors bornes).
+    pub fn select(&mut self, idx: usize) {
+        if idx < self.chats.len() {
+            self.current = idx;
+        }
+    }
+
     /// Index du chat courant (0-based).
     pub fn index(&self) -> usize {
         self.current

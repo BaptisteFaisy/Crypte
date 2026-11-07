@@ -133,19 +133,27 @@ fn palette(ch: char) -> Option<Color> {
 
 /// Grille texte 32×32 → image RGBA (transparent hors des pixels peints).
 pub fn decode(grid: &str) -> Result<RgbaImage> {
-    let rows: Vec<&str> = grid.lines().collect();
-    if rows.len() != SPRITE as usize {
-        bail!("{} lines instead of {SPRITE}", rows.len());
+    let img = decode_grid(grid)?;
+    if img.dimensions() != (SPRITE, SPRITE) {
+        bail!("sprite {:?} instead of {SPRITE}x{SPRITE}", img.dimensions());
     }
-    let mut img = RgbaImage::new(SPRITE, SPRITE);
+    Ok(img)
+}
+
+/// Grille texte rectangulaire (lignes de même longueur, lettres de la
+/// palette, `.` transparent) → image RGBA.
+pub fn decode_grid(grid: &str) -> Result<RgbaImage> {
+    let rows: Vec<Vec<char>> = grid.lines().map(|r| r.chars().collect()).collect();
+    let width = rows.first().map_or(0, Vec::len);
+    if rows.is_empty() || width == 0 {
+        bail!("empty grid");
+    }
+    let mut img = RgbaImage::new(width as u32, rows.len() as u32);
     for (y, row) in rows.iter().enumerate() {
-        if row.chars().count() != SPRITE as usize {
-            bail!(
-                "line {y}: {} columns instead of {SPRITE}",
-                row.chars().count()
-            );
+        if row.len() != width {
+            bail!("line {y}: {} columns instead of {width}", row.len());
         }
-        for (x, ch) in row.chars().enumerate() {
+        for (x, &ch) in row.iter().enumerate() {
             let px = match palette(ch) {
                 Some(Color::Rgb(r, g, b)) => Rgba([r, g, b, 255]),
                 Some(_) => Rgba([0, 0, 0, 0]),
@@ -212,6 +220,8 @@ mod tests {
     #[test]
     fn decode_rejects_bad_grids() {
         assert!(decode("..\n..").is_err());
+        assert!(decode_grid("..\n..").is_ok());
+        assert!(decode_grid("..\n.").is_err());
         let bad = format!("{}\n", ".".repeat(31)).repeat(32);
         assert!(decode(&bad).is_err());
         let alien = format!("{}Z\n", ".".repeat(31)).repeat(32);

@@ -15,6 +15,7 @@ use crate::apparition::Omen;
 use crate::bus::{LinkEnd, QueuedAsk, MAX_AUTO_HOPS};
 use crate::chat::Role;
 use crate::history::send_window;
+use crate::hub::Signal;
 use crate::provider::Completion;
 use crate::sessions::AgentStatus;
 
@@ -38,6 +39,7 @@ impl App {
                 sess.history
                     .push(("assistant".to_string(), done.text.clone()));
                 sess.chat.push(Role::Assistant, done.text.clone());
+                self.hub.signal(Signal::Reply { chat: id });
                 self.apparition.advance();
                 self.pump_chat_inbox(id);
                 self.fire_chat_links(id, &done.text);
@@ -87,6 +89,10 @@ impl App {
                 .record(done.prompt_tokens, done.completion_tokens, 0.0);
             dest.chat
                 .push(Role::Assistant, format!("{tag} {}", done.text.clone()));
+            self.hub.signal(Signal::Deliver {
+                agent: agent_id,
+                to: deliver,
+            });
         }
         self.pump_agent_inbox(agent_id);
         self.fire_agent_links(agent_id, &done.text);
@@ -166,6 +172,10 @@ impl App {
         let Some(provider) = self.provider.clone() else {
             return;
         };
+        self.hub.signal(Signal::Ask {
+            from: deliver,
+            agent: agent_id,
+        });
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
@@ -271,6 +281,10 @@ impl App {
         if self.sessions.get(idx).is_none() {
             return;
         }
+        self.hub.signal(match from {
+            LinkEnd::Chat(c) => Signal::Tell { from: c, to: idx },
+            LinkEnd::Agent(a) => Signal::Deliver { agent: a, to: idx },
+        });
         let envelope = format!("[auto {}] {text}", from.label());
         self.deliver_tell(idx, envelope, hops);
     }
