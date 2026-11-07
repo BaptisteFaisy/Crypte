@@ -179,18 +179,17 @@ impl ChatState {
     }
 
     /// Saisie : brouillon (ou aperçu) cadré sur la fin + curseur bougie.
-    /// Le label custom et le masquage (`•`) servent au flow `/connect`.
+    /// Sans titre par défaut ; le label custom et le masquage (`•`)
+    /// servent au flow `/connect` (seul cas avec un titre).
     fn draw_input(&self, frame: &mut Frame, area: Rect, tick: u64) {
-        let title = match &self.prompt_label {
-            Some(label) => Line::from(label.clone()),
-            None => Line::styled(" ✒ speak ", Style::new().fg(CANDLE)),
-        };
-        let block = Block::new()
+        let mut block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(CANDLE))
-            .title(title)
             .title_bottom(Line::styled(" Enter ", Style::new().fg(ASH)).right_aligned());
+        if let Some(label) = &self.prompt_label {
+            block = block.title(Line::from(label.clone()));
+        }
         let inner_w = area.width.saturating_sub(3) as usize;
         let cursor = if (tick / 5) % 2 == 0 { "▌" } else { " " };
         let cursor = Span::styled(cursor, Style::new().fg(CANDLE));
