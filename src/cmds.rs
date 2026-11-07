@@ -47,6 +47,9 @@ impl App {
             Some(Command::Tools(arg)) => self.cmd_tools(arg),
             Some(Command::Kiro) => self.cmd_kiro(),
             Some(Command::Vps { args }) => self.cmd_vps(args),
+            Some(Command::SpecNew { name, idea }) => self.cmd_spec_new(name, idea),
+            Some(Command::SpecShow { name }) => self.cmd_spec_show(name),
+            Some(Command::SpecRun { name }) => self.cmd_spec_run(name),
             Some(Command::Unknown(word)) => {
                 self.push_system(format!("unknown command: {word} — /help for help"));
             }

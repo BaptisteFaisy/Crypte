@@ -137,7 +137,10 @@ mod tests {
     #[test]
     fn gen_enchaine_les_trois_etapes_nourries() {
         let mut gen = SpecGen::new("auth", "login");
-        assert_eq!((gen.file_name(), gen.step_name()), ("requirements.md", "requirements"));
+        assert_eq!(
+            (gen.file_name(), gen.step_name()),
+            ("requirements.md", "requirements")
+        );
         assert_eq!(gen.kept_text(), "nothing");
         assert!(gen.messages()[1].1.contains("login"));
         gen.store(String::from("R1"));

@@ -1,6 +1,7 @@
 //! Constructeurs de [`App`] (config env/TOML, déconnecté, hors ligne)
 //! + pin agents.md dans le chat initial.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -135,6 +136,8 @@ impl App {
             permissions_path: crate::permissions::path(),
             tools_on: true,
             tool_run: None,
+            spec_runs: HashMap::new(),
+            spec_waiting: None,
             chats_path: None,
             events: EventLog::disabled(),
             vps: crate::vps::VpsRuntime::load(),

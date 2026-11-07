@@ -1,6 +1,6 @@
 //! Commandes slash (`/usage` `/new` `/bestiary` `/thinking` `/model` `/agent`
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
-//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/settings` `/help`).
+//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/settings` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -59,6 +59,16 @@ pub enum Command {
     Vps {
         args: Vec<String>,
     },
+    SpecNew {
+        name: String,
+        idea: String,
+    },
+    SpecShow {
+        name: String,
+    },
+    SpecRun {
+        name: String,
+    },
     Unknown(String),
 }
 
@@ -77,6 +87,8 @@ pub const MSG_USAGE: &str = "usage: /msg <n|@n|#id|all> <text> — talk to a cha
 pub const LINK_USAGE: &str = "usage: /link <n|#id> <n|#id> — replies from one go to the other";
 pub const UNLINK_USAGE: &str = "usage: /unlink <n|#id> <n|#id> — remove a link";
 pub const WEB_USAGE: &str = "usage: /web <query> — web search with summarized sources";
+pub const SPEC_USAGE: &str =
+    "usage: /spec <name> [run] | /spec new <name> <idea...> — kiro spec workflow";
 
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
@@ -118,6 +130,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/vps" => Some(Command::Vps {
             args: parts.map(str::to_string).collect(),
         }),
+        "/spec" => parse_spec(trimmed, word),
         _ => Some(Command::Unknown(word.to_string())),
     }
 }
@@ -248,6 +261,40 @@ fn parse_web(trimmed: &str, word: &str) -> Option<Command> {
         return Some(Command::Hint(WEB_USAGE));
     }
     Some(Command::Web(rest.to_string()))
+}
+
+/// `/spec new <nom> <idée...>` (crée), `/spec <nom>` (statut),
+/// `/spec <nom> run` (exécute) ; mal formé → aide d'usage.
+/// `new` seul vaut création (un nom commençant par `new` passe en statut).
+fn parse_spec(trimmed: &str, word: &str) -> Option<Command> {
+    let rest = trimmed[word.len()..].trim();
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let first = parts.next().unwrap_or("");
+    if first.is_empty() {
+        return Some(Command::Hint(SPEC_USAGE));
+    }
+    if first == "new" {
+        let after = parts.next().map(str::trim).unwrap_or("");
+        let mut words = after.splitn(2, char::is_whitespace);
+        let name = words.next().unwrap_or("");
+        let idea = words.next().map(str::trim).unwrap_or("");
+        if name.is_empty() || idea.is_empty() {
+            return Some(Command::Hint(SPEC_USAGE));
+        }
+        return Some(Command::SpecNew {
+            name: name.to_string(),
+            idea: idea.to_string(),
+        });
+    }
+    match parts.next().map(str::trim) {
+        None | Some("") => Some(Command::SpecShow {
+            name: first.to_string(),
+        }),
+        Some("run") => Some(Command::SpecRun {
+            name: first.to_string(),
+        }),
+        Some(_) => Some(Command::Hint(SPEC_USAGE)),
+    }
 }
 
 /// Niveaux d'effort acceptés : default/low/medium/high uniquement.
