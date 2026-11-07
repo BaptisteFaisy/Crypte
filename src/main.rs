@@ -40,57 +40,59 @@ use crate::chat::Role;
 use crate::provider::{Provider, ProviderConfig};
 
 const HELP: &str = "\
-kiro-horror-tui 0.1.0 — chat LLM dans une crypte hantee
+kiro-horror-tui 0.1.0 — LLM chat in a haunted crypt
 
 USAGE:
     kiro-horror-tui [OPTIONS]
 
 OPTIONS:
-    -h, --help            Affiche cette aide
-        --smoke           Rendu headless de controle (80x24, sans reseau ni cle)
-        --config <fichier>  Fichier TOML provider (cles plates ou [provider])
-        --once <texte>      Un appel user puis exit (affiche texte + usage)
-        --muse-auth         Cle depuis le store Muse (voir MUSE)
-        --agents-file <fichier>  Contexte systeme (voir AGENTS.MD)
-        --planche <png>     Ecrit la planche du bestiaire (34 dessins) en PNG
-        --apercu <fichier>  Ecrit les 3 ecrans (120x36, hors ligne) en ANSI
+    -h, --help            Show this help
+        --smoke           Headless check render (80x24, no network, no key)
+        --config <file>   Provider TOML file (flat keys or [provider])
+        --once <text>     One user call then exit (prints text + usage)
+        --muse-auth       Key from the Muse store (see MUSE)
+        --agents-file <file>  System context (see AGENTS.MD)
+        --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
+        --preview <file>  Write the 3 screens (120x36, offline) as ANSI
 
-CONFIG (environnement, prioritaire sur --config) :
-    KH_BASE_URL   Base OpenAI-compatible (defaut https://api.openai.com/v1)
-    KH_API_KEY    Cle API (jamais logguee ; --once l'exige)
-    KH_MODEL      Modele (--once l'exige)
-    Sans cle ni --config ni --muse-auth : le TUI demarre quand meme,
-    deconnecte — /connect openai|muse pour se connecter dedans.
+CONFIG (environment, wins over --config):
+    KH_BASE_URL   OpenAI-compatible base (default https://api.openai.com/v1)
+    KH_API_KEY    API key (never logged; --once requires it)
+    KH_MODEL      Model (--once requires it)
+    KH_CONTEXT_WINDOW  Context window override (tokens, integer > 0)
+    With no key, no --config and no --muse-auth, the TUI still starts,
+    disconnected — /connect openai|muse to connect from inside.
 
-MUSE (--muse-auth) :
-    Store : ~/.config/muse/auth.json (cle : /providers/meta/api_key)
-    Defauts : base https://api.meta.ai/v1, modele muse-spark-1.3-contributor
-    (KH_BASE_URL / KH_API_KEY / KH_MODEL restent prioritaires)
+MUSE (--muse-auth):
+    Store: ~/.config/muse/auth.json (key: /providers/meta/api_key)
+    Defaults: base https://api.meta.ai/v1, model muse-spark-1.3-contributor
+    (KH_BASE_URL / KH_API_KEY / KH_MODEL take priority)
 
-AGENTS.MD (contexte systeme, charge une fois — restart pour recharger) :
-    Lookup : --agents-file <f> prime, sinon ./AGENTS.md puis ./AGENT.md
-    Injecte en tete de chaque chat + appels /agent (voir /usage)
-    Exclu de /compact (resume meta) et de --once (brut)
+AGENTS.MD (system context, loaded once — restart to reload):
+    Lookup: --agents-file <f> wins, else ./AGENTS.md then ./AGENT.md
+    Pinned atop every chat + /agent calls (see /usage)
+    Excluded from /compact (meta summary) and from --once (raw)
 
-TOUCHES (terminal >= 80x24) :
-    Entree  envoyer    Echap/q  quitter    F2  grimoire (tokens)    F5  effroi
-    F3/F4  chat precedent/suivant    Ctrl+N ou clic [+]  nouveau chat    F6  bestiaire
+KEYS (terminal >= 80x24):
+    Enter  send    Esc/q  quit    F2  grimoire (tokens)    F5  scare
+    F3/F4  previous/next chat    Ctrl+N or click [+]  new chat    F6  bestiary
 
-GHOSTTY :
-    Images via le protocole Kitty (demi-blocs ailleurs), fond de fenetre,
-    titre, progression native, rendu synchronise. Theme + shader : ghostty/
+GHOSTTY:
+    Images via the Kitty protocol (halfblocks elsewhere), window
+    background, title, native progress, synced rendering. Theme + shader:
+    ghostty/
 
-COMMANDES (dans le chat) :
-    /usage  tokens (chat + total)    /new  nouveau chat    /help  aide
-    /thinking [niveau]  reflexion (default/low/medium/high)
-    /model [nom|reset]  modele du chat (reset = defaut)
-    /agent [@<n>] <texte>  sous-agent (reponse au chat n si cible)
-    /agents  liste agents    /ask #<id> <texte>  reparler a un agent
-    /tell <n> <texte>  parler au chat n
-    /compact  compacter l'historique (resume + 4 derniers)
-    /connect [openai|muse]  connexion interactive (cle masquee,
-        Echap annule) ; sans arg : statut de connexion
-    limite contexte : 1M tokens estimes (voir /usage, /compact)
+COMMANDS (in chat):
+    /usage  tokens (chat + total)    /new  new chat    /help  help
+    /thinking [level]  reasoning (default/low/medium/high)
+    /model [name|reset]  chat model (reset = default)
+    /agent [@<n>] <text>  sub-agent (reply goes to chat n if targeted)
+    /agents  list agents    /ask #<id> <text>  follow up with an agent
+    /tell <n> <text>  talk to chat n
+    /compact  compact history (summary + last 4)
+    /connect [openai|muse]  interactive connect (masked key,
+        Esc cancels); no arg: connection status
+    context limit: model window capped at 1M est. tokens (see /usage)
 ";
 
 /// Options CLI parsees (sans dependance externe).
@@ -124,29 +126,27 @@ fn parse_args() -> Result<Args> {
             "-h" | "--help" => args.help = true,
             "--smoke" => args.smoke = true,
             "--config" => {
-                let path = it.next().context("--config attend un chemin de fichier")?;
+                let path = it.next().context("--config expects a file path")?;
                 args.config = Some(path);
             }
             "--once" => {
-                let prompt = it.next().context("--once attend un texte de prompt")?;
+                let prompt = it.next().context("--once expects a prompt text")?;
                 args.once = Some(prompt);
             }
             "--muse-auth" => args.muse_auth = true,
             "--agents-file" => {
-                let path = it
-                    .next()
-                    .context("--agents-file attend un chemin de fichier")?;
+                let path = it.next().context("--agents-file expects a file path")?;
                 args.agents_file = Some(path);
             }
-            "--apercu" => {
-                let path = it.next().context("--apercu attend un chemin de fichier")?;
+            "--apercu" | "--preview" => {
+                let path = it.next().context("--preview expects a file path")?;
                 args.apercu = Some(path);
             }
-            "--planche" => {
-                let path = it.next().context("--planche attend un chemin .png")?;
+            "--planche" | "--sheet" => {
+                let path = it.next().context("--sheet expects a .png path")?;
                 args.planche = Some(path);
             }
-            other => anyhow::bail!("option inconnue : {other} (voir --help)"),
+            other => anyhow::bail!("unknown option: {other} (see --help)"),
         }
     }
     Ok(args)
@@ -192,7 +192,7 @@ async fn main() -> Result<()> {
     }
     if let Some(path) = args.planche.as_deref() {
         crate::bestiary::write_sheet(path)?;
-        println!("planche du bestiaire : {path}");
+        println!("bestiary sheet: {path}");
         return Ok(());
     }
     if let Some(path) = args.apercu.as_deref() {
@@ -224,8 +224,8 @@ async fn main() -> Result<()> {
 fn demo_app() -> Result<App> {
     let mut app = App::offline()?;
     let chat = &mut app.sessions.current_mut().chat;
-    chat.push(Role::User, "smoke: qui hante cette crypte ?");
-    chat.push(Role::Assistant, "smoke: le fantome de la CI, et ca saigne.");
+    chat.push(Role::User, "smoke: who haunts this crypt?");
+    chat.push(Role::Assistant, "smoke: the CI ghost, and it bleeds.");
     app.spook();
     for _ in 0..5 {
         app.tick();
@@ -247,13 +247,10 @@ fn smoke() -> Result<()> {
     let mut app = demo_app()?;
     let buf = render(&mut app, Screen::Chat, 80, 24)?;
     let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
-    anyhow::ensure!(
-        filled > 100,
-        "frame de controle presque vide ({filled} cellules)"
-    );
-    println!("smoke OK : frame 80x24, {filled} cellules remplies");
+    anyhow::ensure!(filled > 100, "check frame almost empty ({filled} cells)");
+    println!("smoke OK: 80x24 frame, {filled} cells filled");
     println!(
-        "smoke OK : tokens estimate('hello')={}",
+        "smoke OK: tokens estimate('hello')={}",
         crate::tokens::estimate("hello")
     );
     Ok(())
@@ -268,8 +265,8 @@ fn apercu(path: &str) -> Result<()> {
         out.push_str(&to_ansi(&render(&mut app, screen, 120, 36)?));
         out.push('\n');
     }
-    std::fs::write(path, out).with_context(|| format!("écriture de {path}"))?;
-    println!("apercu : {path} (3 ecrans 120x36)");
+    std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
+    println!("preview: {path} (3 screens 120x36)");
     Ok(())
 }
 

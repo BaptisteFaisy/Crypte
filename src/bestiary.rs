@@ -45,71 +45,55 @@ macro_rules! creature {
 
 /// Les 33 créatures, dans l'ordre des 4 planches du shot.
 pub const BESTIARY: [Creature; 33] = [
-    creature!("loup-garou", "Loup-garou", "Il hurle à ta place."),
-    creature!("araignee", "Araignée", "Elle tisse tes sous-agents."),
-    creature!("crane", "Crâne en herbe", "Même mort, il pousse encore."),
+    creature!("loup-garou", "Werewolf", "It howls in your stead."),
+    creature!("araignee", "Spider", "It weaves your sub-agents."),
+    creature!("crane", "Grassy Skull", "Even dead, it keeps growing."),
     creature!(
         "chat-noir",
-        "Chat noir",
-        "Il a déjà vu ta prochaine erreur."
+        "Black Cat",
+        "It has already seen your next error."
     ),
-    creature!("infirmiere", "Infirmière", "Le diagnostic est mortel."),
-    creature!("fantome", "Kiro", "Le gardien de la crypte."),
-    creature!("couteau", "Couteau", "Il coupe court aux réponses."),
-    creature!(
-        "citrouille",
-        "Citrouille",
-        "Ses yeux en croix ne pardonnent pas."
-    ),
-    creature!(
-        "chauve-souris",
-        "Chauve-souris",
-        "Elle dort la tête en bas."
-    ),
-    creature!("frankenstein", "Frankenstein", "Recousu de vieux prompts."),
+    creature!("infirmiere", "Nurse", "The diagnosis is fatal."),
+    creature!("fantome", "Kiro", "The keeper of the crypt."),
+    creature!("couteau", "Knife", "It cuts answers short."),
+    creature!("citrouille", "Pumpkin", "Its cross eyes never forgive."),
+    creature!("chauve-souris", "Bat", "It sleeps upside down."),
+    creature!("frankenstein", "Frankenstein", "Stitched from old prompts."),
     creature!(
         "tete-poignardee",
-        "Le Poignardé",
-        "Il a lu le diff de trop."
+        "The Stabbed",
+        "It read one diff too many."
     ),
-    creature!("main-tombe", "Main de la tombe", "Ci-gît une requête."),
-    creature!("cercueil-main", "Cercueil", "On y enterre l'historique."),
-    creature!("vaudou", "Poupée vaudou", "Chaque épingle est un bug."),
-    creature!("chaudron", "Chaudron", "La réponse mijote."),
-    creature!("sucette", "Sucette", "Le bâton est un os."),
+    creature!("main-tombe", "Grave Hand", "Here lies a request."),
+    creature!("cercueil-main", "Coffin", "History gets buried here."),
+    creature!("vaudou", "Voodoo Doll", "Every pin is a bug."),
+    creature!("chaudron", "Cauldron", "The answer is simmering."),
+    creature!("sucette", "Lollipop", "The stick is a bone."),
     creature!(
         "citrouille-bougies",
-        "Lanterne",
-        "Deux bougies pour veiller."
+        "Lantern",
+        "Two candles keeping watch."
     ),
-    creature!("zombie", "Zombie", "Le cerveau à l'air libre."),
-    creature!("dame-blanche", "Dame blanche", "Ne la regarde pas de face."),
-    creature!("faucheuse", "La Faucheuse", "Elle compte tes tokens."),
-    creature!("cercueil-ouvert", "Cercueil ouvert", "Quelqu'un est sorti."),
-    creature!("momie", "Momie", "Elle avance, bras tendus."),
-    creature!("ronde", "La Ronde", "Trois démons dansent."),
-    creature!("tete-de-sac", "Tête de sac", "Des bonbons ou un sort."),
-    creature!("farceur", "Le Farceur", "Il sonne à ta porte."),
-    creature!("tele", "La Télé", "Elle sort de l'écran."),
-    creature!(
-        "masque-bois",
-        "Masque aux bois",
-        "Un crâne, des bois, un os."
-    ),
-    creature!("cri", "Le Cri", "Son masque hurle en silence."),
-    creature!("arbre-mort", "Arbre mort", "Ses branches portent des os."),
-    creature!("bouquet", "Le Bouquet", "Des fleurs pour ta tombe."),
-    creature!("poupee", "Cœur épinglé", "Elle t'aime à mourir."),
-    creature!("pentacle", "Chat du pentacle", "Le rituel a commencé."),
-    creature!(
-        "momie-course",
-        "Momie pressée",
-        "Elle court plus vite que toi."
-    ),
+    creature!("zombie", "Zombie", "Brain out in the open."),
+    creature!("dame-blanche", "White Lady", "Never look her in the face."),
+    creature!("faucheuse", "The Reaper", "It counts your tokens."),
+    creature!("cercueil-ouvert", "Open Coffin", "Somebody got out."),
+    creature!("momie", "Mummy", "It shambles, arms outstretched."),
+    creature!("ronde", "The Round", "Three demons dancing."),
+    creature!("tete-de-sac", "Bag Head", "Trick or treat."),
+    creature!("farceur", "The Prankster", "It rings at your door."),
+    creature!("tele", "The TV", "It crawls out of the screen."),
+    creature!("masque-bois", "Antler Mask", "A skull, antlers, a bone."),
+    creature!("cri", "The Scream", "Its mask screams in silence."),
+    creature!("arbre-mort", "Dead Tree", "Its branches bear bones."),
+    creature!("bouquet", "The Bouquet", "Flowers for your grave."),
+    creature!("poupee", "Pinned Heart", "It loves you to death."),
+    creature!("pentacle", "Pentacle Cat", "The ritual has begun."),
+    creature!("momie-course", "Hurried Mummy", "It runs faster than you."),
 ];
 
 /// Kiro effrayé (F5) : hors bestiaire, réservé à la mascotte.
-pub const KIRO_SPOOKED: Creature = creature!("kiro-effroi", "Kiro", "Quelque chose l'a effrayé !");
+pub const KIRO_SPOOKED: Creature = creature!("kiro-effroi", "Kiro", "Something scared it!");
 
 /// Créature par identifiant (bestiaire puis Kiro effrayé).
 pub fn find(slug: &str) -> Option<&'static Creature> {
@@ -121,7 +105,7 @@ pub fn find(slug: &str) -> Option<&'static Creature> {
 
 /// Créature par identifiant ; panique si absent (identifiants internes).
 pub fn get(slug: &str) -> &'static Creature {
-    find(slug).unwrap_or_else(|| panic!("créature inconnue : {slug}"))
+    find(slug).unwrap_or_else(|| panic!("unknown creature: {slug}"))
 }
 
 /// Couleur d'une lettre de grille (`.` = transparent, `None` = inconnue).
@@ -151,13 +135,13 @@ fn palette(ch: char) -> Option<Color> {
 pub fn decode(grid: &str) -> Result<RgbaImage> {
     let rows: Vec<&str> = grid.lines().collect();
     if rows.len() != SPRITE as usize {
-        bail!("{} lignes au lieu de {SPRITE}", rows.len());
+        bail!("{} lines instead of {SPRITE}", rows.len());
     }
     let mut img = RgbaImage::new(SPRITE, SPRITE);
     for (y, row) in rows.iter().enumerate() {
         if row.chars().count() != SPRITE as usize {
             bail!(
-                "ligne {y} : {} colonnes au lieu de {SPRITE}",
+                "line {y}: {} columns instead of {SPRITE}",
                 row.chars().count()
             );
         }
@@ -165,7 +149,7 @@ pub fn decode(grid: &str) -> Result<RgbaImage> {
             let px = match palette(ch) {
                 Some(Color::Rgb(r, g, b)) => Rgba([r, g, b, 255]),
                 Some(_) => Rgba([0, 0, 0, 0]),
-                None => bail!("ligne {y} : couleur inconnue {ch:?}"),
+                None => bail!("line {y}: unknown color {ch:?}"),
             };
             img.put_pixel(x as u32, y as u32, px);
         }
@@ -209,9 +193,7 @@ pub fn write_sheet(path: &str) -> Result<()> {
         );
         imageops::overlay(&mut sheet, &img, i64::from(x), i64::from(y));
     }
-    sheet
-        .save(path)
-        .with_context(|| format!("écriture de {path}"))
+    sheet.save(path).with_context(|| format!("writing {path}"))
 }
 
 #[cfg(test)]
@@ -223,7 +205,7 @@ mod tests {
         for creature in BESTIARY.iter().chain([&KIRO_SPOOKED]) {
             let img = creature.sprite().expect(creature.slug);
             let inked = img.pixels().filter(|p| p.0[3] == 255).count();
-            assert!(inked > 80, "{} presque vide ({inked} px)", creature.slug);
+            assert!(inked > 80, "{} almost empty ({inked} px)", creature.slug);
         }
     }
 
@@ -246,7 +228,7 @@ mod tests {
             let src = sprite.get_pixel(x, y);
             for (ox, oy) in [(0, 0), (1, 1)] {
                 let dst = out.get_pixel(dx + 2 * x + ox, dy + 2 * y + oy);
-                assert_eq!(src, dst, "pixel ({x},{y}) déformé");
+                assert_eq!(src, dst, "pixel ({x},{y}) distorted");
             }
         }
     }
@@ -259,6 +241,6 @@ mod tests {
         assert_eq!(slugs.len(), BESTIARY.len());
         assert_eq!(get("fantome").name, "Kiro");
         assert_eq!(get("kiro-effroi"), &KIRO_SPOOKED);
-        assert!(find("licorne").is_none());
+        assert!(find("unicorn").is_none());
     }
 }

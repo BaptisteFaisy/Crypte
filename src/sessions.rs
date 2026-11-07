@@ -69,9 +69,9 @@ impl AgentStatus {
     /// Étiquette courte française (liste `/agents`).
     pub fn label(self) -> &'static str {
         match self {
-            AgentStatus::Running => "en cours",
-            AgentStatus::Done => "terminé",
-            AgentStatus::Failed => "échoué",
+            AgentStatus::Running => "running",
+            AgentStatus::Done => "done",
+            AgentStatus::Failed => "failed",
         }
     }
 }

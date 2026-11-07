@@ -23,8 +23,8 @@ use crate::tokens::fmt_tps;
 
 /// Huitièmes de bloc pour une jauge lisse.
 const EIGHTHS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
-/// Largeur de la jauge de peur (cellules).
-const FEAR_W: usize = 12;
+/// Largeur de la jauge de contexte (cellules).
+const CTX_W: usize = 12;
 /// Coiffes powerline arrondies (sprites internes de Ghostty).
 const CAP_L: &str = "\u{e0b6}";
 const CAP_R: &str = "\u{e0b4}";
@@ -37,7 +37,7 @@ impl App {
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
         if area.width < 80 || area.height < 24 {
-            let msg = "Terminal trop petit : 80x24 requis (Echap pour quitter)";
+            let msg = "Terminal too small: 80x24 required (Esc to quit)";
             let style = Style::new().fg(CANDLE);
             frame.render_widget(Paragraph::new(msg).style(style), area);
             return;
@@ -99,7 +99,7 @@ impl App {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(colour))
-            .title(theme::title("gardien", SPECTRE, BONE));
+            .title(theme::title("keeper", SPECTRE, BONE));
         let inner = block.inner(area);
         frame.render_widget(block, area);
         self.mascot.draw(frame, inner, &mut self.bank);
@@ -160,14 +160,14 @@ impl App {
         }
         lines.push(self.souls_total_line(bar_w));
         lines.push(Line::styled(
-            format!("  dont agents : {}", self.sessions.agents_grand_total()),
+            format!("  incl. agents: {}", self.sessions.agents_grand_total()),
             Style::new().fg(ASH),
         ));
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(UMBER))
-            .title(theme::title("âmes par chat", SAND, BONE));
+            .title(theme::title("souls per chat", SAND, BONE));
         frame.render_widget(Paragraph::new(lines).block(block), area);
     }
 
@@ -194,11 +194,11 @@ impl App {
         ])
     }
 
-    /// En-tête : titre en dégradé, onglets, jauge de peur à droite.
+    /// En-tête : titre en dégradé, onglets, jauge de contexte à droite.
     fn draw_header(&self, frame: &mut Frame, area: Rect) {
         let mut spans = vec![Span::raw(" ")];
         spans.extend(theme::gradient(
-            "\u{f068c} CRYPTE",
+            "\u{f068c} CRYPT",
             BLOOD,
             CANDLE,
             Modifier::BOLD,
@@ -207,13 +207,16 @@ impl App {
         for (screen, label, key) in [
             (Screen::Chat, "chat", ""),
             (Screen::Tokens, "grimoire", "F2"),
-            (Screen::Bestiary, "bestiaire", "F6"),
+            (Screen::Bestiary, "bestiary", "F6"),
         ] {
             spans.extend(tab(label, key, self.screen == screen));
         }
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
-        let gauge =
-            Paragraph::new(Line::from(fear_gauge(self.fx.fear()))).alignment(Alignment::Right);
+        let gauge = Paragraph::new(Line::from(ctx_gauge(
+            self.context_used(),
+            self.context_limit(),
+        )))
+        .alignment(Alignment::Right);
         frame.render_widget(gauge, area);
     }
 
@@ -309,24 +312,28 @@ fn pill(text: &str, bg: Color, fg: Color) -> Vec<Span<'static>> {
     ]
 }
 
-/// Jauge de peur : `peur ▕██████▍     ▏ 042`, de la bougie au sang.
-fn fear_gauge(fear: u8) -> Vec<Span<'static>> {
-    let filled = f32::from(fear) / 100.0 * FEAR_W as f32;
+/// Context gauge: `ctx ██████▍      042`, candle to blood.
+/// `used` = estimated tokens of the current chat, `max` = model window.
+fn ctx_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
+    let max = max.max(1);
+    let ratio = used as f32 / max as f32;
+    let filled = ratio.min(1.0) * CTX_W as f32;
     let track = Style::new().bg(theme::lerp(VOID, UMBER, 0.35));
-    let mut spans = vec![Span::styled("peur ", Style::new().fg(SAND))];
-    for i in 0..FEAR_W {
+    let mut spans = vec![Span::styled("ctx ", Style::new().fg(SAND))];
+    for i in 0..CTX_W {
         let part = (filled - i as f32).clamp(0.0, 1.0);
         let glyph = EIGHTHS[(part * 8.0).round() as usize];
-        let fg = theme::lerp(CANDLE, BLOOD, i as f32 / (FEAR_W - 1) as f32);
+        let fg = theme::lerp(CANDLE, BLOOD, i as f32 / (CTX_W - 1) as f32);
         spans.push(Span::styled(glyph, track.fg(fg)));
     }
-    let colour = match fear {
+    let pct = (used.saturating_mul(100) / max).min(999);
+    let colour = match pct {
         80.. => BLOOD,
         40.. => CANDLE,
         _ => ASH,
     };
     let num = Style::new().fg(colour).add_modifier(Modifier::BOLD);
-    spans.push(Span::styled(format!(" {fear:03} "), num));
+    spans.push(Span::styled(format!(" {pct:03} "), num));
     spans
 }
 
@@ -335,7 +342,7 @@ fn key_hints() -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
     let word = Style::new().fg(ASH);
     let mut spans = Vec::new();
-    for (k, w) in [("F3/F4", "chats"), ("F5", "effroi"), ("Échap", "fuir")] {
+    for (k, w) in [("F3/F4", "chats"), ("F5", "scare"), ("Esc", "flee")] {
         spans.push(Span::styled(k, key));
         spans.push(Span::styled(format!(" {w}  "), word));
     }
@@ -349,12 +356,19 @@ mod tests {
     use ratatui::{backend::TestBackend, Terminal};
 
     #[test]
-    fn fear_gauge_is_fixed_width_and_monotonic() {
-        let width = |f| fear_gauge(f).iter().map(|s| s.width()).sum::<usize>();
-        assert_eq!(width(0), width(100));
-        let full = |f: u8| fear_gauge(f).iter().filter(|s| s.content == "█").count();
-        assert!(full(0) <= full(50) && full(50) <= full(100));
-        assert_eq!(full(100), FEAR_W);
+    fn ctx_gauge_is_fixed_width_and_monotonic() {
+        let width = |u| ctx_gauge(u, 1000).iter().map(|s| s.width()).sum::<usize>();
+        assert_eq!(width(0), width(1000));
+        assert_eq!(width(0), width(9999));
+        let full = |u| {
+            ctx_gauge(u, 1000)
+                .iter()
+                .filter(|s| s.content == "█")
+                .count()
+        };
+        assert!(full(0) <= full(500) && full(500) <= full(1000));
+        assert_eq!(full(1000), CTX_W);
+        assert_eq!(full(5000), CTX_W);
     }
 
     #[test]

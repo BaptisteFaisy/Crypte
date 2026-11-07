@@ -16,7 +16,7 @@ use crate::app::App;
 use crate::provider::{connect_defaults, Provider, ProviderConfig};
 
 /// Message quand un envoi exige une connexion absente.
-pub(crate) const NOT_CONNECTED: &str = "non connecté : /connect openai|muse";
+pub(crate) const NOT_CONNECTED: &str = "not connected: /connect openai|muse";
 
 /// Étape du flow de connexion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,7 +51,7 @@ impl App {
     pub(crate) fn start_connect_flow(&mut self, provider: &str) {
         if connect_defaults(provider).is_none() {
             self.push_system(format!(
-                "provider inconnu : {provider} — valeurs : openai, muse"
+                "unknown provider: {provider} — values: openai, muse"
             ));
             return;
         }
@@ -83,9 +83,9 @@ impl App {
                 self.provider = Some(Arc::new(provider));
                 self.connect_flow = None;
                 self.restore_prompt();
-                self.push_system(format!("connecté à {name} ({model})"));
+                self.push_system(format!("connected to {name} ({model})"));
             }
-            Err(err) => self.push_system(format!("connexion échouée : {err:#}")),
+            Err(err) => self.push_system(format!("connection failed: {err:#}")),
         }
     }
 
@@ -121,9 +121,9 @@ impl App {
         };
         let defaults = connect_defaults(&flow.provider).map(|(_, m)| m);
         let (label, mask) = match flow.step {
-            ConnectStep::Key => (format!("clé API {} (masquée)", flow.provider), true),
+            ConnectStep::Key => (format!("API key {} (masked)", flow.provider), true),
             ConnectStep::Model => (
-                format!("modèle (Entrée = {})", defaults.unwrap_or("?")),
+                format!("model (Enter = {})", defaults.unwrap_or("?")),
                 false,
             ),
         };
@@ -144,7 +144,7 @@ impl App {
     fn cancel_flow(&mut self) {
         self.connect_flow = None;
         self.restore_prompt();
-        self.push_system(String::from("connexion annulée"));
+        self.push_system(String::from("connection cancelled"));
     }
 
     /// Entrée pendant le flow : clé → modèle, modèle → connexion.
@@ -161,7 +161,7 @@ impl App {
     fn advance_key(&mut self) {
         let key = self.flow_trimmed();
         if key.is_empty() {
-            self.push_system(String::from("clé vide, saisissez la clé (Échap = annuler)"));
+            self.push_system(String::from("empty key, type the key (Esc = cancel)"));
             return;
         }
         if let Some(flow) = self.connect_flow.as_mut() {

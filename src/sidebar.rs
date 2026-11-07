@@ -17,7 +17,7 @@ use crate::theme;
 
 /// Bouton [+] : tête citrouille + reste sable (ligne sous les chats).
 const PLUS_HEAD: &str = "[+] ";
-const PLUS_REST: &str = "nouveau chat";
+const PLUS_REST: &str = "new chat";
 
 impl Sessions {
     /// Sidebar « cercueils » : une ligne par chat (nom + tokens + `…` si
@@ -29,7 +29,7 @@ impl Sessions {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(theme::UMBER))
-            .title(theme::title("cercueils", theme::SAND, theme::BONE));
+            .title(theme::title("coffins", theme::SAND, theme::BONE));
         let inner_w = area.width.saturating_sub(2) as usize;
         if inner_w < 3 {
             frame.render_widget(block, area);
@@ -147,6 +147,6 @@ mod tests {
         .unwrap();
         let buf = term.backend().buffer();
         let row: String = (1u16..17).map(|x| buf[(x, 2)].symbol()).collect();
-        assert!(row.starts_with("[+] nouveau chat"), "ligne + : {row:?}");
+        assert!(row.starts_with("[+] new chat"), "plus row: {row:?}");
     }
 }
