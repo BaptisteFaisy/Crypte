@@ -36,6 +36,8 @@ mod scroll;
 mod sessions;
 mod settings;
 mod sidebar;
+#[cfg(test)]
+mod test_env;
 mod texts;
 mod theme;
 mod tokens;

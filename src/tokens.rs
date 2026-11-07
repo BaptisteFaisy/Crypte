@@ -299,6 +299,7 @@ pub fn short_model(model: &str) -> Cow<'_, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_env::EnvScope;
 
     #[test]
     fn estimate_non_empty_text_is_nonzero() {
@@ -356,8 +357,8 @@ mod tests {
 
     #[test]
     fn context_window_matches_known_models_and_env_override() {
-        let saved = std::env::var(CONTEXT_WINDOW_ENV).ok();
-        std::env::remove_var(CONTEXT_WINDOW_ENV);
+        let env = EnvScope::new(&[CONTEXT_WINDOW_ENV]);
+        env.unset(CONTEXT_WINDOW_ENV);
         assert_eq!(context_window("gpt-4.1"), 1_000_000);
         assert_eq!(context_window("openai/gpt-4o-mini"), 128_000);
         assert_eq!(context_window("claude-opus-4-5"), 200_000);
@@ -365,15 +366,11 @@ mod tests {
         assert_eq!(context_window("gpt-4"), 8_192);
         assert_eq!(context_window("muse-spark-1.3-contributor"), 128_000);
         assert_eq!(context_window("some-unknown-model"), 128_000);
-        std::env::set_var(CONTEXT_WINDOW_ENV, "64000");
+        env.set(CONTEXT_WINDOW_ENV, "64000");
         assert_eq!(context_window("gpt-4.1"), 64_000);
-        std::env::set_var(CONTEXT_WINDOW_ENV, "0");
+        env.set(CONTEXT_WINDOW_ENV, "0");
         assert_eq!(context_window("gpt-4.1"), 1_000_000);
-        std::env::set_var(CONTEXT_WINDOW_ENV, "nope");
+        env.set(CONTEXT_WINDOW_ENV, "nope");
         assert_eq!(context_window("gpt-4.1"), 1_000_000);
-        match saved {
-            Some(v) => std::env::set_var(CONTEXT_WINDOW_ENV, v),
-            None => std::env::remove_var(CONTEXT_WINDOW_ENV),
-        }
     }
 }
