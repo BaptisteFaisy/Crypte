@@ -29,8 +29,6 @@ impl App {
             KeyCode::Char(c) if !ctrl => self.cmd(|s| s.sessions.current_mut().chat.input_push(c)),
             KeyCode::Backspace => self.cmd(|s| s.sessions.current_mut().chat.input_pop()),
             KeyCode::Enter => self.cmd(|s| s.send()),
-            KeyCode::F(3) => self.cmd(|s| s.sessions.prev()),
-            KeyCode::F(4) => self.cmd(|s| s.sessions.next()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Bestiary)),
             KeyCode::F(7) => self.cmd(|s| s.open_hub()),

@@ -133,7 +133,6 @@ exempt, stays the remedy).
 | --- | ---- |
 | Enter | send the message |
 | `q` (empty input) | quit |
-| F3 / F4 | previous / next chat |
 | Ctrl+N | new chat |
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
 | F5 | scare: Kiro scared 2s, jump scare, lightning flash |

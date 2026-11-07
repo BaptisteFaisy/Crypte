@@ -385,12 +385,11 @@ fn short_mode(mode: &str) -> &str {
 fn key_hints(short: bool) -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
     if short {
-        return vec![Span::styled("F3/F4 F5 F6", key)];
+        return vec![Span::styled("F5 F6", key)];
     }
     let word = Style::new().fg(ASH);
-    let mut spans = Vec::with_capacity(8);
+    let mut spans = Vec::with_capacity(6);
     for (k, w) in [
-        ("F3/F4", " chats  "),
         ("F5", " scare  "),
         ("Ctrl+←/→", " column  "),
         ("q", " quit  "),
