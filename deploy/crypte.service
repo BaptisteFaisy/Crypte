@@ -1,0 +1,25 @@
+# Crypte TUI on a VPS: systemd owns a tmux session running the binary.
+# Install: cp deploy/crypte.service /etc/systemd/system/crypte.service, then
+#   systemctl daemon-reload && systemctl enable --now crypte
+# Needs: /opt/crypte checkout (built, see docs/VPS.md), /etc/crypte/env
+# (KH_* variables, chmod 600), /var/log/crypte writable by User.
+# Watch: ssh -t <vps> 'tmux attach -r -t crypte' (read-only mirror),
+# or:   ssh <vps> 'tail -F /var/log/crypte/events.jsonl' (event stream).
+[Unit]
+Description=Crypte TUI (tmux session)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=crypte
+WorkingDirectory=/opt/crypte
+EnvironmentFile=/etc/crypte/env
+# The pane re-sources the env file: a pre-existing tmux server would not
+# inherit EnvironmentFile, this way the vars always reach the binary.
+ExecStart=/usr/bin/tmux new-session -d -s crypte -c /opt/crypte 'set -a; . /etc/crypte/env; set +a; exec /opt/crypte/target/release/kiro-horror-tui'
+ExecStop=/usr/bin/tmux kill-session -t crypte
+
+[Install]
+WantedBy=multi-user.target
