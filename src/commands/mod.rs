@@ -1,6 +1,6 @@
 //! Commandes slash (`/usage` `/new` `/bestiary` `/thinking` `/model` `/agent`
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
-//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/help`).
+//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/settings` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -51,6 +51,7 @@ pub enum Command {
     Compact,
     Hint(&'static str),
     Connect(Option<String>),
+    Settings(String),
     Permissions(Option<String>),
     Web(String),
     Tools(Option<String>),
@@ -97,6 +98,9 @@ pub fn parse(input: &str) -> Option<Command> {
         }),
         "/compact" => Some(Command::Compact),
         "/connect" => Some(Command::Connect(opt_arg(&mut parts))),
+        "/settings" | "/setting" | "/params" => {
+            Some(Command::Settings(trimmed[word.len()..].trim().to_string()))
+        }
         "/permissions" => Some(Command::Permissions(opt_arg(&mut parts))),
         "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
         "/kiro" => Some(Command::Kiro),

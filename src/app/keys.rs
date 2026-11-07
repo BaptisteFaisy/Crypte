@@ -21,6 +21,7 @@ impl App {
         let empty = self.sessions.current().chat.input.is_empty();
         match self.screen {
             Screen::Hub => return self.on_hub_key(key.code),
+            Screen::Settings => return self.on_settings_key(key),
             _ => {}
         }
         match key.code {
