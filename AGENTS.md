@@ -16,6 +16,7 @@ cargo fmt --check                # formatage propre exigé
 ./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 5 écrans en ANSI
 ./target/debug/kiro-horror-tui --muse-auth --once "Reply with exactly: OK"
 cargo build --release            # met à jour `kiro-horror-tui` (symlink)
+ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
 ```
 
 ## Archi (`src/`)
