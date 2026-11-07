@@ -139,6 +139,7 @@ impl Sessions {
             chats,
             current,
             next_agent_id: 1,
+            session: crate::workspace::session_id(),
         }
     }
 
