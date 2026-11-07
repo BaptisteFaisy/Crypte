@@ -455,6 +455,7 @@ mod tests {
         app.events = EventLog::new(Some(path.clone()));
         let done = Completion {
             text: String::from("boo"),
+            tool_calls: Vec::new(),
             prompt_tokens: 3,
             completion_tokens: 5,
         };
