@@ -27,7 +27,10 @@ impl Incoming {
     pub(crate) fn usage(&self) -> Option<(u64, u64)> {
         let billed = match self {
             Incoming::ToolDone(..) | Incoming::Vps(..) => return None,
-            Incoming::Chat(_, r) | Incoming::Compact(_, r) | Incoming::Agent(_, _, _, r) => {
+            Incoming::Chat(_, r)
+            | Incoming::Compact(_, r)
+            | Incoming::Agent(_, _, _, r)
+            | Incoming::SpecNew(_, _, r) => {
                 let done = r.as_ref().ok()?;
                 (done.prompt_tokens, done.completion_tokens)
             }
@@ -122,6 +125,7 @@ impl App {
                         .push(Role::System, format!("{tag} error: {error}"));
                 }
                 self.pump_agent_inbox(agent_id);
+                self.spec_agent_failed(agent_id);
                 return;
             }
         };
@@ -156,6 +160,7 @@ impl App {
         }
         self.pump_agent_inbox(agent_id);
         self.fire_agent_links(agent_id, &done.text);
+        self.spec_agent_done(agent_id);
     }
 
     /// Marque un agent échoué sur son chat propriétaire (réponse en erreur).

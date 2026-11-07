@@ -240,3 +240,43 @@ fn parse_settings_et_alias() {
         )))
     );
 }
+
+#[test]
+fn parse_spec_new_statut_run() {
+    assert_eq!(
+        parse("/spec new auth login flow"),
+        Some(Command::SpecNew {
+            name: String::from("auth"),
+            idea: String::from("login flow")
+        })
+    );
+    assert_eq!(
+        parse("/spec auth"),
+        Some(Command::SpecShow {
+            name: String::from("auth")
+        })
+    );
+    assert_eq!(
+        parse("/spec auth run"),
+        Some(Command::SpecRun {
+            name: String::from("auth")
+        })
+    );
+    // `newton` est un nom, pas la création.
+    assert_eq!(
+        parse("/spec newton"),
+        Some(Command::SpecShow {
+            name: String::from("newton")
+        })
+    );
+    assert!(crate::texts::help_text().contains("/spec"));
+}
+
+#[test]
+fn parse_spec_malforme_aide() {
+    assert_eq!(parse("/spec"), Some(Command::Hint(SPEC_USAGE)));
+    assert_eq!(parse("/spec new"), Some(Command::Hint(SPEC_USAGE)));
+    assert_eq!(parse("/spec new auth"), Some(Command::Hint(SPEC_USAGE)));
+    assert_eq!(parse("/spec auth run x"), Some(Command::Hint(SPEC_USAGE)));
+    assert_eq!(parse("/spec auth x"), Some(Command::Hint(SPEC_USAGE)));
+}

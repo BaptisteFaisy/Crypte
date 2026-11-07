@@ -36,7 +36,9 @@ pub fn requirements_user(idea: &str) -> String {
 
 /// Utilisateur : design nourri de l'idée + requirements.
 pub fn design_user(idea: &str, requirements: &str) -> String {
-    format!("Idea:\n{idea}\n\nRequirements:\n{requirements}\n\nWrite design.md for these requirements.")
+    format!(
+        "Idea:\n{idea}\n\nRequirements:\n{requirements}\n\nWrite design.md for these requirements."
+    )
 }
 
 /// Utilisateur : tâches nourries de l'idée + requirements + design.
@@ -48,11 +50,7 @@ pub fn tasks_user(idea: &str, requirements: &str, design: &str) -> String {
 
 /// Utilisateur : exécute UNE tâche (requirements + design en contexte,
 /// absents = section omise) ; ne fait que ça.
-pub fn task_user(
-    requirements: Option<&str>,
-    design: Option<&str>,
-    task: &str,
-) -> String {
+pub fn task_user(requirements: Option<&str>, design: Option<&str>, task: &str) -> String {
     let mut prompt = String::from(
         "You implement one task of an approved spec. Do the task, nothing \
          else; reply with a short summary of what changed.\n",
