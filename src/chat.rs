@@ -2,9 +2,11 @@
 //!
 //! `ChatState` garde les messages et le brouillon `input` ; `draw` rend
 //! l'historique (gouttière colorée par rôle, retour à la ligne par mot,
-//! cadré sur les derniers messages) au-dessus d'une saisie de 3 lignes.
+//! cadré sur les derniers messages, **défilable**) au-dessus d'une
+//! saisie de 3 lignes.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 
 use ratatui::{
     layout::{Alignment, Rect},
@@ -15,6 +17,7 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::scroll::Scroll;
 use crate::theme::{self, ASH, BONE, CANDLE, PUMPKIN, SAND, UMBER};
 
 /// Historique borné (les plus vieux sortent au-delà du cap).
@@ -23,6 +26,10 @@ const MAX_MESSAGES: usize = 200;
 const INPUT_HEIGHT: u16 = 3;
 /// Gouttière : barre colorée + espace devant chaque ligne.
 const GUTTER: &str = "▍ ";
+/// Lignes par cran de molette.
+pub const SCROLL_STEP: isize = 3;
+/// Lignes par page clavier (PgUp/PgDn).
+pub const SCROLL_PAGE: isize = 10;
 
 /// Émetteur d'un message.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -56,6 +63,11 @@ pub struct ChatState {
     prompt_label: Option<String>,
     mask_input: bool,
     input_preview: Option<String>,
+    /// Décalage de l'historique (0 = collé aux derniers messages).
+    pub scroll: Scroll,
+    /// Rectangle de la colonne de discussion (mémorisé au rendu) :
+    /// la molette ne défile que le chat survolé.
+    pub area: Cell<Rect>,
 }
 
 impl ChatState {
@@ -134,6 +146,7 @@ impl ChatState {
 
     /// Rend historique + saisie dans `area`.
     pub fn draw(&self, frame: &mut Frame, area: Rect, view: ChatView) {
+        self.area.set(area);
         let hist_h = area.height.saturating_sub(INPUT_HEIGHT);
         let hist = Rect {
             height: hist_h,
@@ -148,7 +161,8 @@ impl ChatState {
         self.draw_input(frame, input, view.tick);
     }
 
-    /// Historique : bloc arrondi, messages cadrés sur la fin.
+    /// Historique : bloc arrondi, messages cadrés sur la fin, défilables
+    /// (molette / PgUp / Shift+↑↓) avec badge des lignes remontées.
     fn draw_history(&self, frame: &mut Frame, area: Rect, view: ChatView) {
         let block = Block::new()
             .borders(Borders::ALL)
@@ -160,11 +174,12 @@ impl ChatState {
                 CANDLE,
             ));
         let inner = block.inner(area);
-        frame.render_widget(block, area);
         if inner.width < 4 || inner.height == 0 {
+            frame.render_widget(block, area);
             return;
         }
         if self.messages.is_empty() && !view.sending {
+            frame.render_widget(block, area);
             frame.render_widget(epitaph(inner.height), inner);
             return;
         }
@@ -173,8 +188,14 @@ impl ChatState {
             lines.push(Line::raw(""));
             lines.push(murmur_line(view.tick));
         }
-        let skip = lines.len().saturating_sub(inner.height as usize);
+        let (skip, scroll) = self.scroll.viewport(lines.len(), inner.height as usize);
         lines.drain(..skip);
+        let block = if scroll == 0 {
+            block
+        } else {
+            block.title_bottom(scroll_badge(scroll))
+        };
+        frame.render_widget(block, area);
         frame.render_widget(Paragraph::new(lines), inner);
     }
 
@@ -295,6 +316,16 @@ fn history_lines(messages: &[Message], width: usize) -> Vec<Line<'static>> {
     lines
 }
 
+/// Badge de défilement : « ↕ 12 lines ↓ » sur le bord bas du cadre.
+fn scroll_badge(scroll: usize) -> Line<'static> {
+    let unit = if scroll == 1 { "line" } else { "lines" };
+    Line::styled(
+        format!(" \u{2195} {scroll} {unit} \u{2193} "),
+        Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD),
+    )
+    .right_aligned()
+}
+
 /// « la crypte murmure » + points animés pendant l'attente.
 fn murmur_line(tick: u64) -> Line<'static> {
     let dots = ["·  ", "·· ", "···", " ··", "  ·", "   "][(tick / 3 % 6) as usize];
@@ -372,6 +403,43 @@ mod tests {
         chat.push(Role::User, "bonsoir");
         assert!(chat.heap_bytes() > vide);
         assert!(chat.heap_bytes() >= "bonsoir".len());
+    }
+
+    #[test]
+    fn defiler_affiche_les_vieux_messages_puis_revient() {
+        use ratatui::{backend::TestBackend, Terminal};
+        let mut chat = ChatState::new();
+        for i in 0..12 {
+            chat.push(Role::User, format!("m{i:02}"));
+        }
+        let view = ChatView {
+            title: "test",
+            tick: 0,
+            sending: false,
+        };
+        let dump = |chat: &ChatState| {
+            let mut term = Terminal::new(TestBackend::new(40, 14)).unwrap();
+            term.draw(|f| chat.draw(f, f.area(), view)).unwrap();
+            let buf = term.backend().buffer().clone();
+            (0..14)
+                .map(|y| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>())
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        // Au bas : la fin visible, le début hors cadre, pas de badge.
+        let bottom = dump(&chat);
+        assert!(bottom.contains("m11"), "dernier message absent : {bottom}");
+        assert!(!bottom.contains("m00"), "début affiché à tort : {bottom}");
+        assert!(!bottom.contains("line"), "badge à tort : {bottom}");
+        // Remonté tout en haut : le début réapparaît + badge de défilement.
+        chat.scroll.by(-100);
+        let top = dump(&chat);
+        assert!(top.contains("m00"), "début toujours absent : {top}");
+        assert!(!top.contains("m11"), "fin encore affichée : {top}");
+        assert!(top.contains("lines"), "badge de défilement absent : {top}");
+        // Retour au bas : on retrouve exactement la vue initiale.
+        chat.scroll.to_bottom();
+        assert_eq!(dump(&chat), bottom);
     }
 
     #[test]

@@ -1,19 +1,27 @@
-//! Clics souris : bouton [+] (nouveau chat), lignes de la sidebar
-//! (choisir le chat), onglets de l'en-tête (changer d'écran).
+//! Souris : molette = défilement de l'historique, clic gauche = bouton [+]
+//! (nouveau chat), lignes de la sidebar (choisir le chat), onglets de
+//! l'en-tête (changer d'écran).
 //!
 //! La capture souris est activée par `main` (désactivée en sortie) ;
 //! les rectangles sont mémorisés à chaque frame (`App::plus_btn`,
-//! `App::side_rows`, `App::tab_hits`).
+//! `App::side_rows`, `App::tab_hits`, `ChatState::area`).
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Position;
 
 use crate::app::{App, Screen};
+use crate::chat::SCROLL_STEP;
 
 impl App {
-    /// Clic gauche : [+] = nouveau chat, ligne = choisir le chat,
-    /// onglet = changer d'écran (les autres clics sont ignorés).
+    /// Molette : défiler le chat ; clic gauche : [+] = nouveau chat,
+    /// ligne = choisir le chat, onglet = changer d'écran (les autres
+    /// clics sont ignorés).
     pub(crate) fn on_mouse(&mut self, mev: MouseEvent) {
+        match mev.kind {
+            MouseEventKind::ScrollUp => return self.wheel(mev, -SCROLL_STEP),
+            MouseEventKind::ScrollDown => return self.wheel(mev, SCROLL_STEP),
+            _ => {}
+        }
         if mev.kind != MouseEventKind::Down(MouseButton::Left) {
             return;
         }
@@ -36,6 +44,19 @@ impl App {
                 self.sessions.select((at.y - rows.y) as usize);
             }
         }
+    }
+
+    /// Un cran de molette : défile l'historique du chat courant, à
+    /// condition d'être sur l'écran chat et dans sa colonne.
+    fn wheel(&mut self, mev: MouseEvent, delta: isize) {
+        if self.screen != Screen::Chat {
+            return;
+        }
+        let chat = &self.sessions.current().chat;
+        if !chat.area.get().contains(Position::new(mev.column, mev.row)) {
+            return;
+        }
+        chat.scroll.by(delta);
     }
 
     /// Clic sur un onglet : même effet que sa touche (F6/F7/F8 basculent).
@@ -68,8 +89,13 @@ mod tests {
 
     /// Clic gauche en `(col, row)`.
     fn click(col: u16, row: u16) -> MouseEvent {
+        event(MouseEventKind::Down(MouseButton::Left), col, row)
+    }
+
+    /// Événement souris de type `kind` en `(col, row)`.
+    fn event(kind: MouseEventKind, col: u16, row: u16) -> MouseEvent {
         MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
+            kind,
             column: col,
             row,
             modifiers: KeyModifiers::empty(),
@@ -109,6 +135,31 @@ mod tests {
             });
         }
         assert_eq!(app.sessions.count(), 1);
+    }
+
+    #[test]
+    fn molette_defile_le_chat_survole_uniquement() {
+        let mut app = test_app();
+        // Colonne de discussion mémorisée : x 20..80, y 1..21.
+        app.sessions
+            .current()
+            .chat
+            .area
+            .set(Rect::new(20, 1, 60, 20));
+        let offset = |app: &App| app.sessions.current().chat.scroll.offset();
+        app.on_mouse(event(MouseEventKind::ScrollUp, 30, 5));
+        assert_eq!(offset(&app), SCROLL_STEP as usize);
+        app.on_mouse(event(MouseEventKind::ScrollDown, 30, 5));
+        assert_eq!(offset(&app), 0, "retour au bas");
+        // Hors de la colonne (sidebar, panneau droit) : ignoré.
+        app.on_mouse(event(MouseEventKind::ScrollUp, 2, 5));
+        assert_eq!(offset(&app), 0);
+        app.on_mouse(event(MouseEventKind::ScrollUp, 95, 5));
+        assert_eq!(offset(&app), 0);
+        // Autre écran : ignoré même dans la colonne.
+        app.screen = Screen::Bestiary;
+        app.on_mouse(event(MouseEventKind::ScrollUp, 30, 5));
+        assert_eq!(offset(&app), 0);
     }
 
     #[test]

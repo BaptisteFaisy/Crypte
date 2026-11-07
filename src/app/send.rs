@@ -48,6 +48,7 @@ impl App {
             sess.name = short_name(&text);
         }
         sess.chat.push(Role::User, text.clone());
+        sess.chat.scroll.to_bottom();
         self.events.emit(&crate::events::Event::user_msg(id, &text));
         sess.push_history("user", text);
         let history = send_window(&sess.history, sess.pinned_system);
