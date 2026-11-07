@@ -347,8 +347,12 @@ global `~/.kiro/`), so a project moves back and forth between both:
   one via sub-agents (requirements + design in context), checking each
   off in `tasks.md` (`y/n` between tasks in `auto` mode, chained in
   `yolo`; a failed task stops the run, nothing is re-tried).
-- **Hooks** (`.kiro/hooks/*.json`, v1) and **MCP**
-(`.kiro/settings/mcp.json`, stdio + remote) : parsed, engines next.
+- **Hooks** (`.kiro/hooks/*.json`, v1) : parsed, engine next.
+- **MCP** (`.kiro/settings/mcp.json`, stdio + remote) : live client
+  (tools only, no resources/prompts) — servers connect on first
+  tool-using send, tools show as `mcp_<server>_<tool>`, `autoApprove`
+  skips confirmation ; `/mcp` shows servers + tools, `/mcp refresh`
+  reconnects.
 - **Ignore** (`.kiroignore`) : loaded, enforced with hooks.
 
 `/kiro` shows what was loaded (steering, specs, hooks, servers).
