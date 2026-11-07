@@ -9,12 +9,14 @@ use std::sync::OnceLock;
 
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
 use tiktoken_rs::{o200k_base, CoreBPE};
+
+use crate::theme;
 
 /// Encodeur partagé (lourd, ~32 Mo) initialisé une seule fois.
 /// `None` = construction impossible, `estimate` replie sur l'heuristique.
@@ -146,51 +148,72 @@ impl TokenLedger {
         total
     }
 
-    /// Dessine le tableau de bord : session + dernier appel.
+    /// Dessine le grimoire : session, dernier appel, coût, débit, et la
+    /// part prompt/réponse en jauge (citrouille = réponse).
     pub fn draw(&self, frame: &mut Frame, area: Rect) {
-        let title = Style::new()
-            .fg(Color::Rgb(0xE8, 0xE0, 0xC8))
-            .add_modifier(Modifier::BOLD);
-        let dim = Style::new().fg(Color::Rgb(0x6B, 0x6B, 0x75));
-        let num = Style::new().fg(Color::Rgb(0x39, 0xFF, 0x6A));
+        let label = Style::new().fg(theme::SAND);
+        let num = Style::new().fg(theme::BONE).add_modifier(Modifier::BOLD);
+        let row = |name: &'static str, value: String| {
+            Line::from(vec![
+                Span::styled(format!("  {name:<9}"), label),
+                Span::styled(value, num),
+            ])
+        };
         let lines = vec![
-            Line::from(vec![
-                Span::styled("session  ", title),
-                Span::styled(
-                    format!(
-                        "in={} out={} tot={}",
-                        self.prompt,
-                        self.completion,
-                        self.total()
-                    ),
-                    num,
+            Line::raw(""),
+            row(
+                "session",
+                format!(
+                    "in={} out={} tot={}",
+                    self.prompt,
+                    self.completion,
+                    self.total()
                 ),
-            ]),
-            Line::from(vec![
-                Span::styled("dernier  ", dim),
-                Span::styled(
-                    format!("in={} out={}", self.last_prompt, self.last_completion),
-                    Style::new().fg(Color::Rgb(0xE8, 0xE0, 0xC8)),
-                ),
-            ]),
-            Line::from(vec![
-                Span::styled("coût     ", dim),
-                Span::raw(fmt_cost(self.cost())),
-            ]),
-            Line::from(vec![
-                Span::styled("tps      ", dim),
-                Span::raw(format!(
+            ),
+            row(
+                "dernier",
+                format!("in={} out={}", self.last_prompt, self.last_completion),
+            ),
+            row("coût", fmt_cost(self.cost())),
+            row(
+                "tps",
+                format!(
                     "dernier={} moy={}",
                     fmt_tps(self.last_tps()),
                     fmt_tps(self.avg_tps())
-                )),
-            ]),
+                ),
+            ),
+            Line::raw(""),
+            self.share_gauge(area.width.saturating_sub(6) as usize),
         ];
         let block = Block::new()
             .borders(Borders::ALL)
-            .title("◆ tokens")
-            .border_style(Style::new().fg(Color::Rgb(0x6B, 0x6B, 0x75)));
+            .border_type(BorderType::Rounded)
+            .border_style(Style::new().fg(theme::UMBER))
+            .title(theme::title(
+                "\u{f068c} grimoire des tokens",
+                theme::BLOOD,
+                theme::CANDLE,
+            ));
         frame.render_widget(Paragraph::new(lines).block(block), area);
+    }
+
+    /// Jauge prompt (os) / réponse (citrouille) sur `width` colonnes.
+    fn share_gauge(&self, width: usize) -> Line<'static> {
+        let total = self.total();
+        if total == 0 || width == 0 {
+            let dim = Style::new().fg(theme::ASH).add_modifier(Modifier::ITALIC);
+            return Line::styled("  aucune âme consommée pour l'instant", dim);
+        }
+        let out = (self.completion as f64 / total as f64 * width as f64).round() as usize;
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                "█".repeat(width - out.min(width)),
+                Style::new().fg(theme::UMBER),
+            ),
+            Span::styled("█".repeat(out.min(width)), Style::new().fg(theme::PUMPKIN)),
+        ])
     }
 }
 

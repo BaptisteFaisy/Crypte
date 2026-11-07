@@ -1,7 +1,8 @@
 # kiro-horror-tui — contexte agents
 
-Chat LLM dans une crypte hantée (TUI ratatui) : multi-chats, mascotte
-fantôme Kiro (F5), effets horreur, compteur tokens, sous-agents `/agent`,
+Chat LLM dans une crypte hantée (TUI ratatui) pensé pour Ghostty :
+multi-chats, mascotte fantôme Kiro (F5), bestiaire pixel art (F6, images
+Kitty), effets horreur, compteur tokens, sous-agents `/agent`,
 compaction `/compact`. UI et messages **en français**.
 
 ## Commandes
@@ -11,6 +12,8 @@ cargo build                      # debug, 0 warning exigé
 cargo test                       # tous les tests doivent être verts
 cargo fmt --check                # formatage propre exigé
 ./target/debug/kiro-horror-tui --smoke   # headless 80x24, sans réseau ni clé
+./target/debug/kiro-horror-tui --planche docs/bestiaire.png  # après retouche d'un sprite
+./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 3 écrans en ANSI
 ./target/debug/kiro-horror-tui --muse-auth --once "Reply with exactly: OK"
 cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 ```
@@ -24,7 +27,10 @@ cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 saisie), `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :
 chargement, pin, compaction pure), `mascot.rs` (fantôme), `fx.rs`
-(overlay horreur).
+(overlay horreur), `app/ui.rs` (mise en page), `theme.rs` (palette
+unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
+(panneau droit), `galerie.rs` (écran F6), `ghostty.rs` (OSC + mode 2026).
+`ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async) → `drain_replies`
 (`Incoming::Chat|Agent|Compact`) → ledger + historique + affichage.
@@ -45,6 +51,14 @@ max). Chaque appel LLM est déclenché par le user (pas de boucles auto).
 - Zéro duplication : extraire et partager les helpers, une seule
   implémentation par logique (`compacted_history`, `without_pinned`,
   `usage_line` vivent dans `agents.rs`).
+- Couleurs : uniquement via `theme.rs` (jamais de `Color::Rgb` ailleurs,
+  sauf les fonds RGBA de `gfx.rs` et `bestiary.rs`, documentés = `theme::VOID`).
+- Pixel art : grilles `assets/pixel/*.txt` 32×32, lettres de palette
+  (voir README) ; mise à l'échelle **entière** au plus proche voisin
+  seulement (`bestiary::fit`), jamais de filtre lissant : la netteté est
+  testée (`gfx::tests`). Après retouche : régénérer `docs/bestiaire.png`.
+- Effets (`fx.rs`) : jamais sur le texte ni dans les zones d'images
+  (`ImageBank::drawn`). Aucun son (pas de BEL, pas de notification).
 - UI et messages en français ; clé API **jamais affichée ni logguée**
   (ni chat, ni log, ni test — les tests réseau lisent le store).
 - `AGENTS.md` chargé une fois au démarrage (`--agents-file` prime,

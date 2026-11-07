@@ -1,0 +1,264 @@
+//! Bestiaire : 33 créatures en pixel art 32×32 dessinées pour la crypte
+//! (d'après les 33 éléments du shot Dribbble « Halloween icons and
+//! illustrations ») + Kiro effrayé.
+//!
+//! Chaque sprite est une grille texte de `assets/pixel/` (32 lignes de 32
+//! caractères, une lettre = une couleur de [`theme`], `.` = transparent),
+//! embarquée à la compilation et éditable à la main. Agrandissement
+//! uniquement par facteur entier, au plus proche voisin : pixels nets.
+
+use anyhow::{bail, Context, Result};
+use image::{imageops, Rgba, RgbaImage};
+use ratatui::style::Color;
+
+use crate::theme;
+
+/// Côté d'un sprite, en pixels.
+pub const SPRITE: u32 = 32;
+
+/// Une créature : identifiant de fichier, nom et légende (FR), sprite.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Creature {
+    pub slug: &'static str,
+    pub name: &'static str,
+    pub lore: &'static str,
+    pixels: &'static str,
+}
+
+impl Creature {
+    /// Sprite 32×32 décodé.
+    pub fn sprite(&self) -> Result<RgbaImage> {
+        decode(self.pixels).with_context(|| format!("sprite {}", self.slug))
+    }
+}
+
+macro_rules! creature {
+    ($slug:literal, $name:literal, $lore:literal) => {
+        Creature {
+            slug: $slug,
+            name: $name,
+            lore: $lore,
+            pixels: include_str!(concat!("../assets/pixel/", $slug, ".txt")),
+        }
+    };
+}
+
+/// Les 33 créatures, dans l'ordre des 4 planches du shot.
+pub const BESTIARY: [Creature; 33] = [
+    creature!("loup-garou", "Loup-garou", "Il hurle à ta place."),
+    creature!("araignee", "Araignée", "Elle tisse tes sous-agents."),
+    creature!("crane", "Crâne en herbe", "Même mort, il pousse encore."),
+    creature!(
+        "chat-noir",
+        "Chat noir",
+        "Il a déjà vu ta prochaine erreur."
+    ),
+    creature!("infirmiere", "Infirmière", "Le diagnostic est mortel."),
+    creature!("fantome", "Kiro", "Le gardien de la crypte."),
+    creature!("couteau", "Couteau", "Il coupe court aux réponses."),
+    creature!(
+        "citrouille",
+        "Citrouille",
+        "Ses yeux en croix ne pardonnent pas."
+    ),
+    creature!(
+        "chauve-souris",
+        "Chauve-souris",
+        "Elle dort la tête en bas."
+    ),
+    creature!("frankenstein", "Frankenstein", "Recousu de vieux prompts."),
+    creature!(
+        "tete-poignardee",
+        "Le Poignardé",
+        "Il a lu le diff de trop."
+    ),
+    creature!("main-tombe", "Main de la tombe", "Ci-gît une requête."),
+    creature!("cercueil-main", "Cercueil", "On y enterre l'historique."),
+    creature!("vaudou", "Poupée vaudou", "Chaque épingle est un bug."),
+    creature!("chaudron", "Chaudron", "La réponse mijote."),
+    creature!("sucette", "Sucette", "Le bâton est un os."),
+    creature!(
+        "citrouille-bougies",
+        "Lanterne",
+        "Deux bougies pour veiller."
+    ),
+    creature!("zombie", "Zombie", "Le cerveau à l'air libre."),
+    creature!("dame-blanche", "Dame blanche", "Ne la regarde pas de face."),
+    creature!("faucheuse", "La Faucheuse", "Elle compte tes tokens."),
+    creature!("cercueil-ouvert", "Cercueil ouvert", "Quelqu'un est sorti."),
+    creature!("momie", "Momie", "Elle avance, bras tendus."),
+    creature!("ronde", "La Ronde", "Trois démons dansent."),
+    creature!("tete-de-sac", "Tête de sac", "Des bonbons ou un sort."),
+    creature!("farceur", "Le Farceur", "Il sonne à ta porte."),
+    creature!("tele", "La Télé", "Elle sort de l'écran."),
+    creature!(
+        "masque-bois",
+        "Masque aux bois",
+        "Un crâne, des bois, un os."
+    ),
+    creature!("cri", "Le Cri", "Son masque hurle en silence."),
+    creature!("arbre-mort", "Arbre mort", "Ses branches portent des os."),
+    creature!("bouquet", "Le Bouquet", "Des fleurs pour ta tombe."),
+    creature!("poupee", "Cœur épinglé", "Elle t'aime à mourir."),
+    creature!("pentacle", "Chat du pentacle", "Le rituel a commencé."),
+    creature!(
+        "momie-course",
+        "Momie pressée",
+        "Elle court plus vite que toi."
+    ),
+];
+
+/// Kiro effrayé (F5) : hors bestiaire, réservé à la mascotte.
+pub const KIRO_SPOOKED: Creature = creature!("kiro-effroi", "Kiro", "Quelque chose l'a effrayé !");
+
+/// Créature par identifiant (bestiaire puis Kiro effrayé).
+pub fn find(slug: &str) -> Option<&'static Creature> {
+    BESTIARY
+        .iter()
+        .chain(std::iter::once(&KIRO_SPOOKED))
+        .find(|c| c.slug == slug)
+}
+
+/// Créature par identifiant ; panique si absent (identifiants internes).
+pub fn get(slug: &str) -> &'static Creature {
+    find(slug).unwrap_or_else(|| panic!("créature inconnue : {slug}"))
+}
+
+/// Couleur d'une lettre de grille (`.` = transparent, `None` = inconnue).
+fn palette(ch: char) -> Option<Color> {
+    Some(match ch {
+        'W' => theme::BONE,
+        'S' => theme::SAND,
+        'U' => theme::UMBER,
+        'K' => theme::INK,
+        'O' => theme::PUMPKIN,
+        'o' => theme::PUMPKIN_DARK,
+        'R' => theme::BLOOD,
+        'r' => theme::DRIED,
+        'G' => theme::ECTO,
+        'g' => theme::ECTO_DARK,
+        'P' => theme::SPECTRE,
+        'p' => theme::SPECTRE_DARK,
+        'Y' => theme::CANDLE,
+        'y' => theme::CANDLE_DARK,
+        'N' => theme::BURLAP,
+        '.' => Color::Reset,
+        _ => return None,
+    })
+}
+
+/// Grille texte 32×32 → image RGBA (transparent hors des pixels peints).
+pub fn decode(grid: &str) -> Result<RgbaImage> {
+    let rows: Vec<&str> = grid.lines().collect();
+    if rows.len() != SPRITE as usize {
+        bail!("{} lignes au lieu de {SPRITE}", rows.len());
+    }
+    let mut img = RgbaImage::new(SPRITE, SPRITE);
+    for (y, row) in rows.iter().enumerate() {
+        if row.chars().count() != SPRITE as usize {
+            bail!(
+                "ligne {y} : {} colonnes au lieu de {SPRITE}",
+                row.chars().count()
+            );
+        }
+        for (x, ch) in row.chars().enumerate() {
+            let px = match palette(ch) {
+                Some(Color::Rgb(r, g, b)) => Rgba([r, g, b, 255]),
+                Some(_) => Rgba([0, 0, 0, 0]),
+                None => bail!("ligne {y} : couleur inconnue {ch:?}"),
+            };
+            img.put_pixel(x as u32, y as u32, px);
+        }
+    }
+    Ok(img)
+}
+
+/// Sprite agrandi par le plus grand facteur **entier** qui tient dans
+/// `w`×`h` px, centré sur un canevas transparent de exactement `w`×`h`.
+/// Trop petit pour ×1 : réduction au plus proche voisin (repli).
+pub fn fit(sprite: &RgbaImage, w: u32, h: u32) -> RgbaImage {
+    let side = w.min(h);
+    let size = match side / SPRITE {
+        0 => side.max(1),
+        k => k * SPRITE,
+    };
+    let scaled = imageops::resize(sprite, size, size, imageops::FilterType::Nearest);
+    let mut canvas = RgbaImage::new(w.max(1), h.max(1));
+    let (dx, dy) = ((w.saturating_sub(size)) / 2, (h.saturating_sub(size)) / 2);
+    imageops::overlay(&mut canvas, &scaled, i64::from(dx), i64::from(dy));
+    canvas
+}
+
+/// Planche PNG de tout le bestiaire (+ Kiro effrayé) agrandi ×6, 6 par
+/// rangée, sur le fond de la crypte (`--planche`).
+pub fn write_sheet(path: &str) -> Result<()> {
+    const ZOOM: u32 = 6;
+    const PAD: u32 = 24;
+    const COLS: u32 = 6;
+    let all: Vec<&Creature> = BESTIARY.iter().chain([&KIRO_SPOOKED]).collect();
+    let cell = SPRITE * ZOOM;
+    let step = cell + PAD;
+    let rows = (all.len() as u32).div_ceil(COLS);
+    let bg = Rgba([0x0C, 0x09, 0x08, 0xFF]);
+    let mut sheet = RgbaImage::from_pixel(COLS * step + PAD, rows * step + PAD, bg);
+    for (i, creature) in all.iter().enumerate() {
+        let img = fit(&creature.sprite()?, cell, cell);
+        let (x, y) = (
+            PAD + (i as u32 % COLS) * step,
+            PAD + (i as u32 / COLS) * step,
+        );
+        imageops::overlay(&mut sheet, &img, i64::from(x), i64::from(y));
+    }
+    sheet
+        .save(path)
+        .with_context(|| format!("écriture de {path}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_sprite_decodes_with_visible_pixels() {
+        for creature in BESTIARY.iter().chain([&KIRO_SPOOKED]) {
+            let img = creature.sprite().expect(creature.slug);
+            let inked = img.pixels().filter(|p| p.0[3] == 255).count();
+            assert!(inked > 80, "{} presque vide ({inked} px)", creature.slug);
+        }
+    }
+
+    #[test]
+    fn decode_rejects_bad_grids() {
+        assert!(decode("..\n..").is_err());
+        let bad = format!("{}\n", ".".repeat(31)).repeat(32);
+        assert!(decode(&bad).is_err());
+        let alien = format!("{}Z\n", ".".repeat(31)).repeat(32);
+        assert!(decode(&alien).is_err());
+    }
+
+    #[test]
+    fn fit_scales_by_integer_factor_only() {
+        let sprite = get("citrouille").sprite().unwrap();
+        let out = fit(&sprite, 70, 100);
+        assert_eq!(out.dimensions(), (70, 100));
+        let (dx, dy) = (3, 18);
+        for (x, y) in [(0, 0), (15, 20), (31, 31), (8, 27)] {
+            let src = sprite.get_pixel(x, y);
+            for (ox, oy) in [(0, 0), (1, 1)] {
+                let dst = out.get_pixel(dx + 2 * x + ox, dy + 2 * y + oy);
+                assert_eq!(src, dst, "pixel ({x},{y}) déformé");
+            }
+        }
+    }
+
+    #[test]
+    fn slugs_are_unique_and_findable() {
+        let mut slugs: Vec<&str> = BESTIARY.iter().map(|c| c.slug).collect();
+        slugs.sort_unstable();
+        slugs.dedup();
+        assert_eq!(slugs.len(), BESTIARY.len());
+        assert_eq!(get("fantome").name, "Kiro");
+        assert_eq!(get("kiro-effroi"), &KIRO_SPOOKED);
+        assert!(find("licorne").is_none());
+    }
+}

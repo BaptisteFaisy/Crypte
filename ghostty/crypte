@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Ouvre kiro-horror-tui dans une fenêtre Ghostty habillée « Crypte » :
+# thème (crypte.conf) + post-traitement (crypte.glsl).
+#
+#   ghostty/crypte [--sans-shader] [options de kiro-horror-tui…]
+#   ghostty/crypte --muse-auth
+#
+# Compile la version release au premier lancement.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root="$(dirname "$here")"
+bin="$root/target/release/kiro-horror-tui"
+if [ ! -x "$bin" ]; then
+    cargo build --release --manifest-path "$root/Cargo.toml"
+fi
+shader=(--custom-shader="$here/crypte.glsl")
+if [ "${1:-}" = "--sans-shader" ]; then
+    shader=()
+    shift
+fi
+exec ghostty --config-file="$here/crypte.conf" "${shader[@]}" -e "$bin" "$@"

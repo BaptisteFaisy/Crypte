@@ -1,32 +1,25 @@
 //! Historique des messages + saisie éditable (thème crypte).
 //!
 //! `ChatState` garde les messages et le brouillon `input` ; `draw` rend
-//! l'historique (pré-wrappé, cadré sur les derniers messages) au-dessus
-//! d'une zone de saisie de 3 lignes.
+//! l'historique (gouttière colorée par rôle, retour à la ligne par mot,
+//! cadré sur les derniers messages) au-dessus d'une saisie de 3 lignes.
 
 use ratatui::{
-    layout::Rect,
+    layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
 
-/// Texte pâle (os) : messages du joueur.
-const BONE: Color = Color::Rgb(232, 224, 200);
-/// Sang frais : étiquette de l'assistant.
-const FRESH_BLOOD: Color = Color::Rgb(220, 20, 60);
-/// Ectoplasme vert spectral : corps des réponses.
-const ECTOPLASM: Color = Color::Rgb(138, 255, 128);
-/// Cendre grise : messages système.
-const ASH: Color = Color::Rgb(107, 107, 117);
-/// Bougie : bordure de saisie.
-const CANDLE: Color = Color::Rgb(255, 179, 71);
+use crate::theme::{self, ASH, BONE, CANDLE, PUMPKIN, SAND, UMBER};
 
 /// Historique borné (les plus vieux sortent au-delà du cap).
 const MAX_MESSAGES: usize = 200;
 /// Hauteur fixe (bordures incluses) de la zone de saisie.
 const INPUT_HEIGHT: u16 = 3;
+/// Gouttière : barre colorée + espace devant chaque ligne.
+const GUTTER: &str = "▍ ";
 
 /// Émetteur d'un message.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -41,6 +34,14 @@ pub enum Role {
 pub struct Message {
     pub role: Role,
     pub text: String,
+}
+
+/// Contexte de rendu : titre du chat, horloge d'animation, attente.
+#[derive(Clone, Copy, Debug)]
+pub struct ChatView<'a> {
+    pub title: &'a str,
+    pub tick: u64,
+    pub sending: bool,
 }
 
 /// Historique + brouillon de saisie.
@@ -89,8 +90,8 @@ impl ChatState {
         std::mem::take(&mut self.input)
     }
 
-    /// Rend historique scrollé + saisie dans `area`.
-    pub fn draw(&self, frame: &mut Frame, area: Rect) {
+    /// Rend historique + saisie dans `area`.
+    pub fn draw(&self, frame: &mut Frame, area: Rect, view: ChatView) {
         let hist_h = area.height.saturating_sub(INPUT_HEIGHT);
         let hist = Rect {
             height: hist_h,
@@ -101,101 +102,169 @@ impl ChatState {
             height: area.height.saturating_sub(hist_h),
             ..area
         };
-        self.draw_history(frame, hist);
-        self.draw_input(frame, input);
+        self.draw_history(frame, hist, view);
+        self.draw_input(frame, input, view.tick);
     }
 
-    /// Historique : lignes wrappées, cadrées sur les derniers messages.
-    fn draw_history(&self, frame: &mut Frame, area: Rect) {
-        let block = Block::default()
+    /// Historique : bloc arrondi, messages cadrés sur la fin.
+    fn draw_history(&self, frame: &mut Frame, area: Rect, view: ChatView) {
+        let block = Block::new()
             .borders(Borders::ALL)
-            .border_style(Style::new().fg(FRESH_BLOOD))
-            .title(" ☠ crypt-chat ");
-        let inner_w = area.width.saturating_sub(2) as usize;
-        let inner_h = area.height.saturating_sub(2) as usize;
-        if inner_w == 0 || inner_h == 0 {
-            frame.render_widget(block, area);
+            .border_type(BorderType::Rounded)
+            .border_style(Style::new().fg(UMBER))
+            .title(theme::title(
+                &format!("\u{f068c} {}", view.title),
+                PUMPKIN,
+                CANDLE,
+            ));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if inner.width < 4 || inner.height == 0 {
             return;
         }
-        let lines = history_lines(&self.messages, inner_w);
-        let skip = lines.len().saturating_sub(inner_h);
+        if self.messages.is_empty() && !view.sending {
+            frame.render_widget(epitaph(inner.height), inner);
+            return;
+        }
+        let mut lines = history_lines(&self.messages, inner.width as usize);
+        if view.sending {
+            lines.push(Line::raw(""));
+            lines.push(murmur_line(view.tick));
+        }
+        let skip = lines.len().saturating_sub(inner.height as usize);
         let visible: Vec<Line<'static>> = lines.into_iter().skip(skip).collect();
-        frame.render_widget(Paragraph::new(visible).block(block), area);
+        frame.render_widget(Paragraph::new(visible), inner);
     }
 
-    /// Saisie : brouillon cadré sur la fin + curseur bougie.
-    fn draw_input(&self, frame: &mut Frame, area: Rect) {
-        let block = Block::default()
+    /// Saisie : brouillon cadré sur la fin + curseur bougie clignotant.
+    fn draw_input(&self, frame: &mut Frame, area: Rect, tick: u64) {
+        let block = Block::new()
             .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(CANDLE))
-            .title(" ▶ parler… (Entrée = envoyer) ");
-        let inner_w = area.width.saturating_sub(2) as usize;
-        let text = tail_chars(&self.input, inner_w.max(1));
-        let line = Line::from(vec![
-            Span::styled(text, Style::new().fg(BONE)),
-            Span::styled("▌", Style::new().fg(CANDLE).add_modifier(Modifier::BOLD)),
-        ]);
+            .title(Line::styled(" ✒ parler ", Style::new().fg(CANDLE)))
+            .title_bottom(Line::styled(" Entrée ", Style::new().fg(ASH)).right_aligned());
+        let inner_w = area.width.saturating_sub(3) as usize;
+        let cursor = if (tick / 5) % 2 == 0 { "▌" } else { " " };
+        let cursor = Span::styled(cursor, Style::new().fg(CANDLE));
+        let line = if self.input.is_empty() {
+            let hint = Style::new().fg(ASH).add_modifier(Modifier::ITALIC);
+            Line::from(vec![cursor, Span::styled("murmure à la crypte…", hint)])
+        } else {
+            let text = tail_chars(&self.input, inner_w.max(1));
+            Line::from(vec![Span::styled(text, Style::new().fg(BONE)), cursor])
+        };
         frame.render_widget(Paragraph::new(line).block(block), area);
+    }
+}
+
+/// Couleur de gouttière / d'étiquette par rôle.
+fn role_colour(role: Role) -> Color {
+    match role {
+        Role::User => BONE,
+        Role::Assistant => PUMPKIN,
+        Role::System => ASH,
     }
 }
 
 /// Étiquette affichée en tête de chaque message.
 fn role_tag(role: Role) -> &'static str {
     match role {
-        Role::User => "▸ toi",
-        Role::Assistant => "☠ crypte",
-        Role::System => "— sys",
+        Role::User => "toi",
+        Role::Assistant => "\u{f02a0} la crypte",
+        Role::System => "murmure",
     }
 }
 
 /// Style du corps d'un message selon son rôle.
-fn role_style(role: Role) -> Style {
+fn body_style(role: Role) -> Style {
     match role {
         Role::User => Style::new().fg(BONE),
-        Role::Assistant => Style::new().fg(ECTOPLASM),
-        Role::System => Style::new().fg(ASH).add_modifier(Modifier::DIM),
+        Role::Assistant => Style::new().fg(theme::lerp(BONE, CANDLE, 0.25)),
+        Role::System => Style::new().fg(SAND).add_modifier(Modifier::ITALIC),
     }
 }
 
-/// Style de l'étiquette (l'assistant saigne, le reste suit le corps).
-fn tag_style(role: Role) -> Style {
-    match role {
-        Role::Assistant => Style::new().fg(FRESH_BLOOD).add_modifier(Modifier::BOLD),
-        _ => role_style(role).add_modifier(Modifier::BOLD),
-    }
-}
-
-/// Découpe `text` en lignes de `width` caractères max (wrap simple, coupe dure).
-fn wrap_text(text: &str, width: usize) -> Vec<String> {
+/// Coupe `text` en lignes de `width` colonnes max, par mot ; un mot plus
+/// long que la ligne est coupé net. Les sauts de ligne sont conservés.
+pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
     let mut out = Vec::new();
     for raw in text.split('\n') {
-        let chars: Vec<char> = raw.chars().collect();
-        if chars.is_empty() {
-            out.push(String::new());
-            continue;
+        let mut line = String::new();
+        for word in raw.split(' ') {
+            let fits = line.chars().count() + usize::from(!line.is_empty()) + word.chars().count();
+            if !line.is_empty() && fits > width {
+                out.push(std::mem::take(&mut line));
+            }
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(word);
+            while line.chars().count() > width {
+                let head: String = line.chars().take(width).collect();
+                line = line.chars().skip(width).collect();
+                out.push(head);
+            }
         }
-        for chunk in chars.chunks(width) {
-            out.push(chunk.iter().collect());
-        }
+        out.push(line);
     }
     out
 }
 
-/// Tous les messages en lignes wrappées, étiquette rôle en tête de message.
+/// Tous les messages : étiquette, corps à gouttière, ligne vide entre deux.
 fn history_lines(messages: &[Message], width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    for msg in messages {
-        lines.push(Line::from(Span::styled(
-            role_tag(msg.role).to_string(),
-            tag_style(msg.role),
-        )));
-        let body = role_style(msg.role);
-        for row in wrap_text(&msg.text, width) {
-            lines.push(Line::from(Span::styled(row, body)));
+    for (i, msg) in messages.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::raw(""));
+        }
+        let colour = role_colour(msg.role);
+        let tag = Style::new().fg(colour).add_modifier(Modifier::BOLD);
+        lines.push(Line::from(vec![
+            Span::styled(GUTTER, Style::new().fg(colour)),
+            Span::styled(role_tag(msg.role), tag),
+        ]));
+        let gutter = Style::new().fg(theme::lerp(colour, UMBER, 0.45));
+        let body_w = width.saturating_sub(GUTTER.chars().count());
+        for row in wrap_text(&msg.text, body_w) {
+            lines.push(Line::from(vec![
+                Span::styled(GUTTER, gutter),
+                Span::styled(row, body_style(msg.role)),
+            ]));
         }
     }
     lines
+}
+
+/// « la crypte murmure » + points animés pendant l'attente.
+fn murmur_line(tick: u64) -> Line<'static> {
+    let dots = ["·  ", "·· ", "···", " ··", "  ·", "   "][(tick / 3 % 6) as usize];
+    Line::from(vec![
+        Span::styled(GUTTER, Style::new().fg(PUMPKIN)),
+        Span::styled(
+            "la crypte murmure ",
+            Style::new().fg(SAND).add_modifier(Modifier::ITALIC),
+        ),
+        Span::styled(dots, Style::new().fg(CANDLE).add_modifier(Modifier::BOLD)),
+    ])
+}
+
+/// Accueil d'un chat vide, centré verticalement.
+fn epitaph(height: u16) -> Paragraph<'static> {
+    let pad = height.saturating_sub(3) / 2;
+    let mut lines = vec![Line::raw(""); pad as usize];
+    lines.push(Line::from(theme::gradient(
+        "La crypte t'écoute.",
+        PUMPKIN,
+        CANDLE,
+        Modifier::BOLD,
+    )));
+    lines.push(Line::styled(
+        "pose ta question · /help pour les sortilèges",
+        Style::new().fg(ASH).add_modifier(Modifier::ITALIC),
+    ));
+    Paragraph::new(lines).alignment(Alignment::Center)
 }
 
 /// Garde les `n` derniers caractères (cadrage saisie longue sur la fin).
@@ -206,4 +275,33 @@ fn tail_chars(s: &str, n: usize) -> String {
     let chars: Vec<char> = s.chars().collect();
     let skip = chars.len().saturating_sub(n);
     chars.into_iter().skip(skip).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_breaks_on_words_and_cuts_long_ones() {
+        assert_eq!(
+            wrap_text("le chat noir dort", 8),
+            ["le chat", "noir", "dort"]
+        );
+        assert_eq!(wrap_text("abcdefghij", 4), ["abcd", "efgh", "ij"]);
+        assert_eq!(wrap_text("a\n\nb", 10), ["a", "", "b"]);
+        for w in 1..12 {
+            for row in wrap_text("les ossements craquent sous la lune rousse", w) {
+                assert!(row.chars().count() <= w, "{row:?} > {w}");
+            }
+        }
+    }
+
+    #[test]
+    fn history_has_one_tag_line_per_message() {
+        let mut chat = ChatState::new();
+        chat.push(Role::User, "bonsoir");
+        chat.push(Role::Assistant, "bienvenue dans la crypte");
+        let lines = history_lines(chat.messages(), 40);
+        assert_eq!(lines.len(), 5);
+    }
 }
