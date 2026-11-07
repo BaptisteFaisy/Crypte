@@ -21,13 +21,14 @@ cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 ## Archi (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (état + boucle 10 ms, tick 100 ms),
+`app/ctors.rs` (constructeurs),
 `bus.rs` (adressage, files, liens auto, plafond 8 relais),
 `mouse.rs` (clic [+] = nouveau chat),
 `drain.rs` (routage réponses async + pompes + retransmissions),
 `cmds.rs` (handlers `/…`), `commands.rs` (parse + aide + usage),
 `connect.rs` (flow `/connect` : clé masquée → modèle → provider),
 `history.rs` (fenêtre d'envoi + nommage des chats),
-`sessions.rs` (chats + sous-agents),
+`sessions.rs` + `sessions/` (chats `chat.rs` + sous-agents `subagents.rs`),
 `sidebar.rs` (colonne cercueils + bouton [+]), `chat.rs` (historique +
 saisie + prompt custom masquable), `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :
@@ -56,8 +57,10 @@ d'origine user (commande ou lien) : pas de boucles infinies.
 
 ## Conventions
 
-- Fichier < 500 lignes, fonction < 50 lignes ; au-delà : découper.
-  Vérifier : `wc -l` sur les fichiers touchés.
+- Fichier : 500 lignes max ET 30 fonctions max (tests inclus) ;
+  fonction < 50 lignes. Au-delà : découper en modules, jamais
+  laisser grossir. Vérifier : `wc -l` et
+  `grep -cE 'fn [a-zA-Z_][a-zA-Z0-9_]* *\('` sur les fichiers touchés.
 - Zéro duplication : extraire et partager les helpers, une seule
   implémentation par logique (`compacted_history`, `without_pinned`,
   `usage_line` vivent dans `agents.rs`).
