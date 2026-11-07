@@ -197,13 +197,6 @@ impl Sessions {
             .map(|c| c.ledger.total())
             .fold(0, u64::saturating_add)
     }
-
-    /// Cumul global des sous-agents (déjà inclus dans `grand_total`).
-    pub fn agents_grand_total(&self) -> u64 {
-        self.iter()
-            .map(|c| c.agents_total())
-            .fold(0, u64::saturating_add)
-    }
 }
 
 impl Default for Sessions {
@@ -272,24 +265,14 @@ mod tests {
     }
 
     #[test]
-    fn grand_total_covers_chats_and_agents_once() {
+    fn grand_total_sums_all_chats() {
         let mut s = Sessions::new();
         s.current_mut().ledger.record(10, 20, 1.0);
-        s.add_agent(0, "prompt test", user("u1")).unwrap();
-        {
-            let agent = s.find_agent_mut(1).unwrap().1;
-            agent.prompt_tokens = 5;
-            agent.completion_tokens = 7;
-            agent.status = AgentStatus::Done;
-        }
         s.current_mut().ledger.record(5, 7, 0.0);
-        assert_eq!(s.get(0).unwrap().agents_total(), 12);
         assert_eq!(s.grand_total(), 42);
-        assert_eq!(s.agents_grand_total(), 12);
         s.add();
         s.current_mut().ledger.record(100, 0, 1.0);
         assert_eq!(s.grand_total(), 142);
-        assert_eq!(s.agents_grand_total(), 12);
     }
 
     #[test]

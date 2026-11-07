@@ -88,15 +88,6 @@ impl ChatSession {
             .sum::<usize>();
         bytes
     }
-
-    /// Tokens des sous-agents du chat (in + out ; un agent `Running`
-    /// vaut 0 tant que sa réponse n'est pas arrivée).
-    pub fn agents_total(&self) -> u64 {
-        self.agents
-            .iter()
-            .map(|a| a.prompt_tokens.saturating_add(a.completion_tokens))
-            .fold(0, u64::saturating_add)
-    }
 }
 
 /// Heap d'un échange : rôles + contenus (+ slack du `Vec`).

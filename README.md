@@ -7,9 +7,9 @@ apparitions that react to the chat, horror effects (candlelit
 vignette, fog, static, blood drops, lightning), a header **fear
 gauge** (`fear`, % of the model's context window), and a **global**
 token counter (status bar: current chat + session total, all
-chats and sub-agents included; F2: grimoire + souls per chat with
-a TOTAL line), and an **almanac** of tokens per day kept across
-sessions (F8). Terminal **≥ 80x24** required.
+chats and sub-agents included; `/usage` details the current chat),
+and an **almanac** of tokens per day kept across sessions (F8).
+Terminal **≥ 80x24** required.
 
 ![The crypt bestiary](docs/bestiaire.png)
 
@@ -126,7 +126,6 @@ exempt, stays the remedy).
 | --- | ---- |
 | Enter | send the message |
 | `q` (empty input) | quit |
-| F2 | toggle chat / grimoire (tokens + souls per chat) |
 | F3 / F4 | previous / next chat |
 | Ctrl+N | new chat |
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |

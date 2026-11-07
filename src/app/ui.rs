@@ -26,14 +26,13 @@ use crate::tokens::fmt_tps;
 pub enum Screen {
     #[default]
     Chat,
-    Tokens,
     Bestiary,
     Hub,
     Almanac,
 }
 
 impl Screen {
-    /// `target` si on n'y est pas déjà, sinon retour au chat (F2, F6, F8).
+    /// `target` si on n'y est pas déjà, sinon retour au chat (F6, F8).
     pub(crate) fn toggle(self, target: Screen) -> Self {
         if self == target {
             Screen::Chat
@@ -48,9 +47,8 @@ const EIGHTHS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉"
 /// Largeur de la jauge de contexte (cellules).
 const FEAR_W: usize = 12;
 /// Onglets de l'en-tête : écran, libellé, touche.
-const TABS: [(Screen, &str, &str); 5] = [
+const TABS: [(Screen, &str, &str); 4] = [
     (Screen::Chat, "chat", ""),
-    (Screen::Tokens, "grimoire", "F2"),
     (Screen::Bestiary, "bestiary", "F6"),
     (Screen::Hub, "hub", "F7"),
     (Screen::Almanac, "almanac", "F8"),
@@ -83,7 +81,6 @@ impl App {
         self.draw_header(frame, head);
         match self.screen {
             Screen::Chat => self.draw_chat(frame, body),
-            Screen::Tokens => self.draw_tokens(frame, body),
             Screen::Bestiary => self.galerie.draw(frame, body, &mut self.bank),
             Screen::Hub => self.draw_hub(frame, body),
             Screen::Almanac => self.draw_almanac(frame, body),
@@ -141,96 +138,6 @@ impl App {
         self.mascot.draw(frame, inner, &mut self.bank);
     }
 
-    /// Écran tokens : grimoire + la lanterne qui veille.
-    fn draw_tokens(&mut self, frame: &mut Frame, area: Rect) {
-        let [book, card] = Layout::horizontal([
-            Constraint::Min(40),
-            Constraint::Length(right_width(area.width)),
-        ])
-        .areas(area);
-        let [ledger, souls] =
-            Layout::vertical([Constraint::Length(9), Constraint::Min(4)]).areas(book);
-        self.sessions.current().ledger.draw(frame, ledger);
-        self.draw_souls(frame, souls);
-        draw_card(
-            frame,
-            card,
-            bestiary::get("citrouille-bougies"),
-            CANDLE,
-            &mut self.bank,
-        );
-    }
-
-    /// Âmes par chat : tokens de chaque chat + barre relative au plus gourmand.
-    fn draw_souls(&self, frame: &mut Frame, area: Rect) {
-        let max = self
-            .sessions
-            .iter()
-            .map(|c| c.ledger.total())
-            .max()
-            .unwrap_or(0);
-        let bar_w = area.width.saturating_sub(48).max(4) as u64;
-        let mut lines = Vec::with_capacity(self.sessions.count() + 3);
-        lines.push(Line::styled(
-            format!("  {:<18}{:>8}{:>8}{:>9}", "chat", "in", "out", "total"),
-            Style::new().fg(ASH),
-        ));
-        for (i, chat) in self.sessions.iter().enumerate() {
-            let current = i == self.sessions.index();
-            let (bar, ink) = if current {
-                (PUMPKIN, BONE)
-            } else {
-                (UMBER, SAND)
-            };
-            let l = &chat.ledger;
-            let filled = (l.total() * bar_w).checked_div(max).unwrap_or(0) as usize;
-            let name: String = chat.name.chars().take(16).collect();
-            lines.push(Line::from(vec![
-                Span::styled("▍ ", Style::new().fg(bar)),
-                Span::styled(format!("{name:<18}"), Style::new().fg(ink)),
-                Span::styled(
-                    format!("{:>6}{:>8}{:>9}  ", l.prompt, l.completion, l.total()),
-                    Style::new().fg(BONE),
-                ),
-                Span::styled("█".repeat(filled), Style::new().fg(bar)),
-            ]));
-        }
-        lines.push(self.souls_total_line(bar_w));
-        lines.push(Line::styled(
-            format!("  incl. agents: {}", self.sessions.agents_grand_total()),
-            Style::new().fg(ASH),
-        ));
-        let block = Block::new()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(UMBER))
-            .title(theme::title("souls per chat", SAND, BONE));
-        frame.render_widget(Paragraph::new(lines).block(block), area);
-    }
-
-    /// Ligne TOTAL des âmes : cumul session (in/out/total + barre
-    /// pleine, le total valant toujours au moins le max des chats).
-    fn souls_total_line(&self, bar_w: u64) -> Line<'static> {
-        let total = self.sessions.total_ledger();
-        Line::from(vec![
-            Span::styled("▍ ", Style::new().fg(PUMPKIN)),
-            Span::styled(
-                format!("{:<18}", "TOTAL"),
-                Style::new().fg(BONE).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!(
-                    "{:>6}{:>8}{:>9}  ",
-                    total.prompt,
-                    total.completion,
-                    total.total()
-                ),
-                Style::new().fg(BONE),
-            ),
-            Span::styled("█".repeat(bar_w as usize), Style::new().fg(PUMPKIN)),
-        ])
-    }
-
     /// En-tête : titre en dégradé, onglets (cliquables, voir `mouse`),
     /// jauge de contexte à droite.
     fn draw_header(&mut self, frame: &mut Frame, area: Rect) {
@@ -252,7 +159,7 @@ impl App {
         frame.render_widget(gauge, area);
     }
 
-    /// Onglets d'écran ; sans les touches (F2…) s'ils ne tiennent pas
+    /// Onglets d'écran ; sans les touches (F6…) s'ils ne tiennent pas
     /// dans `room` colonnes (la jauge fear reste entière à 80 colonnes).
     /// Enregistre leurs rectangles (`tab_hits`, clic = écran, voir `mouse`).
     fn tabs(&mut self, room: usize, at: Position) -> Vec<Span<'static>> {
@@ -454,17 +361,19 @@ mod tests {
     }
 
     #[test]
-    fn header_fits_five_tabs_and_gauge_at_80_columns() {
+    fn header_fits_four_tabs_and_gauge_at_80_columns() {
         let mut app = App::offline().unwrap();
-        for (w, keys) in [(80, false), (120, true)] {
+        for w in [80, 120] {
             let mut term = Terminal::new(TestBackend::new(w, 24)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();
             let buf = term.backend().buffer();
             let head: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
-            for word in ["chat", "grimoire", "bestiary", "hub", "almanac", "fear"] {
+            for word in ["chat", "bestiary", "hub", "almanac", "fear"] {
                 assert!(head.contains(word), "{w} cols: {word} missing in {head:?}");
             }
-            assert_eq!(head.contains("F8"), keys, "{w} cols: {head:?}");
+            assert!(!head.contains("grimoire"), "{w} cols: {head:?}");
+            // 4 onglets : les touches (F6/F7/F8) tiennent dès 80 colonnes.
+            assert!(head.contains("F8"), "{w} cols: {head:?}");
         }
     }
 
@@ -478,12 +387,7 @@ mod tests {
             .push(Role::Assistant, "les os craquent sous la lune");
         for (w, h) in [(80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [
-                Screen::Chat,
-                Screen::Tokens,
-                Screen::Bestiary,
-                Screen::Almanac,
-            ] {
+            for screen in [Screen::Chat, Screen::Bestiary, Screen::Almanac] {
                 app.screen = screen;
                 app.spook();
                 app.tick();

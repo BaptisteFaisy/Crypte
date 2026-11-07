@@ -60,7 +60,7 @@ impl App {
     }
 
     /// Touches pendant le flow : saisissables → buffer, Entrée avance,
-    /// Échap annule (le reste — F2, Ctrl+N… — est ignoré, pas de quit).
+    /// Échap annule (le reste — F5, Ctrl+N… — est ignoré, pas de quit).
     pub(crate) fn on_flow_key(&mut self, key: KeyEvent) -> bool {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             return true;
