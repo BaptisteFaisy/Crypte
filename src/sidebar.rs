@@ -1,7 +1,7 @@
 //! Sidebar « cercueils » : liste des chats + bouton [+] nouveau chat.
 //!
 //! `Sessions::draw_sidebar` rend une ligne par chat (point `●` vert au
-//! repos / bleu en réflexion + nom + tokens + `…` si envoi en cours +
+//! repos / bleu en réflexion + nom + `…` si envoi en cours +
 //! ` A{n}` si sous-agents actifs), le chat courant mis en relief, puis
 //! le bouton [+] (clic = nouveau chat, voir `mouse`).
 
@@ -32,7 +32,7 @@ pub struct SidebarHits {
 
 impl Sessions {
     /// Sidebar « cercueils » : une ligne par chat (point `●` vert au
-    /// repos / bleu en réflexion + nom + tokens + `…` si envoi + ` A{n}`),
+    /// repos / bleu en réflexion + nom + `…` si envoi + ` A{n}`),
     /// le chat courant marqué d'une barre citrouille, puis le bouton [+]
     /// (clic = nouveau chat). Rend ses zones cliquables (`None` si
     /// rognées ou si la sidebar est trop étroite).
@@ -57,7 +57,6 @@ impl Sessions {
                 sidebar_line(
                     i == self.index(),
                     &c.name,
-                    c.ledger.total(),
                     c.sending,
                     self.running_agents(i),
                     inner_w,
@@ -141,25 +140,24 @@ fn fit_name(name: &str, name_w: usize) -> (String, String) {
 }
 
 /// Une ligne de sidebar : `▍` + point `●` (vert au repos, bleu en
-/// réflexion) + nom tronqué + `123t` + `…` si envoi + ` A{n}`.
+/// réflexion) + nom tronqué + `…` si envoi + ` A{n}`.
 /// Le chat courant : barre citrouille, nom os gras, fond braise.
+/// (Les compteurs tokens vivent dans `/usage`, pas ici.)
 fn sidebar_line(
     current: bool,
     name: &str,
-    total: u64,
     sending: bool,
     agents: usize,
     width: usize,
 ) -> Line<'static> {
-    let tokens = format!(" {total}t");
     let agents = if agents > 0 {
         format!(" A{agents}")
     } else {
         String::new()
     };
     let suffix = if sending { "…" } else { "" };
-    // `tokens`/`agents` ASCII : `len()` vaut la largeur ; `…` = 1 colonne.
-    let used = 2 + DOT_W + tokens.len() + agents.len() + usize::from(sending);
+    // `agents` ASCII : `len()` vaut la largeur ; `…` = 1 colonne.
+    let used = 2 + DOT_W + agents.len() + usize::from(sending);
     let (name, pad) = fit_name(name, width.saturating_sub(used));
     let (bar, name_style) = if current {
         let bold = Style::new().fg(theme::BONE).add_modifier(Modifier::BOLD);
@@ -172,7 +170,6 @@ fn sidebar_line(
         status_dot(sending),
         Span::styled(name, name_style),
         Span::styled(pad, name_style),
-        Span::styled(tokens, Style::new().fg(theme::ASH)),
         Span::styled(agents, Style::new().fg(theme::ECTO)),
         Span::styled(suffix, Style::new().fg(theme::CANDLE)),
     ]);
@@ -209,7 +206,7 @@ mod tests {
     #[test]
     fn point_vert_au_repos_bleu_en_reflexion() {
         for (sending, want) in [(false, theme::MOSS), (true, theme::WISP)] {
-            let line = sidebar_line(false, "Chat 1", 12, sending, 0, 16);
+            let line = sidebar_line(false, "Chat 1", sending, 0, 16);
             let dot = line.spans.iter().find(|s| s.content.as_ref() == "● ");
             assert_eq!(
                 dot.and_then(|s| s.style.fg),
@@ -235,6 +232,21 @@ mod tests {
         assert_eq!(buf[(3, 1)].fg, theme::MOSS);
         assert_eq!(buf[(3, 2)].symbol(), "●");
         assert_eq!(buf[(3, 2)].fg, theme::WISP);
+    }
+
+    #[test]
+    fn ligne_chat_sans_compteur_tokens() {
+        use ratatui::{backend::TestBackend, Terminal};
+        let mut s = Sessions::new();
+        s.current_mut().ledger.add(100, 23); // 123 tokens au compteur
+        let mut term = Terminal::new(TestBackend::new(18, 10)).unwrap();
+        term.draw(|f| {
+            s.draw_sidebar(f, f.area());
+        })
+        .unwrap();
+        let buf = term.backend().buffer();
+        let row: String = (1u16..17).map(|x| buf[(x, 1)].symbol()).collect();
+        assert_eq!(row.trim_end(), "▍ ● Chat 1", "ligne chat sans compteur");
     }
 
     #[test]
