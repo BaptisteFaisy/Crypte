@@ -157,12 +157,40 @@ impl App {
                 Span::styled("█".repeat(filled), Style::new().fg(bar)),
             ]));
         }
+        lines.push(self.souls_total_line(bar_w));
+        lines.push(Line::styled(
+            format!("  dont agents : {}", self.sessions.agents_grand_total()),
+            Style::new().fg(ASH),
+        ));
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(UMBER))
             .title(theme::title("âmes par chat", SAND, BONE));
         frame.render_widget(Paragraph::new(lines).block(block), area);
+    }
+
+    /// Ligne TOTAL des âmes : cumul session (in/out/total + barre
+    /// pleine, le total valant toujours au moins le max des chats).
+    fn souls_total_line(&self, bar_w: u64) -> Line<'static> {
+        let total = self.sessions.total_ledger();
+        Line::from(vec![
+            Span::styled("▍ ", Style::new().fg(PUMPKIN)),
+            Span::styled(
+                format!("{:<18}", "TOTAL"),
+                Style::new().fg(BONE).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(
+                    "{:>6}{:>8}{:>9}  ",
+                    total.prompt,
+                    total.completion,
+                    total.total()
+                ),
+                Style::new().fg(BONE),
+            ),
+            Span::styled("█".repeat(bar_w as usize), Style::new().fg(PUMPKIN)),
+        ])
     }
 
     /// En-tête : titre en dégradé, onglets, jauge de peur à droite.
@@ -200,8 +228,9 @@ impl App {
         left.extend(pill(&chat, PUMPKIN, VOID));
         left.extend(pill(&short_model(&self.effective_model()), UMBER, BONE));
         let rate = format!(
-            "{} tok · {}",
+            "{} tok · {} total · {}",
             sess.ledger.total(),
+            self.sessions.grand_total(),
             fmt_tps(sess.ledger.last_tps())
         );
         left.extend(pill(&rate, theme::lerp(VOID, UMBER, 0.5), SAND));
