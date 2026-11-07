@@ -31,6 +31,7 @@ mod permissions;
 mod persist;
 mod pool;
 mod provider;
+mod scroll;
 mod sessions;
 mod sidebar;
 mod theme;

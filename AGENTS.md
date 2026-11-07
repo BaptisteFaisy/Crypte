@@ -24,8 +24,9 @@ ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
 `main.rs` (CLI + bootstrap), `app.rs` (état + boucle 10 ms, tick 100 ms),
 `app/ctors.rs` (constructeurs),
 `bus.rs` (adressage, files, liens auto, plafond 8 relais),
-`mouse.rs` (clics : [+] = nouveau chat, lignes sidebar = choisir,
-onglets = écrans),
+`mouse.rs` (molette = défilement de l'historique ; clics : [+] = nouveau
+chat, lignes sidebar = choisir, onglets = écrans),
+`scroll.rs` (défilement : décalage depuis le bas + fenêtre visible),
 `drain.rs` (routage réponses async + pompes + retransmissions),
 `events.rs` (flux JSONL temps réel `--events-log`/`KH_EVENTS_LOG` :
 chats + sous-agents, silencieux si désactivé),

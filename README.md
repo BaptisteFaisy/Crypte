@@ -140,6 +140,15 @@ exempt, stays the remedy).
 | F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
 | F8 | toggle chat / almanac (tokens per day) |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
+| Wheel (over the chat) | scroll the history, 3 lines per notch |
+| PgUp / PgDn | scroll up / down one page (10 lines) |
+| Shift+Up / Shift+Down | scroll one line |
+| End | snap back to the latest messages |
+
+Scrolling walks up the current chat's history; a `↕ 26 lines ↓` badge
+marks the bottom border while you are away from the end. Sending a
+message (or `End`) snaps the view back down, and each chat keeps its
+own scroll position.
 
 On narrow terminals the header tabs drop their key hints (F5 F6…) so
 the `ctx` gauge always fits.
