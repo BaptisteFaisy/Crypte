@@ -241,7 +241,11 @@ if delivered elsewhere via `@<n>`) and the status shows in the sidebar
 used, queue in brackets). `/ask #<id> <text>` continues the
 conversation with an agent (exchange kept, 20 messages max, `system`
 head kept); if it is running, queued and triggered once free.
-`/agents all` lists the agents of every chat.
+`/agents all` lists the agents of every chat. Each launch also
+creates the agent's disk workspace
+`~/.config/kiro-horror-tui/workspaces/<session>/agent-<id>/`
+(pure code, zero LLM tokens), for future tools (`<session>` =
+`<unix_time>-<pid>`, one per app run).
 
 ## Dialogues between chats (bus)
 
