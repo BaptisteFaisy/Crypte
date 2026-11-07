@@ -63,6 +63,12 @@ pub struct App {
     pub(crate) screen: Screen,
     /// Rectangle du bouton [+] (mémorisé au rendu, `None` hors sidebar).
     pub(crate) plus_btn: Option<Rect>,
+    /// Bloc des lignes de chats de la sidebar (mémorisé au rendu, une
+    /// ligne par chat, `None` hors écran chat) : clic = choisir le chat.
+    pub(crate) side_rows: Option<Rect>,
+    /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
+    /// clic = aller à l'écran (chat, grimoire, bestiaire, hub).
+    pub(crate) tabs: [(Screen, Rect); 4],
     pub(crate) thinking: Option<String>,
     pub(crate) permissions: Mode,
     /// Fichier de persistance du mode (`None` si `HOME` manquant).

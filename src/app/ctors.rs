@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use ratatui::layout::Rect;
 use tokio::sync::mpsc;
 
 use super::{App, Screen};
@@ -88,6 +89,8 @@ impl App {
             agents_md,
             screen: Screen::Chat,
             plus_btn: None,
+            side_rows: None,
+            tabs: [(Screen::Chat, Rect::default()); 4],
             thinking: None,
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
