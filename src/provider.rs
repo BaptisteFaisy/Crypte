@@ -219,10 +219,15 @@ pub struct Provider {
 }
 
 impl Provider {
-    /// Construit le client HTTP (timeout 60 s, contrat fixe).
+    /// Construit le client HTTP (timeout 60 s, contrat fixe). Trafic
+    /// séquentiel d'un seul utilisateur : une seule connexion idle par
+    /// hôte, libérée après 30 s au repos (les requêtes sont espacées de
+    /// toute façon, le coût de reconnexion est nul en pratique).
     pub fn new(config: ProviderConfig) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(TIMEOUT_SECS))
+            .pool_max_idle_per_host(1)
+            .pool_idle_timeout(Duration::from_secs(30))
             .build()
             .context("building the HTTP client")?;
         Ok(Self { config, client })
