@@ -14,6 +14,7 @@ mod bestiary;
 mod bus;
 mod chat;
 mod cmds;
+mod cmds_web;
 mod commands;
 mod connect;
 mod drain;
