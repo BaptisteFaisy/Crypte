@@ -4,6 +4,8 @@
 //! l'historique (gouttière colorée par rôle, retour à la ligne par mot,
 //! cadré sur les derniers messages) au-dessus d'une saisie de 3 lignes.
 
+use std::borrow::Cow;
+
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
@@ -148,8 +150,8 @@ impl ChatState {
             lines.push(murmur_line(view.tick));
         }
         let skip = lines.len().saturating_sub(inner.height as usize);
-        let visible: Vec<Line<'static>> = lines.into_iter().skip(skip).collect();
-        frame.render_widget(Paragraph::new(visible), inner);
+        lines.drain(..skip);
+        frame.render_widget(Paragraph::new(lines), inner);
     }
 
     /// Saisie : brouillon (ou aperçu) cadré sur la fin + curseur bougie.
@@ -210,24 +212,34 @@ fn body_style(role: Role) -> Style {
 
 /// Coupe `text` en lignes de `width` colonnes max, par mot ; un mot plus
 /// long que la ligne est coupé net. Les sauts de ligne sont conservés.
+/// Une seule passe (largeur suivie, découpe par index d'octets).
 pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(text.len() / width + 2);
     for raw in text.split('\n') {
         let mut line = String::new();
+        let mut line_w = 0usize;
         for word in raw.split(' ') {
-            let fits = line.chars().count() + usize::from(!line.is_empty()) + word.chars().count();
-            if !line.is_empty() && fits > width {
+            let word_w = word.chars().count();
+            if line_w > 0 && line_w + 1 + word_w > width {
                 out.push(std::mem::take(&mut line));
+                line_w = 0;
             }
-            if !line.is_empty() {
+            if line_w > 0 {
                 line.push(' ');
+                line_w += 1;
             }
             line.push_str(word);
-            while line.chars().count() > width {
-                let head: String = line.chars().take(width).collect();
-                line = line.chars().skip(width).collect();
-                out.push(head);
+            line_w += word_w;
+            while line_w > width {
+                let cut = line
+                    .char_indices()
+                    .map(|(i, _)| i)
+                    .nth(width)
+                    .unwrap_or(line.len());
+                let rest = line.split_off(cut);
+                out.push(std::mem::replace(&mut line, rest));
+                line_w = line.chars().count();
             }
         }
         out.push(line);
@@ -237,7 +249,7 @@ pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
 
 /// Tous les messages : étiquette, corps à gouttière, ligne vide entre deux.
 fn history_lines(messages: &[Message], width: usize) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
+    let mut lines = Vec::with_capacity(messages.len().saturating_mul(3).saturating_add(1));
     for (i, msg) in messages.iter().enumerate() {
         if i > 0 {
             lines.push(Line::raw(""));
@@ -290,23 +302,25 @@ fn epitaph(height: u16) -> Paragraph<'static> {
     Paragraph::new(lines).alignment(Alignment::Center)
 }
 
-/// Masque `s` (un `•` par caractère) si `mask`, sinon copie.
-fn mask_text(s: &str, mask: bool) -> String {
+/// Masque `s` (un `•` par caractère) si `mask`, sinon emprunte.
+fn mask_text(s: &str, mask: bool) -> Cow<'_, str> {
     if mask {
-        s.chars().map(|_| '•').collect()
+        Cow::Owned(s.chars().map(|_| '•').collect())
     } else {
-        s.to_string()
+        Cow::Borrowed(s)
     }
 }
 
-/// Garde les `n` derniers caractères (cadrage saisie longue sur la fin).
+/// Garde les `n` derniers caractères (cadrage saisie longue sur la fin),
+/// sans `Vec` transitoire (frontière d'octets trouvée par la fin).
 fn tail_chars(s: &str, n: usize) -> String {
     if n == 0 {
         return String::new();
     }
-    let chars: Vec<char> = s.chars().collect();
-    let skip = chars.len().saturating_sub(n);
-    chars.into_iter().skip(skip).collect()
+    match s.char_indices().rev().take(n).last() {
+        Some((start, _)) => s[start..].to_string(),
+        None => String::new(),
+    }
 }
 
 #[cfg(test)]
