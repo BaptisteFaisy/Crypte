@@ -1,6 +1,6 @@
 //! Commandes slash du chat (`/usage`, `/new`, `/thinking`, `/model`,
 //! `/agent`, `/agents`, `/ask`, `/tell`, `/msg`, `/link`, `/links`,
-//! `/unlink`, `/compact`, `/connect`, `/help`).
+//! `/unlink`, `/compact`, `/connect`, `/permissions`, `/help`).
 //!
 //! `parse` matche le premier mot ; `/agent`, `/ask`, `/tell`, `/msg`,
 //! `/link` et `/unlink` consomment le reste de la ligne (cible + texte),
@@ -54,6 +54,7 @@ pub enum Command {
     Compact,
     Hint(&'static str),
     Connect(Option<String>),
+    Permissions(Option<String>),
     Unknown(String),
 }
 
@@ -96,6 +97,7 @@ pub fn parse(input: &str) -> Option<Command> {
         }),
         "/compact" => Some(Command::Compact),
         "/connect" => Some(Command::Connect(opt_arg(&mut parts))),
+        "/permissions" => Some(Command::Permissions(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),
@@ -108,7 +110,7 @@ pub fn parse(input: &str) -> Option<Command> {
 }
 
 /// Second mot optionnel (`/thinking [niveau]`, `/model [nom|reset]`,
-/// `/connect [openai|muse]`).
+/// `/connect [openai|muse]`, `/permissions [yolo|auto]`).
 fn opt_arg(parts: &mut std::str::SplitWhitespace<'_>) -> Option<String> {
     parts.next().map(str::to_string)
 }
@@ -262,7 +264,7 @@ pub fn usage_text(
     )
 }
 
-/// Aide : les 15 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 16 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (current chat + session total)\n\
@@ -279,6 +281,7 @@ pub fn help_text() -> &'static str {
      /unlink <a> <b> — remove a link\n\
      /compact — compact the current chat history\n\
      /connect [openai|muse] — connect (status if no argument)\n\
+     /permissions [yolo|auto] — future tools mode (remembered)\n\
      /help — this help\n\
      Keys: F2 grimoire · F3/F4 chats · F5 scare · F6 bestiary · F7 hub · Ctrl+N\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
@@ -287,6 +290,19 @@ pub fn help_text() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_permissions_arg_optionnel() {
+        assert_eq!(parse("/permissions"), Some(Command::Permissions(None)));
+        assert_eq!(
+            parse("/permissions yolo"),
+            Some(Command::Permissions(Some(String::from("yolo"))))
+        );
+        assert_eq!(
+            parse("/permissions auto"),
+            Some(Command::Permissions(Some(String::from("auto"))))
+        );
+    }
 
     #[test]
     fn parse_matches_commands_first_word_only() {

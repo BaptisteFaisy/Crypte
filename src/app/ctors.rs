@@ -89,6 +89,8 @@ impl App {
             screen: Screen::Chat,
             plus_btn: None,
             thinking: None,
+            permissions: crate::permissions::load(),
+            permissions_path: crate::permissions::path(),
             tx,
             rx,
         };

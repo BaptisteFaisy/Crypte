@@ -26,6 +26,7 @@ cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 `mouse.rs` (clic [+] = nouveau chat),
 `drain.rs` (routage réponses async + pompes + retransmissions),
 `cmds.rs` (handlers `/…`), `commands.rs` (parse + aide + usage),
+`permissions.rs` (mode yolo/auto + persistance fichier + handler),
 `connect.rs` (flow `/connect` : clé masquée → modèle → provider),
 `history.rs` (fenêtre d'envoi + nommage des chats),
 `sessions.rs` + `sessions/` (chats `chat.rs` + sous-agents `subagents.rs`),
