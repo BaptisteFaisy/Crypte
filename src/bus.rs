@@ -338,6 +338,44 @@ mod flow_tests {
         assert_eq!(last_text(&app, 1), "[auto agent#1] trouvaille");
     }
 
+    #[tokio::test]
+    async fn lien_agent_vers_agent_libre_declenche() {
+        let mut app = test_app();
+        let history = vec![(String::from("user"), String::from("u"))];
+        let a = app
+            .sessions
+            .add_agent(0, "premier", history.clone())
+            .unwrap();
+        let b = app.sessions.add_agent(0, "second", history).unwrap();
+        app.drain_agent(0, b, 0, Ok(done("pret"))); // B libre pour recevoir
+        app.run_command("/link #1 #2");
+        assert_eq!(last_text(&app, 0), "linked: agent#1 → agent#2");
+        app.drain_agent(0, a, 0, Ok(done("boulot")));
+        let (_, agent) = app.sessions.find_agent_mut(b).unwrap();
+        assert_eq!(agent.status, AgentStatus::Running);
+        assert_eq!(agent.history.last().unwrap().1, "boulot");
+        assert_eq!(agent.auto_hops, 1);
+        assert_eq!(app.bus.forwarded, 1);
+    }
+
+    #[test]
+    fn lien_agent_vers_agent_occupe_enfile() {
+        let mut app = test_app();
+        let history = vec![(String::from("user"), String::from("u"))];
+        let a = app
+            .sessions
+            .add_agent(0, "premier", history.clone())
+            .unwrap();
+        let b = app.sessions.add_agent(0, "second", history).unwrap();
+        app.run_command("/link #1 #2");
+        app.drain_agent(0, a, 0, Ok(done("boulot")));
+        let (_, agent) = app.sessions.find_agent_mut(b).unwrap();
+        assert_eq!(agent.inbox.len(), 1); // B occupé : ask auto enfilé
+        assert_eq!(agent.inbox[0].hops, 1);
+        assert_eq!(agent.inbox[0].deliver, 0);
+        assert_eq!(app.bus.forwarded, 1);
+    }
+
     #[test]
     fn plafond_relais_coupe_les_boucles() {
         let mut app = test_app();
