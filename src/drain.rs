@@ -26,6 +26,7 @@ impl Incoming {
     /// recherche web brute (aucun appel LLM).
     pub(crate) fn usage(&self) -> Option<(u64, u64)> {
         let billed = match self {
+            Incoming::ToolDone(..) => return None,
             Incoming::Chat(_, r) | Incoming::Compact(_, r) | Incoming::Agent(_, _, _, r) => {
                 let done = r.as_ref().ok()?;
                 (done.prompt_tokens, done.completion_tokens)
@@ -44,19 +45,35 @@ impl App {
     /// Réponse chat : ledger + historique + message (ou erreur système),
     /// puis file d'attente et liens auto (voir [`crate::bus`]).
     pub(crate) fn drain_chat(&mut self, id: usize, reply: Result<Completion>) {
-        let Some(sess) = self.sessions.get_mut(id) else {
-            return;
+        let elapsed = {
+            let Some(sess) = self.sessions.get_mut(id) else {
+                return;
+            };
+            sess.sending = false;
+            let elapsed = sess
+                .sending_since
+                .map(|t| t.elapsed().as_secs_f64())
+                .unwrap_or(0.0);
+            sess.sending_since = None;
+            elapsed
         };
-        sess.sending = false;
-        let elapsed = sess
-            .sending_since
-            .map(|t| t.elapsed().as_secs_f64())
-            .unwrap_or(0.0);
-        sess.sending_since = None;
         match reply {
             Ok(done) => {
-                sess.ledger
-                    .record(done.prompt_tokens, done.completion_tokens, elapsed);
+                if let Some(sess) = self.sessions.get_mut(id) {
+                    sess.ledger
+                        .record(done.prompt_tokens, done.completion_tokens, elapsed);
+                }
+                if !done.tool_calls.is_empty() && self.tool_budget_left() {
+                    self.drain_tool_calls(id, done);
+                    return;
+                }
+                let Some(sess) = self.sessions.get_mut(id) else {
+                    return;
+                };
+                if !done.tool_calls.is_empty() {
+                    sess.chat
+                        .push(Role::System, String::from("(tool limit reached)"));
+                }
                 sess.push_history("assistant", done.text.clone());
                 sess.chat.push(Role::Assistant, done.text.clone());
                 self.events.emit(&Event::assistant_msg(id, &done));
@@ -66,6 +83,9 @@ impl App {
                 self.fire_chat_links(id, &done.text);
             }
             Err(err) => {
+                let Some(sess) = self.sessions.get_mut(id) else {
+                    return;
+                };
                 let error = format!("{err:#}");
                 sess.chat.push(Role::System, format!("error: {error}"));
                 self.events.emit(&Event::assistant_error(id, &error));

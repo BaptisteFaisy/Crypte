@@ -256,6 +256,7 @@ mod flow_tests {
     /// Réponse provider factice (tokens 1/1).
     fn done(text: &str) -> Completion {
         Completion {
+            tool_calls: Vec::new(),
             text: text.to_string(),
             prompt_tokens: 1,
             completion_tokens: 1,
