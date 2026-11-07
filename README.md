@@ -4,8 +4,8 @@ LLM chat in a haunted crypt, built for **Ghostty**: a bestiary of
 33 pixel-art creatures (real images via the Kitty graphics
 protocol), Kiro the motionless ghost mascot (scared via F5),
 apparitions that react to the chat, horror effects (candlelit
-vignette, fog, static, blood drops, lightning), a header **context
-gauge** (`ctx`, % of the model's context window), and a **global**
+vignette, fog, static, blood drops, lightning), a header **fear
+gauge** (`fear`, % of the model's context window), and a **global**
 token counter (status bar: current chat + session total, all
 chats and sub-agents included; F2: grimoire + souls per chat with
 a TOTAL line), and an **almanac** of tokens per day kept across
@@ -106,9 +106,9 @@ answer `not connected: /connect openai|muse`.
 - The key is never displayed, logged or pushed into the chat:
   only the `connected to {provider} ({model})` confirmation shows.
 
-## Context gauge
+## Fear gauge
 
-The header `ctx` gauge shows the estimated context of the current
+The header `fear` gauge shows the estimated context of the current
 chat (send window + draft input) as a % of the effective limit:
 the model's context window (known sizes in `tokens.rs`, `128k`
 fallback), capped at 1M estimated tokens. It turns from
@@ -123,7 +123,7 @@ exempt, stays the remedy).
 | key | effect |
 | --- | ---- |
 | Enter | send the message |
-| Esc / `q` (empty input) | quit |
+| `q` (empty input) | quit |
 | F2 | toggle chat / grimoire (tokens + souls per chat) |
 | F3 / F4 | previous / next chat |
 | Ctrl+N | new chat |

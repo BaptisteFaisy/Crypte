@@ -33,7 +33,7 @@ impl App {
     /// Touches du hub : flèches (choisir), Entrée (ouvrir le chat), F7 retour, F8 almanach.
     pub(crate) fn on_hub_key(&mut self, code: KeyCode) -> bool {
         match code {
-            KeyCode::Esc | KeyCode::Char('q') => false,
+            KeyCode::Char('q') => false,
             KeyCode::Left | KeyCode::Up => self.cmd(|s| s.hub_step(-1)),
             KeyCode::Right | KeyCode::Down => self.cmd(|s| s.hub_step(1)),
             KeyCode::Enter => self.cmd(|s| {

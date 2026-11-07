@@ -46,7 +46,7 @@ impl Screen {
 /// Huitièmes de bloc pour une jauge lisse.
 const EIGHTHS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
 /// Largeur de la jauge de contexte (cellules).
-const CTX_W: usize = 12;
+const FEAR_W: usize = 12;
 /// Onglets de l'en-tête : écran, libellé, touche.
 const TABS: [(Screen, &str, &str); 5] = [
     (Screen::Chat, "chat", ""),
@@ -69,7 +69,7 @@ impl App {
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
         if area.width < 80 || area.height < 24 {
-            let msg = "Terminal too small: 80x24 required (Esc to quit)";
+            let msg = "Terminal too small: 80x24 required (q to quit)";
             let style = Style::new().fg(CANDLE);
             frame.render_widget(Paragraph::new(msg).style(style), area);
             return;
@@ -242,7 +242,7 @@ impl App {
             Modifier::BOLD,
         ));
         spans.push(Span::styled("  ", Style::new()));
-        let gauge = ctx_gauge(self.ctx_used, self.ctx_limit);
+        let gauge = fear_gauge(self.ctx_used, self.ctx_limit);
         let used = spans_width(&spans) + spans_width(&gauge) + 1;
         let room = (area.width as usize).saturating_sub(used);
         let x = area.x + spans_width(&spans) as u16;
@@ -253,7 +253,7 @@ impl App {
     }
 
     /// Onglets d'écran ; sans les touches (F2…) s'ils ne tiennent pas
-    /// dans `room` colonnes (la jauge ctx reste entière à 80 colonnes).
+    /// dans `room` colonnes (la jauge fear reste entière à 80 colonnes).
     /// Enregistre leurs rectangles (`tab_hits`, clic = écran, voir `mouse`).
     fn tabs(&mut self, room: usize, at: Position) -> Vec<Span<'static>> {
         let build = |keys: bool| -> Vec<Span<'static>> {
@@ -390,19 +390,19 @@ fn pill(text: &str, bg: Color, fg: Color) -> Vec<Span<'static>> {
     ]
 }
 
-/// Context gauge: `ctx ██████▍      042`, candle to blood.
+/// Fear gauge: `fear ██████▍      42%`, candle to blood.
 /// `used` = estimated tokens of the current chat, `max` = model window.
-fn ctx_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
+fn fear_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
     let max = max.max(1);
     let ratio = used as f32 / max as f32;
-    let filled = ratio.min(1.0) * CTX_W as f32;
+    let filled = ratio.min(1.0) * FEAR_W as f32;
     let track = Style::new().bg(theme::lerp(VOID, UMBER, 0.35));
-    let mut spans = Vec::with_capacity(CTX_W + 2);
-    spans.push(Span::styled("ctx ", Style::new().fg(SAND)));
-    for i in 0..CTX_W {
+    let mut spans = Vec::with_capacity(FEAR_W + 2);
+    spans.push(Span::styled("fear ", Style::new().fg(SAND)));
+    for i in 0..FEAR_W {
         let part = (filled - i as f32).clamp(0.0, 1.0);
         let glyph = EIGHTHS[(part * 8.0).round() as usize];
-        let fg = theme::lerp(CANDLE, BLOOD, i as f32 / (CTX_W - 1) as f32);
+        let fg = theme::lerp(CANDLE, BLOOD, i as f32 / (FEAR_W - 1) as f32);
         spans.push(Span::styled(glyph, track.fg(fg)));
     }
     let pct = (used.saturating_mul(100) / max).min(999);
@@ -412,7 +412,7 @@ fn ctx_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
         _ => ASH,
     };
     let num = Style::new().fg(colour).add_modifier(Modifier::BOLD);
-    spans.push(Span::styled(format!(" {pct:03} "), num));
+    spans.push(Span::styled(format!("{pct:>3}% "), num));
     spans
 }
 
@@ -421,11 +421,7 @@ fn key_hints() -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
     let word = Style::new().fg(ASH);
     let mut spans = Vec::with_capacity(6);
-    for (k, w) in [
-        ("F3/F4", " chats  "),
-        ("F5", " scare  "),
-        ("Esc", " flee  "),
-    ] {
+    for (k, w) in [("F3/F4", " chats  "), ("F5", " scare  "), ("q", " quit  ")] {
         spans.push(Span::styled(k, key));
         spans.push(Span::styled(w, word));
     }
@@ -439,19 +435,22 @@ mod tests {
     use ratatui::{backend::TestBackend, Terminal};
 
     #[test]
-    fn ctx_gauge_is_fixed_width_and_monotonic() {
-        let width = |u| ctx_gauge(u, 1000).iter().map(|s| s.width()).sum::<usize>();
+    fn fear_gauge_is_fixed_width_and_monotonic() {
+        let width = |u| fear_gauge(u, 1000).iter().map(|s| s.width()).sum::<usize>();
         assert_eq!(width(0), width(1000));
         assert_eq!(width(0), width(9999));
+        assert!(fear_gauge(420, 1000)
+            .iter()
+            .any(|s| s.content.contains('%')));
         let full = |u| {
-            ctx_gauge(u, 1000)
+            fear_gauge(u, 1000)
                 .iter()
                 .filter(|s| s.content == "█")
                 .count()
         };
         assert!(full(0) <= full(500) && full(500) <= full(1000));
-        assert_eq!(full(1000), CTX_W);
-        assert_eq!(full(5000), CTX_W);
+        assert_eq!(full(1000), FEAR_W);
+        assert_eq!(full(5000), FEAR_W);
     }
 
     #[test]
@@ -462,7 +461,7 @@ mod tests {
             term.draw(|f| app.draw(f)).unwrap();
             let buf = term.backend().buffer();
             let head: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
-            for word in ["chat", "grimoire", "bestiary", "hub", "almanac", "ctx"] {
+            for word in ["chat", "grimoire", "bestiary", "hub", "almanac", "fear"] {
                 assert!(head.contains(word), "{w} cols: {word} missing in {head:?}");
             }
             assert_eq!(head.contains("F8"), keys, "{w} cols: {head:?}");

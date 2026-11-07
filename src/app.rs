@@ -169,7 +169,6 @@ impl App {
             _ => {}
         }
         match key.code {
-            KeyCode::Esc => false,
             KeyCode::Char('q') if !ctrl && empty => false,
             KeyCode::Char('n' | 'N') if ctrl => self.cmd(|s| s.add_chat()),
             KeyCode::Char(c) if !ctrl => self.cmd(|s| s.sessions.current_mut().chat.input_push(c)),
