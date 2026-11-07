@@ -26,29 +26,64 @@ const BUBBLE: [&str; 7] = [
 const HOVER: (i64, i64) = (4, 3);
 
 /// Sprites du hub : fantôme blanc (agent), petit fantôme noir (sous-agent).
+/// Les variantes retournées (`*_left`) et les 5 bulles sont pré-rendues
+/// au chargement : la frame emprunte, ne clone ni ne décode jamais.
 pub struct Sprites {
     agent: [RgbaImage; 2],
     sub: [RgbaImage; 2],
     sleep: RgbaImage,
     dead: RgbaImage,
+    agent_left: [RgbaImage; 2],
+    sub_left: [RgbaImage; 2],
+    sleep_left: RgbaImage,
+    dead_left: RgbaImage,
+    bubbles: [RgbaImage; 5],
 }
 
 impl Sprites {
     /// Grilles de `assets/hub/` (validées par les tests).
     pub fn load() -> Self {
         let g = |src: &str| decode_grid(src).expect("sprite du hub valide");
+        let agent = [
+            g(include_str!("../../assets/hub/agent-a.txt")),
+            g(include_str!("../../assets/hub/agent-b.txt")),
+        ];
+        let sub = [
+            g(include_str!("../../assets/hub/sous-agent-a.txt")),
+            g(include_str!("../../assets/hub/sous-agent-b.txt")),
+        ];
+        let sleep = g(include_str!("../../assets/hub/sous-agent-dort.txt"));
+        let dead = g(include_str!("../../assets/hub/sous-agent-mort.txt"));
+        let flip = |img: &RgbaImage| imageops::flip_horizontal(img);
         Self {
-            agent: [
-                g(include_str!("../../assets/hub/agent-a.txt")),
-                g(include_str!("../../assets/hub/agent-b.txt")),
+            agent_left: [flip(&agent[0]), flip(&agent[1])],
+            sub_left: [flip(&sub[0]), flip(&sub[1])],
+            sleep_left: flip(&sleep),
+            dead_left: flip(&dead),
+            agent,
+            sub,
+            sleep,
+            dead,
+            bubbles: [
+                bubble(Glyph::Talk),
+                bubble(Glyph::Alert),
+                bubble(Glyph::Ask),
+                bubble(Glyph::Sleep),
+                bubble(Glyph::Love),
             ],
-            sub: [
-                g(include_str!("../../assets/hub/sous-agent-a.txt")),
-                g(include_str!("../../assets/hub/sous-agent-b.txt")),
-            ],
-            sleep: g(include_str!("../../assets/hub/sous-agent-dort.txt")),
-            dead: g(include_str!("../../assets/hub/sous-agent-mort.txt")),
         }
+    }
+
+    /// Bulle pré-rendue pour `glyph` (jamais décodée en frame).
+    pub fn bubble(&self, glyph: Glyph) -> &RgbaImage {
+        let i = match glyph {
+            Glyph::Talk => 0,
+            Glyph::Alert => 1,
+            Glyph::Ask => 2,
+            Glyph::Sleep => 3,
+            Glyph::Love => 4,
+        };
+        &self.bubbles[i]
     }
 }
 
@@ -89,7 +124,8 @@ pub fn draw(
 /// Fils, ombres, esprits (de l'arrière vers l'avant), orbes, bulles, noms.
 fn scene(cv: &mut RgbaImage, hub: &Hub, sessions: &Sessions, room: &Room) {
     threads(cv, hub, room);
-    let mut order: Vec<&Spectre> = hub.spectres.iter().collect();
+    let mut order: Vec<&Spectre> = Vec::with_capacity(hub.spectres.len());
+    order.extend(hub.spectres.iter());
     order.sort_by(|a, b| (a.x + a.y).total_cmp(&(b.x + b.y)));
     for s in &order {
         spectre(cv, hub, room, s);
@@ -101,19 +137,22 @@ fn scene(cv: &mut RgbaImage, hub: &Hub, sessions: &Sessions, room: &Room) {
     }
 }
 
-/// Sprite courant d'un esprit (frame animée, état, orientation).
-fn sprite(hub: &Hub, s: &Spectre) -> RgbaImage {
+/// Sprite courant d'un esprit (frame animée, état, orientation),
+/// emprunté aux pré-rendus (jamais cloné en frame).
+fn sprite<'h>(hub: &'h Hub, s: &Spectre) -> &'h RgbaImage {
     let frame = ((hub.tick + seed(s)) / 4 % 2) as usize;
-    let mut img = match (s.key, s.mood) {
-        (Key::Agent(_), _) => hub.sprites.agent[frame].clone(),
-        (Key::Sub(_), Mood::Done) => hub.sprites.sleep.clone(),
-        (Key::Sub(_), Mood::Failed) => hub.sprites.dead.clone(),
-        (Key::Sub(_), _) => hub.sprites.sub[frame].clone(),
+    let sp = &hub.sprites;
+    let (right, left) = match (s.key, s.mood) {
+        (Key::Agent(_), _) => (&sp.agent[frame], &sp.agent_left[frame]),
+        (Key::Sub(_), Mood::Done) => (&sp.sleep, &sp.sleep_left),
+        (Key::Sub(_), Mood::Failed) => (&sp.dead, &sp.dead_left),
+        (Key::Sub(_), _) => (&sp.sub[frame], &sp.sub_left[frame]),
     };
     if s.left {
-        imageops::flip_horizontal_in_place(&mut img);
+        left
+    } else {
+        right
     }
-    img
 }
 
 /// Décalage d'animation propre à chaque esprit.
@@ -150,7 +189,7 @@ fn spectre(cv: &mut RgbaImage, hub: &Hub, room: &Room, s: &Spectre) {
         ring(cv, x, y, rx + 3, rx / 2 + 1, px(theme::PUMPKIN));
     }
     let top = y - lift - i64::from(img.height());
-    blend(cv, &img, x - rx, top, f32::from(s.fade) / 8.0);
+    blend(cv, img, x - rx, top, f32::from(s.fade) / 8.0);
     if selected {
         let c = px(theme::PUMPKIN);
         for dx in -1..=1 {
@@ -262,7 +301,13 @@ fn bubbles(cv: &mut RgbaImage, hub: &Hub, room: &Room) {
         let img = sprite(hub, s);
         let (x, y, lift) = anchor(hub, room, s);
         let top = y - lift - i64::from(img.height());
-        blend(cv, &bubble(b.glyph), x + 1, (top - 7).max(0), 1.0);
+        blend(
+            cv,
+            hub.sprites.bubble(b.glyph),
+            x + 1,
+            (top - 7).max(0),
+            1.0,
+        );
     }
 }
 
@@ -307,16 +352,24 @@ fn name_tag(cv: &mut RgbaImage, hub: &Hub, sessions: &Sessions, room: &Room, s: 
     let (x, y, lift) = anchor(hub, room, s);
     match s.key {
         Key::Agent(i) => {
-            let name: String = sessions
+            let name = sessions
                 .get(i)
-                .map(|c| c.name.chars().take(10).collect())
-                .unwrap_or_default();
+                .map(|c| {
+                    let end = c
+                        .name
+                        .char_indices()
+                        .map(|(idx, _)| idx)
+                        .nth(10)
+                        .unwrap_or(c.name.len());
+                    &c.name[..end]
+                })
+                .unwrap_or("");
             let colour = if i == hub.selected {
                 theme::PUMPKIN
             } else {
                 theme::BONE
             };
-            font::label(cv, x, y + 3, &name, px(colour), px(theme::VOID));
+            font::label(cv, x, y + 3, name, px(colour), px(theme::VOID));
         }
         Key::Sub(id) => {
             let colour = if s.mood == Mood::Running {
