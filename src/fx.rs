@@ -1,27 +1,22 @@
-//! Effets horreur en overlay : vignette à la bougie, brume, static,
-//! gouttes de sang, éclair d'effroi, niveau de peur.
+//! Effets horreur en overlay : vignette à la bougie, brume, éclair
+//! d'effroi, niveau de peur.
 //!
-//! Tout est en truecolor (Ghostty). Le static et le sang ne touchent que
-//! les cellules **vides**, la brume ne teinte que le fond, et rien ne
-//! touche aux zones d'images (`protect`) : texte et pixel art restent nets.
+//! Tout est en truecolor (Ghostty). La brume ne teinte que le fond, et
+//! rien ne touche aux zones d'images (`protect`) : texte et pixel art
+//! restent nets.
 //! [`Fx::paint_background`] passe en premier, [`Fx::draw`] en dernier.
 
 use ratatui::{
     buffer::{Buffer, Cell},
     layout::Rect,
-    style::{Color, Modifier},
+    style::Color,
 };
 
-use crate::theme::{self, ASH, BLOOD, BONE, CANDLE, CRYPT, DRIED, SPECTRE, VOID};
+use crate::theme::{self, BONE, CRYPT, DRIED, SPECTRE, VOID};
 
-/// Glyphes du static (croix, points, poussière).
-const STATIC_GLYPHS: [&str; 5] = ["†", "·", "⁘", "˙", "∴"];
 /// Brume : paliers de densité (limite le repeint) et teinte max.
 const FOG_STEPS: f32 = 10.0;
 const FOG_MAX: f32 = 0.16;
-/// Gouttes simultanées max (calme / effroi).
-const MAX_DROPS: usize = 6;
-const MAX_DROPS_SPOOK: usize = 14;
 /// Peur gagnée par tick en effroi, perdue par tick au calme.
 const FEAR_UP: u8 = 7;
 const FEAR_DOWN: u8 = 2;
@@ -30,44 +25,30 @@ const FLASH_FRAMES: u8 = 4;
 /// Paliers de lumière de la vignette (limite le repeint du fond).
 const LIGHT_STEPS: f32 = 20.0;
 
-/// Une goutte de sang qui tombe du haut. `y` = rangée de la tête.
-#[derive(Debug, Clone, Copy)]
-struct Drop {
-    x: u16,
-    y: u16,
-    len: u16,
-}
-
 /// Machine à effets.
 #[derive(Debug)]
 pub struct Fx {
     frame: u64,
     fear: u8,
-    drops: Vec<Drop>,
-    width: u16,
-    height: u16,
     flash: u8,
     spooked: bool,
     candle: f32,
 }
 
 impl Fx {
-    /// Effets neufs : frame 0, peur 0, aucune goutte.
+    /// Effets neufs : frame 0, peur 0.
     pub fn new() -> Self {
         Self {
             frame: 0,
             fear: 0,
-            drops: Vec::new(),
-            width: 80,
-            height: 24,
             flash: 0,
             spooked: false,
             candle: 1.0,
         }
     }
 
-    /// Un tick. En effroi la peur monte vers 100, les gouttes se multiplient
-    /// et un éclair part au premier tick ; au calme la peur redescend.
+    /// Un tick. En effroi la peur monte vers 100 et un éclair part au
+    /// premier tick ; au calme la peur redescend.
     pub fn tick(&mut self, spooked: bool) {
         self.frame = self.frame.wrapping_add(1);
         if spooked && !self.spooked {
@@ -82,14 +63,6 @@ impl Fx {
             self.fear.saturating_sub(FEAR_DOWN)
         };
         self.flicker();
-        self.spawn_drop(spooked);
-        if self.frame % 2 == 0 {
-            for drop in &mut self.drops {
-                drop.y = drop.y.saturating_add(1);
-            }
-        }
-        let bottom = self.height.saturating_add(MAX_DROPS as u16);
-        self.drops.retain(|drop| drop.y < bottom);
     }
 
     /// Flamme de bougie : la lumière change de palier de temps en temps.
@@ -98,21 +71,6 @@ impl Fx {
         if roll % 100 < 18 {
             self.candle = [0.86, 0.93, 1.0, 1.0][(roll >> 8) as usize % 4];
         }
-    }
-
-    /// Peut-être une goutte en haut de l'écran (position aléatoire).
-    fn spawn_drop(&mut self, spooked: bool) {
-        let limit = if spooked { MAX_DROPS_SPOOK } else { MAX_DROPS };
-        let chance = if spooked { 60 } else { 15 };
-        let roll: u64 = rand::random();
-        if self.drops.len() >= limit || roll % 100 >= chance {
-            return;
-        }
-        self.drops.push(Drop {
-            x: ((roll >> 8) % self.width.max(1) as u64) as u16,
-            y: 0,
-            len: (2 + (roll >> 24) % 4) as u16,
-        });
     }
 
     /// Fond de la crypte : vignette chaude centrée en haut, à la bougie ;
@@ -134,19 +92,14 @@ impl Fx {
         }
     }
 
-    /// Overlay : brume, static, gouttes, éclair, hors des zones `protect`
-    /// (images). À appeler **après** les widgets. Mémorise la taille pour
-    /// placer les gouttes au prochain tick.
+    /// Overlay : brume et éclair, hors des zones `protect` (images).
+    /// À appeler **après** les widgets.
     pub fn draw(&mut self, area: Rect, buf: &mut Buffer, protect: &[Rect]) {
         if area.width == 0 || area.height == 0 {
             return;
         }
-        self.width = area.width;
-        self.height = area.height;
         let mut layer = Layer { buf, protect };
         self.draw_fog(area, &mut layer);
-        self.draw_static(area, &mut layer);
-        self.draw_drops(area, &mut layer);
         if self.flash > 0 {
             self.draw_flash(area, &mut layer);
         }
@@ -170,54 +123,6 @@ impl Fx {
                 }
                 if let Some(cell) = layer.cell(x, y) {
                     cell.set_bg(theme::lerp(bg_of(cell), SPECTRE, density * FOG_MAX));
-                }
-            }
-        }
-    }
-
-    /// Static : glyphes épars, plus denses avec la peur, bougie si panique.
-    fn draw_static(&self, area: Rect, layer: &mut Layer) {
-        let safe_height = area.height.saturating_sub(5).max(1) as u64;
-        let width = area.width.max(1) as u64;
-        let count = 10 + u64::from(self.fear) / 4;
-        for i in 0..count {
-            let hash = splitmix(self.frame.wrapping_add(i.wrapping_mul(0x9E37_79B9)));
-            let x = area.x.saturating_add((hash % width) as u16);
-            let y = area.y + 1 + ((hash >> 16) % safe_height) as u16;
-            let glyph = STATIC_GLYPHS[((hash >> 32) % STATIC_GLYPHS.len() as u64) as usize];
-            let hot = self.fear >= 80 && i % 4 == 0;
-            if let Some(cell) = layer.blank(x, y) {
-                let fg = if hot {
-                    CANDLE
-                } else {
-                    theme::lerp(bg_of(cell), ASH, 0.55)
-                };
-                cell.set_symbol(glyph).set_fg(fg);
-            }
-        }
-    }
-
-    /// Gouttes : tête `●` sang frais, traînée `│` sang séché au-dessus.
-    fn draw_drops(&self, area: Rect, layer: &mut Layer) {
-        for drop in &self.drops {
-            let x = area.x.saturating_add(drop.x % area.width.max(1));
-            for k in 0..drop.len {
-                let Some(y) = area.y.checked_add(drop.y.saturating_sub(k)) else {
-                    continue;
-                };
-                if y >= area.bottom() || (k > 0 && drop.y < k) {
-                    continue;
-                }
-                if let Some(cell) = layer.blank(x, y) {
-                    let (glyph, fg) = if k == 0 {
-                        ("●", BLOOD)
-                    } else {
-                        ("│", DRIED)
-                    };
-                    cell.set_symbol(glyph).set_fg(fg);
-                    if k == 0 {
-                        cell.modifier.insert(Modifier::BOLD);
-                    }
                 }
             }
         }
@@ -251,11 +156,6 @@ impl Layer<'_> {
         }
         self.buf.cell_mut(pos).filter(|cell| !cell.skip)
     }
-
-    /// Cellule modifiable **et vide** (un espace) à `(x, y)`.
-    fn blank(&mut self, x: u16, y: u16) -> Option<&mut Cell> {
-        self.cell(x, y).filter(|cell| cell.symbol() == " ")
-    }
 }
 
 impl Default for Fx {
@@ -270,15 +170,6 @@ fn bg_of(cell: &Cell) -> Color {
         c @ Color::Rgb(..) => c,
         _ => VOID,
     }
-}
-
-/// SplitMix64 : petit hash déterministe pour placer static et brume.
-fn splitmix(mut x: u64) -> u64 {
-    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    let mut z = x;
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
 }
 
 #[cfg(test)]
@@ -318,6 +209,21 @@ mod tests {
             fx.paint_background(area, &mut buf);
             fx.draw(area, &mut buf, &[]);
         }
+    }
+
+    #[test]
+    fn overlay_leaves_no_glyph_behind() {
+        let mut fx = Fx::new();
+        let area = Rect::new(0, 0, 80, 24);
+        let mut buf = Buffer::empty(area);
+        for _ in 0..30 {
+            fx.tick(true);
+            fx.draw(area, &mut buf, &[]);
+        }
+        assert!(
+            buf.content.iter().all(|c| c.symbol() == " "),
+            "un effet dessine encore un glyphe"
+        );
     }
 
     #[test]

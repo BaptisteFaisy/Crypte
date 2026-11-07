@@ -258,11 +258,6 @@ impl App {
             )
         };
         left.extend(pill(&rate, theme::lerp(VOID, UMBER, 0.5), SAND));
-        let mode = short_mode(self.bank.mode());
-        let mode_fg = if mode == "kitty" { ECTO } else { ASH };
-        let mode_style = Style::new().fg(mode_fg);
-        left.push(Span::styled(" ◆ ", mode_style));
-        left.push(Span::styled(mode, mode_style));
         let used: usize = left.iter().map(|s| s.width()).sum();
         frame.render_widget(Paragraph::new(Line::from(left)), area);
         let width = area.width as usize;
@@ -371,14 +366,6 @@ fn fear_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
     let num = Style::new().fg(colour).add_modifier(Modifier::BOLD);
     spans.push(Span::styled(format!("{pct:>3}% "), num));
     spans
-}
-
-/// Nom de mode d'image court pour la barre d'état compacte.
-fn short_mode(mode: &str) -> &str {
-    match mode {
-        "demi-blocs" => "blocs",
-        other => other,
-    }
 }
 
 /// Raccourcis rappelés dans la barre d'état (courts si `short`).

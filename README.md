@@ -4,7 +4,7 @@ LLM chat in a haunted crypt, built for **Ghostty**: a bestiary of
 33 pixel-art creatures (real images via the Kitty graphics
 protocol), Kiro the motionless ghost mascot (scared via F5),
 apparitions that react to the chat, horror effects (candlelit
-vignette, fog, static, blood drops, lightning), a header **fear
+vignette, fog, lightning), a header **fear
 gauge** (`fear`, % of the model's context window), and a **global**
 token counter (status bar: current chat + session total, all
 chats and sub-agents included; `/usage` details the current chat),
@@ -149,8 +149,7 @@ the `ctx` gauge always fits.
 What the crypt uses from Ghostty (and degrades cleanly elsewhere):
 
 - **Kitty graphics protocol** (Unicode placeholders): pixel art is
-  a real image, detected at startup (`◆ kitty` in the status bar).
-  Elsewhere: truecolor halfblocks (`◆ halfblocks`).
+  a real image, detected at startup. Elsewhere: truecolor halfblocks.
 - **Truecolor** everywhere: candlelit vignette, fog, gradients, flash.
 - **Built-in sprites**: rounded powerline separators, blocks, braille
   drawn pixel-perfect; embedded Nerd Font icons.
