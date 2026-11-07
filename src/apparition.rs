@@ -1,8 +1,9 @@
 //! Apparitions : la créature du panneau droit, pilotée par la crypte.
 //!
-//! Priorité : réponse en cours (chaudron) > sous-agents actifs (araignée)
-//! > présage récent (erreur, compaction, effroi) > rotation lente du
-//! bestiaire. Kiro (le fantôme) a son propre panneau et n'apparaît pas ici.
+//! Priorité : réponse en cours (chaudron), puis sous-agents actifs
+//! (araignée), puis présage récent (erreur, compaction, effroi), puis
+//! rotation lente du bestiaire. Kiro (le fantôme) a son propre panneau
+//! et n'apparaît pas ici.
 
 use std::time::{Duration, Instant};
 
