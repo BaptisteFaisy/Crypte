@@ -19,12 +19,16 @@ use tiktoken_rs::{o200k_base, CoreBPE};
 
 use crate::theme;
 
-/// Encodeur partagé (lourd, ~32 Mo) initialisé une seule fois.
+/// Encodeur partagé (lourd, ~32 Mo), chargé une seule fois au premier
+/// vrai besoin (`estimate`) puis gardé : le recharger après éviction
+/// coûterait plus cher que le garder (cap = 1 entrée, pas de TTL).
 /// `None` = construction impossible, `estimate` replie sur l'heuristique.
 static ENCODER: OnceLock<Option<CoreBPE>> = OnceLock::new();
 
-/// Heuristique de repli : ~4 caractères par token.
-fn heuristic(text: &str) -> usize {
+/// Heuristique : ~4 caractères par token.
+/// Repli d'`estimate`, et estimation du chemin de démarrage (annonce
+/// agents.md) pour ne pas charger l'encodeur avant le premier besoin.
+pub(crate) fn heuristic(text: &str) -> usize {
     text.len().div_ceil(4)
 }
 
@@ -219,8 +223,10 @@ impl TokenLedger {
         }
     }
 
-    /// Agrège plusieurs registres : sommes in/out/durées, tarifs à 0.
-    pub fn total_of(ledgers: &[TokenLedger]) -> TokenLedger {
+    /// Agrège des registres empruntés, sans `Vec` intermédiaire
+    /// (registre total lu à chaque frame de l'écran des âmes).
+    /// Sommes in/out/durées, tarifs à 0.
+    pub fn total_of_iter<'a>(ledgers: impl Iterator<Item = &'a TokenLedger>) -> TokenLedger {
         let mut total = TokenLedger::new();
         for ledger in ledgers {
             total.prompt = total.prompt.saturating_add(ledger.prompt);
@@ -350,12 +356,12 @@ mod tests {
     }
 
     #[test]
-    fn total_of_sums_two_ledgers() {
+    fn total_of_iter_sums_two_ledgers() {
         let mut a = TokenLedger::new();
         a.record(10, 100, 2.0);
         let mut b = TokenLedger::new();
         b.record(30, 200, 2.0);
-        let total = TokenLedger::total_of(&[a, b]);
+        let total = TokenLedger::total_of_iter([&a, &b].into_iter());
         assert_eq!(total.prompt, 40);
         assert_eq!(total.completion, 300);
         assert_eq!(total.total(), 340);

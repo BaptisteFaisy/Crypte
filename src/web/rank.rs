@@ -120,7 +120,7 @@ pub(super) fn pick_passages(text: &str, query: &str, budget: usize) -> String {
         .map(|s| (score(s), s.trim()))
         .filter(|(_, s)| !s.is_empty())
         .collect();
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_by_key(|a| std::cmp::Reverse(a.0));
     let mut out = String::new();
     for (points, sentence) in scored {
         if points == 0 || out.chars().count() + sentence.chars().count() + 1 > budget {

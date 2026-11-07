@@ -35,7 +35,9 @@ pub enum AskError {
 }
 
 /// Un sous-agent : requête annexe dont la réponse arrive en async.
-/// `history` garde l'échange complet (pour `/ask` : suite de conversation).
+/// `history` garde l'échange user/assistant (`/ask` : suite de
+/// conversation) ; le système agents.md n'y est pas stocké
+/// (re-préfixé à chaque appel, voir `launch_agent`).
 #[derive(Debug, Clone)]
 pub struct SubAgent {
     pub id: usize,

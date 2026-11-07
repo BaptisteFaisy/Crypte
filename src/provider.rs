@@ -219,10 +219,15 @@ pub struct Provider {
 }
 
 impl Provider {
-    /// Construit le client HTTP (timeout 60 s, contrat fixe).
+    /// Construit le client HTTP (timeout 60 s, contrat fixe). Trafic
+    /// séquentiel d'un seul utilisateur : une seule connexion idle par
+    /// hôte, libérée après 30 s au repos (les requêtes sont espacées de
+    /// toute façon, le coût de reconnexion est nul en pratique).
     pub fn new(config: ProviderConfig) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(TIMEOUT_SECS))
+            .pool_max_idle_per_host(1)
+            .pool_idle_timeout(Duration::from_secs(30))
             .build()
             .context("building the HTTP client")?;
         Ok(Self { config, client })
@@ -300,16 +305,14 @@ struct ChatMessage<'a> {
 
 impl<'a> ChatRequest<'a> {
     fn new(model: &'a str, messages: &'a [(String, String)], effort: Option<&'a str>) -> Self {
-        let messages = messages
-            .iter()
-            .map(|(role, content)| ChatMessage {
-                role: role.as_str(),
-                content: content.as_str(),
-            })
-            .collect();
+        let mut refs = Vec::with_capacity(messages.len());
+        refs.extend(messages.iter().map(|(role, content)| ChatMessage {
+            role: role.as_str(),
+            content: content.as_str(),
+        }));
         Self {
             model,
-            messages,
+            messages: refs,
             stream: false,
             reasoning_effort: effort,
         }
@@ -357,9 +360,10 @@ impl Completion {
     fn from_response(resp: ChatResponse) -> Self {
         let text = resp
             .choices
-            .first()
-            .and_then(|c| c.message.as_ref())
-            .and_then(|m| m.content.clone())
+            .into_iter()
+            .next()
+            .and_then(|c| c.message)
+            .and_then(|m| m.content)
             .unwrap_or_default();
         let (prompt_tokens, completion_tokens) = resp
             .usage
@@ -373,12 +377,12 @@ impl Completion {
     }
 }
 
-/// Tronque sans couper un caractère UTF-8 (budgets `web` inclus).
+/// Tronque sans couper un caractère UTF-8 (budgets `web` inclus),
+/// en une seule passe (frontière d'octets, pas de double parcours).
 pub(crate) fn truncate(s: &str, max_chars: usize) -> String {
-    if s.chars().count() <= max_chars {
-        s.to_string()
-    } else {
-        s.chars().take(max_chars).collect()
+    match s.char_indices().map(|(i, _)| i).nth(max_chars) {
+        Some(end) => s[..end].to_string(),
+        None => s.to_string(),
     }
 }
 

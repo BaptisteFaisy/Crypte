@@ -14,6 +14,8 @@ use std::path::Path;
 use crate::tokens::TokenLedger;
 
 /// Chats ouverts + position du courant (jamais vide, index toujours valide).
+/// Accès direct par index (`Vec`), sans table secondaire : quelques chats,
+/// `select`/`get` en O(1) sans surcoût mémoire d'index redondant.
 pub struct Sessions {
     chats: Vec<ChatSession>,
     current: usize,
@@ -54,6 +56,7 @@ impl Sessions {
     }
 
     /// Crée un sous-agent `Running` sur le chat `idx`, rend son id unique.
+    /// `history` = échange seul (système re-préfixé à chaque appel).
     /// `None` si hors bornes (l'id n'est pas consommé).
     pub fn add_agent(
         &mut self,
@@ -182,10 +185,9 @@ impl Sessions {
         self.chats.len()
     }
 
-    /// Registre cumulé = somme des registres des chats.
+    /// Registre cumulé = somme des registres des chats, sans copie.
     pub fn total_ledger(&self) -> TokenLedger {
-        let ledgers: Vec<TokenLedger> = self.chats.iter().map(|c| c.ledger.clone()).collect();
-        TokenLedger::total_of(&ledgers)
+        TokenLedger::total_of_iter(self.chats.iter().map(|c| &c.ledger))
     }
 
     /// Cumul global : tokens de tous les chats (agents et compacts
@@ -307,5 +309,18 @@ mod tests {
         assert_eq!(ws, base.join(&session).join("agent-1"));
         assert!(ws.is_dir());
         std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn from_chats_restaure_avec_namespace_frais_et_courant_borne() {
+        let chats = vec![
+            ChatSession::new(String::from("a")),
+            ChatSession::new(String::from("b")),
+        ];
+        let s = Sessions::from_chats(chats, 9);
+        assert!(!s.session.is_empty());
+        assert_eq!(s.current().name, "b");
+        let vide = Sessions::from_chats(Vec::new(), 0);
+        assert_eq!(vide.current().name, "Chat 1");
     }
 }

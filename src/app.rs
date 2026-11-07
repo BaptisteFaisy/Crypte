@@ -9,6 +9,7 @@ mod ui;
 
 pub use self::ui::Screen;
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -32,6 +33,7 @@ use crate::history::{send_window, short_name};
 use crate::hub::Hub;
 use crate::mascot::{Mascot, MascotState};
 use crate::permissions::Mode;
+use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
 use crate::web::WebAnswer;
@@ -56,6 +58,11 @@ pub struct App {
     galerie: Galerie,
     tick: u64,
     busy: bool,
+    /// Jauge contexte mise en cache (tokens estimés + fenêtre modèle),
+    /// rafraîchie 1×/s : le calcul (BPE + clones) est trop coûteux à
+    /// chaque frame (10 Hz). Voir `refresh_ctx_cache`.
+    ctx_used: u64,
+    ctx_limit: u64,
     pub(crate) sessions: Sessions,
     /// Tokens par jour (F8) ; mémoire seule tant que `main` n'ouvre pas le fichier.
     pub(crate) almanac: Almanac,
@@ -82,8 +89,10 @@ pub struct App {
     pub(crate) permissions_path: Option<PathBuf>,
     /// Fichier de persistance des chats (`None` = off : tests, smoke, demo).
     pub(crate) chats_path: Option<PathBuf>,
-    pub(crate) tx: mpsc::UnboundedSender<Incoming>,
-    rx: mpsc::UnboundedReceiver<Incoming>,
+    pub(crate) tx: mpsc::Sender<Incoming>,
+    rx: mpsc::Receiver<Incoming>,
+    /// Pool borné d'appels LLM (plafond `CRYPTE_MAX_FLIGHT`, défaut 4).
+    pub(crate) pool: SpawnPool,
 }
 
 impl App {
@@ -229,16 +238,16 @@ impl App {
             sess.name = short_name(&text);
         }
         sess.chat.push(Role::User, text.clone());
-        sess.history.push(("user".to_string(), text));
+        sess.push_history("user", text);
         let history = send_window(&sess.history, sess.pinned_system);
         sess.sending = true;
         sess.auto_hops = 0;
         sess.sending_since = Some(Instant::now());
-        tokio::spawn(async move {
+        self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&history, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Chat(id, reply));
+            let _ = tx.send(Incoming::Chat(id, reply)).await;
         });
     }
 
@@ -265,18 +274,29 @@ impl App {
 
     /// Modèle effectif : celui du chat courant, sinon le défaut provider.
     pub(crate) fn effective_model(&self) -> String {
-        self.effective_model_for(self.sessions.index())
+        self.effective_model_ref().to_string()
     }
 
     /// Modèle effectif du chat `idx` (le sien, sinon le défaut provider).
     pub(crate) fn effective_model_for(&self, idx: usize) -> String {
-        if let Some(model) = self.sessions.get(idx).and_then(|c| c.model.clone()) {
+        self.effective_model_ref_for(idx).to_string()
+    }
+
+    /// Modèle effectif du chat courant, emprunté (barre d'état, zéro alloc).
+    pub(crate) fn effective_model_ref(&self) -> &str {
+        self.effective_model_ref_for(self.sessions.index())
+    }
+
+    /// Modèle effectif du chat `idx`, emprunté : le sien, sinon le
+    /// défaut provider, sinon `—`.
+    fn effective_model_ref_for(&self, idx: usize) -> &str {
+        if let Some(model) = self.sessions.get(idx).and_then(|c| c.model.as_deref()) {
             return model;
         }
         self.provider
             .as_ref()
-            .map(|p| p.config().model.clone())
-            .unwrap_or_else(|| String::from("—"))
+            .map(|p| p.config().model.as_str())
+            .unwrap_or("—")
     }
 
     /// Thinking affiché (`None` → "default").
@@ -300,18 +320,27 @@ impl App {
         self.hub.sync(&self.sessions);
         self.hub.step();
         self.fx.tick(self.mascot.state() == MascotState::Spook);
+        if self.tick % 10 == 0 {
+            self.refresh_ctx_cache();
+        }
+    }
+
+    /// Rafraîchit la jauge contexte mise en cache (1×/s depuis `tick`,
+    /// + 1× à la construction) : la frame ne fait plus que lire.
+    pub(crate) fn refresh_ctx_cache(&mut self) {
+        self.ctx_used = self.context_used();
+        self.ctx_limit = self.context_limit();
     }
 }
 
 /// Nom court de modèle : après le dernier '/', max 14 caractères.
-pub fn short_model(model: &str) -> String {
-    model
-        .rsplit('/')
-        .next()
-        .unwrap_or(model)
-        .chars()
-        .take(14)
-        .collect()
+/// Emprunté quand rien n'est tronqué (cas courant, zéro alloc).
+pub fn short_model(model: &str) -> Cow<'_, str> {
+    let base = model.rsplit('/').next().unwrap_or(model);
+    match base.char_indices().map(|(i, _)| i).nth(14) {
+        Some(end) => Cow::Owned(base[..end].to_string()),
+        None => Cow::Borrowed(base),
+    }
 }
 
 #[cfg(test)]
@@ -357,11 +386,11 @@ mod tests {
             completion_tokens: 0,
         };
         let tx = app.tx.clone();
-        tx.send(Incoming::Chat(0, Ok(done(10, 5)))).unwrap();
-        tx.send(Incoming::Compact(7, Ok(done(3, 2)))).unwrap();
-        tx.send(Incoming::Chat(0, Err(anyhow::anyhow!("boom"))))
+        tx.try_send(Incoming::Chat(0, Ok(done(10, 5)))).unwrap();
+        tx.try_send(Incoming::Compact(7, Ok(done(3, 2)))).unwrap();
+        tx.try_send(Incoming::Chat(0, Err(anyhow::anyhow!("boom"))))
             .unwrap();
-        tx.send(Incoming::Web(0, Ok(raw_web))).unwrap();
+        tx.try_send(Incoming::Web(0, Ok(raw_web))).unwrap();
         app.drain_replies();
         let tonight = app.almanac.day(crate::almanac::today());
         assert_eq!((tonight.total(), tonight.calls), (20, 2));

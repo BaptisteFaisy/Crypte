@@ -18,6 +18,7 @@ use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
 use crate::hub::Hub;
 use crate::mascot::Mascot;
+use crate::pool::{SpawnPool, INCOMING_CAP};
 use crate::provider::{Provider, ProviderConfig};
 use crate::sessions::Sessions;
 
@@ -97,7 +98,7 @@ impl App {
         lazy: bool,
         hint_connect: bool,
     ) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(INCOMING_CAP);
         let mut app = Self {
             mascot: Mascot::new(),
             fx: Fx::new(),
@@ -107,6 +108,8 @@ impl App {
             galerie: Galerie::new(),
             tick: 0,
             busy: false,
+            ctx_used: 0,
+            ctx_limit: 0,
             sessions: Sessions::new(),
             almanac: Almanac::memory(),
             bus: Bus::new(),
@@ -125,12 +128,14 @@ impl App {
             chats_path: None,
             tx,
             rx,
+            pool: SpawnPool::new(),
         };
         app.pin_current();
         app.announce_agents_md();
         if hint_connect {
             app.push_system(String::from(NOT_CONNECTED));
         }
+        app.refresh_ctx_cache();
         app
     }
 
@@ -151,8 +156,8 @@ impl App {
 
     /// Épingle agents.md en tête du chat courant (si chargé).
     pub(super) fn pin_current(&mut self) {
-        if let Some(content) = self.agents_md.clone() {
-            self.sessions.current_mut().pin_system(&content);
+        if let Some(content) = &self.agents_md {
+            self.sessions.current_mut().pin_system(content);
         }
     }
 
