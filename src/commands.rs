@@ -49,6 +49,7 @@ pub enum Command {
     Compact,
     Hint(&'static str),
     Connect(Option<String>),
+    Settings(String),
     Permissions(Option<String>),
     Web(String),
     Tools(Option<String>),
@@ -93,6 +94,9 @@ pub fn parse(input: &str) -> Option<Command> {
         }),
         "/compact" => Some(Command::Compact),
         "/connect" => Some(Command::Connect(opt_arg(&mut parts))),
+        "/settings" | "/setting" | "/params" => {
+            Some(Command::Settings(trimmed[word.len()..].trim().to_string()))
+        }
         "/permissions" => Some(Command::Permissions(opt_arg(&mut parts))),
         "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
@@ -267,6 +271,8 @@ pub fn help_text() -> &'static str {
      /unlink <a> <b> — remove a link\n\
      /compact — compact the current chat history\n\
      /connect [openai|muse] — connect (status if no argument)\n\
+     /settings [name] — providers screen: encrypted API keys\n\
+     /settings add <name> <base_url> [model] — custom provider\n\
      /permissions [yolo|auto] — tools mode: ask or run free (remembered)\n\
      /web <query> — web search + summary with cited sources\n\
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\

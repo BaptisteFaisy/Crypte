@@ -40,6 +40,7 @@ impl App {
             Some(Command::Compact) => self.cmd_compact(),
             Some(Command::Hint(msg)) => self.push_system(msg.to_string()),
             Some(Command::Connect(arg)) => self.cmd_connect(arg),
+            Some(Command::Settings(arg)) => self.open_settings(arg),
             Some(Command::Permissions(arg)) => self.cmd_permissions(arg),
             Some(Command::Web(query)) => self.cmd_web(query),
             Some(Command::Tools(arg)) => self.cmd_tools(arg),
@@ -461,12 +462,21 @@ impl App {
                     cfg.model
                 ));
             }
-            None => self.push_system(String::from(NOT_CONNECTED)),
+            None => {
+                let keyed = self.settings.keyed_count();
+                self.push_system(String::from(NOT_CONNECTED));
+                self.push_system(format!(
+                    "{keyed} provider keys saved — /settings to list and edit"
+                ));
+            }
         }
     }
 
-    /// `/connect muse` : store Muse si lisible, sinon saisie manuelle.
+    /// `/connect muse` : clé du coffre, sinon store Muse, sinon saisie.
     fn cmd_connect_muse(&mut self) {
+        if let Some(cfg) = self.settings.config_for("muse") {
+            return self.connect_saved(cfg, "muse");
+        }
         let from_store = ProviderConfig::muse_auth_path().and_then(ProviderConfig::from_muse_auth);
         match from_store {
             Ok(cfg) => self.apply_connected(cfg, "muse"),

@@ -38,6 +38,9 @@ anyhow = "1"
 # Deja minimales, inchangees : ratatui-image/crossterm-only, image/png-only.
 ratatui-image = { version = "8", default-features = false, features = ["crossterm"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+# chacha20poly1305 : coffre chiffre des cles API (/settings, voir src/settings/store.rs).
+# AEAD (chiffrement + authentification) : mauvais fichier = erreur, pas de dechiffrement partiel.
+chacha20poly1305 = "0.10"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std", "serde"] }
 
 # IMPL-1 (perf/mem-cargo) : profil release durci (absent avant -> defauts cargo :

@@ -89,6 +89,10 @@ Environment variables (prioritary):
 With `--muse-auth`, defaults become base `https://api.meta.ai/v1`
 + model `muse-spark-1.3-contributor` (key read from `auth.json`).
 
+Or the provider saved with `/settings` (the last one connected is
+remembered and reused at startup and by `--once`) — the environment
+and `--config` still win over it.
+
 Or a TOML file via `--config <file>` (flat keys or `[provider]`
 section, overridden by the environment):
 
@@ -105,6 +109,8 @@ or `--muse-auth`, the TUI starts disconnected and sends
 answer `not connected: /connect openai|muse`.
 
 - `/connect` — status (provider + model, or not connected + usage).
+- A key stored with `/settings` is used first: `/connect fireworks`
+  connects without asking anything.
 - `/connect openai` — asks for the API key (input masked with `•`),
   then the model (empty Enter = `gpt-4o`).
 - `/connect muse` — reads the `~/.config/muse/auth.json` store if
@@ -114,6 +120,35 @@ answer `not connected: /connect openai|muse`.
 - `Esc` cancels the flow (`connection cancelled`), the draft is kept.
 - The key is never displayed, logged or pushed into the chat:
   only the `connected to {provider} ({model})` confirmation shows.
+
+## /settings (providers + stored API keys)
+
+`/settings` opens a full-screen table of every provider (openai, muse,
+fireworks, deepseek, openrouter, groq, mistral, xai, cerebras, together,
+inferhub, local) plus any custom endpoint you added.
+
+- `Enter` — store the API key of the selected provider (input masked with `•`).
+- `m` / `b` — edit the model / the base URL.
+- `c` — connect with the stored key (goes back to the chat).
+- `d` — erase the stored key (the row stays).
+- `/settings <name>` — open the screen on that provider, key input ready.
+- `/settings add <name> <base_url> [model]` — add a custom endpoint.
+- `q` / `Esc` — close (the last message goes to the chat).
+
+The keys live in an encrypted vault, never in the config or the chat:
+
+| item | path / value |
+| ---- | ------------ |
+| vault | `$XDG_DATA_HOME/kiro-horror-tui/providers.enc` (else `~/.local/share/kiro-horror-tui/`), mode `0600` |
+| cipher | ChaCha20-Poly1305 (AEAD), random nonce per write, atomic rename |
+| master key | `master.key` next to the vault (32 bytes, `0600`, created once) |
+| override | `KH_SETTINGS_KEY` = 64 hex chars (keeps the key off this disk) |
+
+A wrong key or a tampered file fails authentication (`vault unreadable:
+wrong master key or altered file`) — nothing is decrypted. Once a key is
+stored, `/connect <provider>`, `--once` and the TUI startup reuse it
+(environment variables and `--config` still win); the last connected
+provider is remembered in the vault.
 
 ## Fear gauge
 
@@ -364,7 +399,11 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 `sidebar.rs` (coffins column + [+] new-chat button),
 `commands.rs` (parsing `/…` commands + help + usage),
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
-`/compact` `/connect` `/web`), `connect.rs` (`/connect` flow: masked key → model),
+`/compact` `/connect` `/web` `/settings`),
+`connect.rs` (`/connect` flow: masked key → model),
+`settings.rs` + `settings/` (`/settings`: `known.rs` provider table,
+`store.rs` encrypted vault, `ui.rs` screen, `keys.rs` key handling;
+`commands_help.rs` holds `/usage` + `/help` text),
 `web/` (`/web`: backends → fetch → cache → synthesis),
 `tools/` (agent tools: `wire.rs` OpenAI types, `browser.rs`/`desktop.rs`
 argv, `exec.rs` runner, `flow.rs` loop + y/n confirms, `log.rs` JSONL),

@@ -16,7 +16,7 @@ use crate::app::App;
 use crate::provider::{connect_defaults, Provider, ProviderConfig};
 
 /// Message quand un envoi exige une connexion absente.
-pub(crate) const NOT_CONNECTED: &str = "not connected: /connect openai|muse";
+pub(crate) const NOT_CONNECTED: &str = "not connected: /connect <provider> or /settings";
 
 /// Étape du flow de connexion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,9 +49,14 @@ impl App {
     /// Démarre le flow (étape clé, saisie masquée).
     /// Provider inconnu → erreur système + valeurs valides, sans flow.
     pub(crate) fn start_connect_flow(&mut self, provider: &str) {
+        // A key saved through `/settings` connects straight away.
+        if let Some(cfg) = self.settings.config_for(provider) {
+            self.connect_saved(cfg, provider);
+            return;
+        }
         if connect_defaults(provider).is_none() {
             self.push_system(format!(
-                "unknown provider: {provider} — values: openai, muse"
+                "unknown provider: {provider} — /settings lists every provider"
             ));
             return;
         }

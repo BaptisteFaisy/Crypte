@@ -32,6 +32,7 @@ mod persist;
 mod pool;
 mod provider;
 mod sessions;
+mod settings;
 mod sidebar;
 mod theme;
 mod tokens;
@@ -66,9 +67,15 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 4 screens (120x36 + 70x17, offline) as ANSI
+        --preview <file>  Write the 5 screens (120x36 + 70x17, offline) as ANSI
         --demo            Offline demo crypt, opened on the spirit hub (F7)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
+
+SETTINGS (/settings):
+    Encrypted provider vault: $XDG_DATA_HOME/kiro-horror-tui/providers.enc
+    (else ~/.local/share/kiro-horror-tui/), ChaCha20-Poly1305, mode 0600
+    Master key: master.key next to the vault, or KH_SETTINGS_KEY (64 hex)
+    Lists every provider, stores API keys — a key is never shown or logged
 
 CONFIG (environment, wins over --config):
     KH_BASE_URL   OpenAI-compatible base (default https://api.openai.com/v1)
@@ -78,7 +85,8 @@ CONFIG (environment, wins over --config):
     KH_EVENTS_LOG   Same as --events-log (flag wins when both are set)
     BRAVE_API_KEY / TAVILY_API_KEY  Optional premium /web backends (else free)
     With no key, no --config and no --muse-auth, the TUI still starts,
-    disconnected — /connect openai|muse to connect from inside.
+    disconnected — /connect <provider> or /settings to connect from
+    inside. A provider saved by /settings is reused at startup.
 
 MUSE (--muse-auth):
     Store: ~/.config/muse/auth.json (key: /providers/meta/api_key)
@@ -118,7 +126,9 @@ COMMANDS (in chat):
     /web <query>  web search + cited summary (raw results if offline)
     /compact  compact history (summary + last 4)
     /connect [openai|muse]  interactive connect (masked key,
-        Esc cancels); no arg: connection status
+        Esc cancels); no arg: connection status (stored key first)
+    /settings [name]  providers screen (Enter key, m model, b base,
+        c connect, d erase); /settings add <name> <base_url> [model]
     /permissions [yolo|auto]  future tools mode (remembered)
     context limit: model window capped at 1M est. tokens (see /usage)
 ";
@@ -201,6 +211,13 @@ fn resolve_config(args: &Args) -> Result<ProviderConfig> {
     }
 }
 
+/// Config from CLI/env/TOML, else the last provider saved by `/settings`.
+fn resolve_or_stored(args: &Args) -> Option<ProviderConfig> {
+    resolve_config(args)
+        .ok()
+        .or_else(|| crate::settings::Settings::load().last_config())
+}
+
 /// Un appel user puis exit : affiche le texte puis la ligne d'usage.
 async fn run_once(cfg: &ProviderConfig, prompt: &str) -> Result<()> {
     let provider = Provider::new(cfg.clone())?;
@@ -254,13 +271,14 @@ async fn async_main() -> Result<()> {
         return apercu(path);
     }
     if let Some(prompt) = args.once.as_deref() {
-        let cfg = resolve_config(&args)?;
+        let cfg = resolve_or_stored(&args)
+            .context("no API key: --config, KH_API_KEY or a /settings entry")?;
         return run_once(&cfg, prompt).await;
     }
-    let mut app = match resolve_config(&args) {
+    let mut app = match resolve_or_stored(&args) {
         _ if args.demo => App::offline()?,
-        Ok(cfg) => App::from_config_with_agents_file(cfg, args.agents_file)?,
-        Err(_) => App::disconnected_with_agents_file(args.agents_file),
+        Some(cfg) => App::from_config_with_agents_file(cfg, args.agents_file)?,
+        None => App::disconnected_with_agents_file(args.agents_file),
     };
     if !args.demo {
         app.enable_history();
@@ -318,8 +336,8 @@ fn render(app: &mut App, screen: Screen, w: u16, h: u16) -> Result<Buffer> {
     Ok(term.backend().buffer().clone())
 }
 
-/// Controle headless : frames 80x24 (chat + almanach) + 70x17
-/// (minimum, 4 écrans), sans reseau ni cle API. Echec = `Err`.
+/// Controle headless : frames 80x24 (chat + almanach + settings) + 70x17
+/// (minimum, 5 écrans), sans reseau ni cle API. Echec = `Err`.
 fn smoke() -> Result<()> {
     let mut app = demo_app()?;
     let buf = render(&mut app, Screen::Chat, 80, 24)?;
@@ -330,7 +348,13 @@ fn smoke() -> Result<()> {
     let bars = buf.content.iter().filter(|c| c.symbol() == "█").count();
     anyhow::ensure!(bars > 0, "almanac frame has no bars");
     println!("smoke OK: almanac 80x24, {bars} bar cells");
-    for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
+    for screen in [
+        Screen::Chat,
+        Screen::Bestiary,
+        Screen::Hub,
+        Screen::Almanac,
+        Screen::Settings,
+    ] {
         let buf = render(&mut app, screen, 70, 17)?;
         let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
         anyhow::ensure!(
@@ -343,7 +367,12 @@ fn smoke() -> Result<()> {
             "header missing at 70x17 ({screen:?})"
         );
     }
-    println!("smoke OK: 70x17 frames, 4 screens");
+    println!("smoke OK: 70x17 frames, 5 screens");
+    let buf = render(&mut app, Screen::Settings, 80, 24)?;
+    let text: String = buf.content.iter().map(|c| c.symbol()).collect();
+    anyhow::ensure!(text.contains("SETTINGS"), "settings frame has no title");
+    anyhow::ensure!(text.contains("openai"), "settings frame lists no provider");
+    println!("smoke OK: settings 80x24");
     println!(
         "smoke OK: tokens estimate('hello')={}",
         crate::tokens::estimate("hello")
@@ -351,7 +380,7 @@ fn smoke() -> Result<()> {
     Ok(())
 }
 
-/// Écrit les 8 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
+/// Écrit les 10 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
 /// `cat <fichier>` dans Ghostty montre l'UI sans clé ni réseau.
 fn apercu(path: &str) -> Result<()> {
     let mut app = demo_app()?;
@@ -361,17 +390,19 @@ fn apercu(path: &str) -> Result<()> {
         (Screen::Bestiary, 120, 36),
         (Screen::Hub, 120, 36),
         (Screen::Almanac, 120, 36),
+        (Screen::Settings, 120, 36),
         (Screen::Chat, 70, 17),
         (Screen::Bestiary, 70, 17),
         (Screen::Hub, 70, 17),
         (Screen::Almanac, 70, 17),
+        (Screen::Settings, 70, 17),
     ] {
         out.push_str(&format!("=== {screen:?} {w}x{h} ===\n"));
         out.push_str(&to_ansi(&render(&mut app, screen, w, h)?));
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (120x36 + 70x17, 4 screens)");
+    println!("preview: {path} (120x36 + 70x17, 5 screens)");
     Ok(())
 }
 

@@ -31,6 +31,11 @@ onglets = écrans),
 chats + sous-agents, silencieux si désactivé),
 `cmds.rs` (handlers `/…`), `cmds_web.rs` (handler `/web`),
 `commands.rs` (parse + aide + usage),
+`commands_help.rs` (textes de `/help` et `/usage`),
+`settings.rs` + `settings/` (`/settings` : table des fournisseurs
+`known.rs`, coffre chiffre `store.rs` (ChaCha20-Poly1305, `0600`, cle
+maitre `master.key` ou `KH_SETTINGS_KEY`), ecran `ui.rs`, touches
+`keys.rs`),
 `permissions.rs` (mode yolo/auto + persistance fichier + handler),
 `persist.rs` (chats : autosave JSON ~5 s + sortie, restauration silencieuse,
 fichier illisible préservé en `.corrupt`),
@@ -104,7 +109,9 @@ historique inchangé).
 - Effets (`fx.rs`) : jamais sur le texte ni dans les zones d'images
   (`ImageBank::drawn`). Aucun son (pas de BEL, pas de notification).
 - UI et messages en anglais ; clé API **jamais affichée ni logguée**
-  (ni chat, ni log, ni test — les tests réseau lisent le store).
+  (ni chat, ni log, ni test — les tests réseau lisent le store). Au
+  repos : coffre `/settings` chiffré (ChaCha20-Poly1305, `0600`), saisie
+  masquée `•`, clé maître locale (`master.key`) ou `KH_SETTINGS_KEY`.
 - `AGENTS.md` lu une seule fois, au premier envoi (`--agents-file` prime,
   sinon `./AGENTS.md` puis `./AGENT.md`, jamais relu ensuite) ;
   injecté en tête de chaque chat + `/agent` ; exclu de `/compact`

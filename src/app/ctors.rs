@@ -114,6 +114,7 @@ impl App {
             sessions: Sessions::new(),
             almanac: Almanac::memory(),
             bus: Bus::new(),
+            settings: crate::settings::Settings::load(),
             provider,
             connect_flow: None,
             agents_md,

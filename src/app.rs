@@ -37,6 +37,7 @@ use crate::permissions::Mode;
 use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
+use crate::settings::Settings;
 use crate::tools::flow::Delivery;
 use crate::tools::flow::ToolRun;
 use crate::web::WebAnswer;
@@ -72,6 +73,8 @@ pub struct App {
     /// Tokens par jour (F8) ; mémoire seule tant que `main` n'ouvre pas le fichier.
     pub(crate) almanac: Almanac,
     pub(crate) bus: Bus,
+    /// Providers + API keys (`/settings`): encrypted vault, masked input.
+    pub(crate) settings: Settings,
     pub(crate) provider: Option<Arc<Provider>>,
     pub(crate) connect_flow: Option<ConnectFlow>,
     pub(crate) agents_md: Option<String>,
@@ -174,6 +177,7 @@ impl App {
         match self.screen {
             Screen::Bestiary => return self.on_bestiary_key(key.code),
             Screen::Hub => return self.on_hub_key(key.code),
+            Screen::Settings => return self.on_settings_key(key),
             _ => {}
         }
         match key.code {

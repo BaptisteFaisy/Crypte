@@ -45,6 +45,7 @@ impl App {
             Screen::Bestiary => self.screen = self.screen.toggle(Screen::Bestiary),
             Screen::Hub => self.open_hub(),
             Screen::Almanac => self.show_almanac(),
+            Screen::Settings => self.screen = self.screen.toggle(Screen::Settings),
         }
     }
 }

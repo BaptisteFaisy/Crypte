@@ -29,6 +29,7 @@ pub enum Screen {
     Bestiary,
     Hub,
     Almanac,
+    Settings,
 }
 
 impl Screen {
@@ -89,6 +90,7 @@ impl App {
             Screen::Bestiary => self.galerie.draw(frame, body, &mut self.bank),
             Screen::Hub => self.draw_hub(frame, body),
             Screen::Almanac => self.draw_almanac(frame, body),
+            Screen::Settings => self.settings.draw(frame, body),
         }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
@@ -418,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn header_fits_four_tabs_and_gauge_at_80_columns() {
+    fn header_fits_four_tabs_and_gauge_at_70_columns() {
         let mut app = App::offline().unwrap();
         for w in [70, 80, 120] {
             let mut term = Terminal::new(TestBackend::new(w, 24)).unwrap();
@@ -446,7 +448,13 @@ mod tests {
             .push(Role::Assistant, "les os craquent sous la lune");
         for (w, h) in [(70, 17), (80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
+            for screen in [
+                Screen::Chat,
+                Screen::Bestiary,
+                Screen::Hub,
+                Screen::Almanac,
+                Screen::Settings,
+            ] {
                 app.screen = screen;
                 app.spook();
                 app.tick();
@@ -459,7 +467,13 @@ mod tests {
     fn minimum_70x17_shows_ui_not_too_small() {
         let mut app = App::offline().unwrap();
         app.almanac = crate::almanac::Almanac::demo(crate::almanac::today());
-        for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
+        for screen in [
+            Screen::Chat,
+            Screen::Bestiary,
+            Screen::Hub,
+            Screen::Almanac,
+            Screen::Settings,
+        ] {
             app.screen = screen;
             let mut term = Terminal::new(TestBackend::new(70, 17)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();
