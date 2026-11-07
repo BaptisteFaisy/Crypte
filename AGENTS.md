@@ -72,9 +72,13 @@ jamais réécrit s'il est illisible).
 argv purs, `exec.rs` exécution + timeout + journal, `flow.rs` boucle +
 confirmations y/n, `log.rs` JSONL tailles seules, `live.rs` tests live
 ignorés).
-`kiro/` (compat Kiro T1 : `steering.rs`, `spec.rs`, `hooks.rs`, `mcp.rs`,
-`ignore.rs`, `status.rs`, `glob.rs`, `cmds.rs` (`/kiro`) ; steering
-`always` fusionné au pin agents.md, voir `agents::load_merged`).
+`kiro/` (compat Kiro : `steering.rs`, `spec.rs` (+ T2 : noms,
+`check_task`), `hooks.rs`, `mcp.rs`, `ignore.rs`, `status.rs`,
+`glob.rs`, `cmds.rs` (`/kiro`), `spec_cmds.rs` (`/spec` : handlers
+`new`/statut/`run` + drain, tests dans `spec_cmds/tests.rs`),
+`spec_prompts.rs` (prompts purs), `spec_run.rs` (`SpecGen`/`SpecRun`,
+purs) ; steering `always` fusionné au pin agents.md, voir
+`agents::load_merged`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async, outillé si `/tools on`) →
@@ -99,7 +103,13 @@ d'origine user (commande ou lien) : pas de boucles infinies.
 `[agents.md pinné?]` + `[résumé]` + 4 derniers (voir
 `agents::compacted_history`, pure et testée).
 Kiro : `.kiro/` projet + `~/.kiro/` lus comme Kiro (steering `always`
-→ pin, `/kiro` = statut ; T2+ : exécution specs, hooks, client MCP).
+→ pin, `/kiro` = statut). `/spec new` génère requirements → design →
+tasks (3 appels chaînés via `Incoming::SpecNew`, fichiers écrits au
+fil de l'eau) ; `/spec <nom>` = statut ; `/spec <nom> run` exécute
+les tâches via sous-agents `/agent` (requirements + design en
+contexte), tâche cochée sur disque à chaque tombée, `y/n` entre
+tâches en `auto` (voir `spec_waiting`), direct en `yolo`. T3+ :
+hooks, client MCP.
 `/web` cherche (Tavily → Brave → DuckDuckGo → Wikipedia FR+EN) +
 fetch top-3 parallèle, synthèse LLM avec sources `[n]`
 (`Incoming::Web`, tag `[web:backend]`, brut si déconnecté,
