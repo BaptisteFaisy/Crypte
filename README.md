@@ -139,6 +139,7 @@ exempt, stays the remedy).
 | F6 | toggle chat / bestiary (arrows to pick) |
 | F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
 | F8 | toggle chat / almanac (tokens per day) |
+| Ctrl+Left / Ctrl+Right | widen / narrow the right column |
 
 On narrow terminals the header tabs drop their key hints (F2…) so
 the `ctx` gauge always fits.
