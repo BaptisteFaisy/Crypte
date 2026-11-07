@@ -1,5 +1,5 @@
 //! Commandes slash du chat (`/usage`, `/new`, `/thinking`, `/model`,
-//! `/agent`, `/agents`, `/ask`, `/tell`, `/compact`, `/help`).
+//! `/agent`, `/agents`, `/ask`, `/tell`, `/compact`, `/connect`, `/help`).
 //!
 //! `parse` matche le premier mot ; `/agent`, `/ask` et `/tell` consomment
 //! le reste de la ligne (cible + texte), sinon le reste est ignoré.
@@ -36,6 +36,7 @@ pub enum Command {
     },
     Compact,
     Hint(&'static str),
+    Connect(Option<String>),
     Unknown(String),
 }
 
@@ -64,6 +65,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/model" => Some(Command::Model(opt_arg(&mut parts))),
         "/agents" => Some(Command::Agents),
         "/compact" => Some(Command::Compact),
+        "/connect" => Some(Command::Connect(opt_arg(&mut parts))),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),
         "/tell" => parse_tell(trimmed, word),
@@ -71,7 +73,8 @@ pub fn parse(input: &str) -> Option<Command> {
     }
 }
 
-/// Second mot optionnel (`/thinking [niveau]`, `/model [nom|reset]`).
+/// Second mot optionnel (`/thinking [niveau]`, `/model [nom|reset]`,
+/// `/connect [openai|muse]`).
 fn opt_arg(parts: &mut std::str::SplitWhitespace<'_>) -> Option<String> {
     parts.next().map(str::to_string)
 }
@@ -176,7 +179,7 @@ pub fn usage_text(
     )
 }
 
-/// Aide : les 10 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 11 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commandes :\n\
      /usage — usage tokens (chat courant + session totale)\n\
@@ -188,6 +191,7 @@ pub fn help_text() -> &'static str {
      /ask #<id> <texte> — reparler à un agent\n\
      /tell <n> <texte> — parler au chat n\n\
      /compact — compacter l'historique du chat courant\n\
+     /connect [openai|muse] — se connecter (statut si sans argument)\n\
      /help — cette aide\n\
      Touches : F2 grimoire · F3/F4 chats · F5 effroi · F6 bestiaire · Ctrl+N\n\
      Contexte : ./AGENTS.md chargé au démarrage (restart pour recharger)"
@@ -239,6 +243,15 @@ mod tests {
         );
         assert_eq!(parse("/agents"), Some(Command::Agents));
         assert_eq!(parse("/compact"), Some(Command::Compact));
+        assert_eq!(parse("/connect"), Some(Command::Connect(None)));
+        assert_eq!(
+            parse("/connect muse"),
+            Some(Command::Connect(Some(String::from("muse"))))
+        );
+        assert_eq!(
+            parse("/connect openai x"),
+            Some(Command::Connect(Some(String::from("openai"))))
+        );
         assert!(valid_effort("default"));
         assert!(valid_effort("low"));
         assert!(valid_effort("medium"));

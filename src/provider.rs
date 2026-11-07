@@ -12,8 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Base par défaut (API OpenAI, format OpenAI-compatible).
-const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+/// Base OpenAI (défaut global, format OpenAI-compatible).
+pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+/// Modèle OpenAI par défaut (flow `/connect openai`).
+pub const OPENAI_DEFAULT_MODEL: &str = "gpt-4o";
 /// Base Muse (compatible OpenAI, défaut du mode `--muse-auth`).
 pub const MUSE_BASE_URL: &str = "https://api.meta.ai/v1";
 /// Modèle Muse par défaut (mode `--muse-auth`).
@@ -46,7 +48,7 @@ impl ProviderConfig {
     /// Depuis l'environnement : `KH_BASE_URL` (défaut OpenAI), `KH_API_KEY`
     /// (obligatoire), `KH_MODEL` (obligatoire).
     pub fn from_env() -> Result<Self> {
-        let base_url = read_env("KH_BASE_URL").unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+        let base_url = read_env("KH_BASE_URL").unwrap_or_else(|| OPENAI_BASE_URL.to_string());
         let api_key = read_env("KH_API_KEY").context("KH_API_KEY manquant (requis)")?;
         let model = read_env("KH_MODEL").context("KH_MODEL manquant (requis)")?;
         Ok(Self {
@@ -67,7 +69,7 @@ impl ProviderConfig {
             toml::from_str(&raw).with_context(|| format!("parse TOML {}", path.display()))?;
         let base_url = read_env("KH_BASE_URL")
             .or_else(|| doc.base_url())
-            .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+            .unwrap_or_else(|| OPENAI_BASE_URL.to_string());
         let api_key = read_env("KH_API_KEY")
             .or_else(|| doc.api_key())
             .with_context(|| {
@@ -124,6 +126,25 @@ impl ProviderConfig {
             api_key,
             model,
         })
+    }
+}
+
+/// Défauts de connexion interactive : `(base_url, modèle)` pour
+/// `openai` ou `muse` (`None` = provider inconnu, valeurs valides).
+pub fn connect_defaults(provider: &str) -> Option<(&'static str, &'static str)> {
+    match provider {
+        "openai" => Some((OPENAI_BASE_URL, OPENAI_DEFAULT_MODEL)),
+        "muse" => Some((MUSE_BASE_URL, MUSE_DEFAULT_MODEL)),
+        _ => None,
+    }
+}
+
+/// Nom court déduit de la base (`muse`/`openai`, sinon la base elle-même).
+pub fn provider_label(base_url: &str) -> &str {
+    match base_url.trim_end_matches('/') {
+        MUSE_BASE_URL => "muse",
+        OPENAI_BASE_URL => "openai",
+        _ => base_url,
     }
 }
 

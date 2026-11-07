@@ -45,6 +45,9 @@ Contrôle sans réseau ni clé (rendu headless 80x24), aperçus :
 cat /tmp/crypte.ans                                           # à lire dans Ghostty
 ```
 
+Sans clé ni config, le TUI démarre quand même, déconnecté
+(voir `/connect` ci-dessous).
+
 ## Muse Code
 
 Prérequis : CLI `muse` loggée. Branchement en 1 commande :
@@ -80,6 +83,23 @@ base_url = "https://api.meta.ai/v1"
 api_key = "..."
 model = "muse-spark-1.3-contributor"
 ```
+
+## /connect (connexion depuis le TUI)
+
+Plus besoin de clé au lancement : sans `KH_API_KEY`, `--config`
+ni `--muse-auth`, le TUI démarre déconnecté et les envois
+répondent `non connecté : /connect openai|muse`.
+
+- `/connect` — statut (provider + modèle, ou non connecté + usage).
+- `/connect openai` — demande la clé API (saisie masquée en `•`),
+  puis le modèle (Entrée seul = `gpt-4o`).
+- `/connect muse` — lit le store `~/.config/muse/auth.json` si
+  possible, sinon bascule en saisie manuelle (`store Muse
+  illisible, saisie manuelle`, modèle défaut
+  `muse-spark-1.3-contributor`).
+- `Échap` annule le flow (`connexion annulée`), le brouillon est préservé.
+- La clé n'est jamais affichée, logguée ni poussée dans le chat :
+  seule la confirmation `connecté à {provider} ({modèle})` apparaît.
 
 ## Touches
 
@@ -179,7 +199,9 @@ concertation (`/tell` + réponse du chat cible).
 lignes, agents.md **exclu** du résumé méta) et remplace l'historique
 par `[agents.md pinné]` + `résumé + 4 derniers messages` ; les
 messages arrivés pendant le résumé sont préservés. En cas d'échec,
-l'historique reste intact.
+l'historique reste intact. Envoi (chat ou agent) refusé au-delà
+d'1M tokens estimés sur la fenêtre envoyée (remplissage dans
+`/usage`) ; `/compact` (exempté) reste le remède.
 
 ## AGENTS.md (contexte système)
 
@@ -200,10 +222,12 @@ préfixé aux appels `/agent`. Exclu de `/compact` (résumé méta) et de
 `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `sessions.rs` (chats multiples + sous-agents + sidebar),
 `commands.rs` (parse des commandes `/…` + aide + usage),
-`cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell` `/compact`),
+`cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
+`/compact` `/connect`), `connect.rs` (flow `/connect` : clé masquée → modèle),
 `agents.rs` (chargement agents.md + compaction pure testée),
 `app/ui.rs` (mise en page : en-tête, panneaux, barre powerline),
 `theme.rs` (palette unique), `bestiary.rs` (sprites + mise à l'échelle
 entière), `gfx.rs` (images Kitty / demi-blocs), `apparition.rs`
 (créature du panneau droit), `galerie.rs` (écran bestiaire F6),
-`ghostty.rs` (OSC, progression, rendu synchronisé).
+`ghostty.rs` (OSC, progression, rendu synchronisé),
+`history.rs` (fenêtre d'envoi + nommage des chats).
