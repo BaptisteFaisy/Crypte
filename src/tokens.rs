@@ -18,12 +18,16 @@ use tiktoken_rs::{o200k_base, CoreBPE};
 
 use crate::theme;
 
-/// Encodeur partagé (lourd, ~32 Mo) initialisé une seule fois.
+/// Encodeur partagé (lourd, ~32 Mo), chargé une seule fois au premier
+/// vrai besoin (`estimate`) puis gardé : le recharger après éviction
+/// coûterait plus cher que le garder (cap = 1 entrée, pas de TTL).
 /// `None` = construction impossible, `estimate` replie sur l'heuristique.
 static ENCODER: OnceLock<Option<CoreBPE>> = OnceLock::new();
 
-/// Heuristique de repli : ~4 caractères par token.
-fn heuristic(text: &str) -> usize {
+/// Heuristique : ~4 caractères par token.
+/// Repli d'`estimate`, et estimation du chemin de démarrage (annonce
+/// agents.md) pour ne pas charger l'encodeur avant le premier besoin.
+pub(crate) fn heuristic(text: &str) -> usize {
     text.len().div_ceil(4)
 }
 
