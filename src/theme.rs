@@ -41,6 +41,10 @@ pub const SPECTRE_DARK: Color = Color::Rgb(0x42, 0x39, 0x6E);
 pub const CANDLE_DARK: Color = Color::Rgb(0xAC, 0x78, 0x3C);
 /// Toile de jute (poupées, tête de sac).
 pub const BURLAP: Color = Color::Rgb(0x6E, 0x58, 0x3A);
+/// Mousse : point vert, chat au repos (aucune réflexion en cours).
+pub const MOSS: Color = Color::Rgb(0x58, 0xD6, 0x68);
+/// Feu follet : point bleu, chat en réflexion (envoi en cours).
+pub const WISP: Color = Color::Rgb(0x4A, 0xA8, 0xF0);
 
 /// Composantes RGB (`None` pour une couleur non truecolor).
 fn rgb(c: Color) -> Option<(f32, f32, f32)> {
