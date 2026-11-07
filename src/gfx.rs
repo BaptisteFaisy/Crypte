@@ -97,16 +97,6 @@ impl ImageBank {
         &self.drawn
     }
 
-    /// Nom du rendu, pour la barre d'état.
-    pub fn mode(&self) -> &'static str {
-        match self.picker.protocol_type() {
-            ProtocolType::Kitty => "kitty",
-            ProtocolType::Sixel => "sixel",
-            ProtocolType::Iterm2 => "iterm2",
-            ProtocolType::Halfblocks => "halfblocks",
-        }
-    }
-
     /// Taille de cellule (pixels) si le terminal parle Kitty, sinon `None`.
     pub fn kitty_cell(&self) -> Option<(u16, u16)> {
         (self.picker.protocol_type() == ProtocolType::Kitty).then(|| self.picker.font_size())
@@ -176,7 +166,6 @@ mod tests {
     fn halfblocks_map_one_sprite_pixel_per_half_cell() {
         use ratatui::style::Color;
         let mut bank = ImageBank::headless();
-        assert_eq!(bank.mode(), "halfblocks");
         let mut term = Terminal::new(TestBackend::new(32, 16)).unwrap();
         let ghost = bestiary::get("fantome");
         for _ in 0..3 {

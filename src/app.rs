@@ -274,6 +274,7 @@ mod tests {
     use crate::commands;
     use crate::provider::ProviderConfig;
     use crate::sessions::AgentStatus;
+    use ratatui::{backend::TestBackend, Terminal};
 
     /// App de test (clé factice, aucun appel réseau dans ces tests).
     fn test_app() -> App {
@@ -430,6 +431,18 @@ mod tests {
         // Ledger + message tagué sur la livraison.
         assert_eq!(app.sessions.get(1).unwrap().ledger.total(), 15);
         assert_eq!(last_text(&app, 1), "[agent#1 from Chat 1] réponse");
+    }
+
+    #[test]
+    fn status_bar_shows_no_render_mode() {
+        let mut app = App::offline().unwrap();
+        let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        term.draw(|f| app.draw(f)).unwrap();
+        let buf = term.backend().buffer();
+        let foot: String = (0..80).map(|x| buf[(x, 23)].symbol()).collect();
+        for word in ["kitty", "halfblocks", "sixel", "iterm2", "◆"] {
+            assert!(!foot.contains(word), "mode visible : {foot:?}");
+        }
     }
 
     #[test]
