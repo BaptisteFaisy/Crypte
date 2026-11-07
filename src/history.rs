@@ -25,12 +25,11 @@ pub(crate) fn trim_history(history: &mut Vec<(String, String)>, pinned: bool) {
 }
 
 /// Découpe paresseuse : `None` si tout tient, sinon (tête gardée, queue).
-fn window_cut(len: usize, extra: usize, pinned: bool) -> Option<(bool, usize)> {
-    let total = len + extra;
-    if total <= MAX_HISTORY {
+fn window_cut(len: usize, pinned: bool) -> Option<(bool, usize)> {
+    if len <= MAX_HISTORY {
         return None;
     }
-    let drop = total - MAX_HISTORY;
+    let drop = len - MAX_HISTORY;
     let keep_pin = pinned && len > 0;
     Some((keep_pin, drop + usize::from(keep_pin)))
 }
@@ -38,7 +37,7 @@ fn window_cut(len: usize, extra: usize, pinned: bool) -> Option<(bool, usize)> {
 /// Fenêtre d'historique envoyée au provider : 40 derniers, tête
 /// `system` pinnée gardée. Paresseux : ne clone que la queue gardée.
 pub(crate) fn send_window(history: &[(String, String)], pinned: bool) -> Vec<(String, String)> {
-    match window_cut(history.len(), 0, pinned) {
+    match window_cut(history.len(), pinned) {
         None => history.to_vec(),
         Some((keep_pin, start)) => {
             let mut window = Vec::with_capacity(MAX_HISTORY);
@@ -46,31 +45,6 @@ pub(crate) fn send_window(history: &[(String, String)], pinned: bool) -> Vec<(St
                 window.push(history[0].clone());
             }
             window.extend(history[start..].iter().cloned());
-            window
-        }
-    }
-}
-
-/// Fenêtre d'envoi + message pendant (non stocké) : même résultat que
-/// clone + push + `send_window`, sans cloner la tête jetée.
-pub(crate) fn send_window_with(
-    history: &[(String, String)],
-    pinned: bool,
-    extra: (String, String),
-) -> Vec<(String, String)> {
-    match window_cut(history.len(), 1, pinned) {
-        None => {
-            let mut window = history.to_vec();
-            window.push(extra);
-            window
-        }
-        Some((keep_pin, start)) => {
-            let mut window = Vec::with_capacity(MAX_HISTORY);
-            if keep_pin {
-                window.push(history[0].clone());
-            }
-            window.extend(history[start..].iter().cloned());
-            window.push(extra);
             window
         }
     }
@@ -136,15 +110,8 @@ mod tests {
     }
 
     /// Ancien algorithme (clone tout + drain) : oracle d'équivalence.
-    fn oracle(
-        history: &[(String, String)],
-        pinned: bool,
-        extra: Option<(String, String)>,
-    ) -> Vec<(String, String)> {
+    fn oracle(history: &[(String, String)], pinned: bool) -> Vec<(String, String)> {
         let mut window = history.to_vec();
-        if let Some(line) = extra {
-            window.push(line);
-        }
         if window.len() > MAX_HISTORY {
             let drop = window.len() - MAX_HISTORY;
             if pinned && !window.is_empty() {
@@ -167,18 +134,10 @@ mod tests {
 
     #[test]
     fn lazy_window_matches_eager_oracle() {
-        let extra = || (String::from("user"), String::from("pendant"));
         for pinned in [false, true] {
             for len in [0, 1, 39, 40, 41, 50, 250] {
                 let history = corpus(pinned, len);
-                assert_eq!(
-                    send_window(&history, pinned),
-                    oracle(&history, pinned, None)
-                );
-                assert_eq!(
-                    send_window_with(&history, pinned, extra()),
-                    oracle(&history, pinned, Some(extra()))
-                );
+                assert_eq!(send_window(&history, pinned), oracle(&history, pinned));
             }
         }
     }
