@@ -156,10 +156,11 @@ impl App {
             .max()
             .unwrap_or(0);
         let bar_w = area.width.saturating_sub(48).max(4) as u64;
-        let mut lines = vec![Line::styled(
+        let mut lines = Vec::with_capacity(self.sessions.count() + 3);
+        lines.push(Line::styled(
             format!("  {:<18}{:>8}{:>8}{:>9}", "chat", "in", "out", "total"),
             Style::new().fg(ASH),
-        )];
+        ));
         for (i, chat) in self.sessions.iter().enumerate() {
             let current = i == self.sessions.index();
             let (bar, ink) = if current {
@@ -235,11 +236,8 @@ impl App {
             spans.extend(tab(label, key, self.screen == screen));
         }
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
-        let gauge = Paragraph::new(Line::from(ctx_gauge(
-            self.context_used(),
-            self.context_limit(),
-        )))
-        .alignment(Alignment::Right);
+        let gauge = Paragraph::new(Line::from(ctx_gauge(self.ctx_used, self.ctx_limit)))
+            .alignment(Alignment::Right);
         frame.render_widget(gauge, area);
     }
 
@@ -253,7 +251,7 @@ impl App {
             self.sessions.count()
         );
         left.extend(pill(&chat, PUMPKIN, VOID));
-        left.extend(pill(&short_model(&self.effective_model()), UMBER, BONE));
+        left.extend(pill(&short_model(self.effective_model_ref()), UMBER, BONE));
         let rate = format!(
             "{} tok · {} total · {}",
             sess.ledger.total(),
@@ -263,7 +261,9 @@ impl App {
         left.extend(pill(&rate, theme::lerp(VOID, UMBER, 0.5), SAND));
         let mode = self.bank.mode();
         let mode_fg = if mode == "kitty" { ECTO } else { ASH };
-        left.push(Span::styled(format!(" ◆ {mode}"), Style::new().fg(mode_fg)));
+        let mode_style = Style::new().fg(mode_fg);
+        left.push(Span::styled(" ◆ ", mode_style));
+        left.push(Span::styled(mode, mode_style));
         let used: usize = left.iter().map(|s| s.width()).sum();
         frame.render_widget(Paragraph::new(Line::from(left)), area);
         let hints = key_hints();
@@ -308,14 +308,15 @@ fn draw_card(
 }
 
 /// Onglet : pastille citrouille si actif, texte sable sinon (+ touche).
-fn tab(label: &str, key: &str, active: bool) -> Vec<Span<'static>> {
+/// `key` est un littéral statique (emprunté, jamais copié).
+fn tab(label: &str, key: &'static str, active: bool) -> Vec<Span<'static>> {
     let mut spans = if active {
         pill(label, PUMPKIN, VOID)
     } else {
         vec![Span::styled(format!(" {label} "), Style::new().fg(SAND))]
     };
     if !key.is_empty() {
-        spans.push(Span::styled(key.to_string(), Style::new().fg(UMBER)));
+        spans.push(Span::styled(key, Style::new().fg(UMBER)));
     }
     spans.push(Span::raw(" "));
     spans
@@ -342,7 +343,8 @@ fn ctx_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
     let ratio = used as f32 / max as f32;
     let filled = ratio.min(1.0) * CTX_W as f32;
     let track = Style::new().bg(theme::lerp(VOID, UMBER, 0.35));
-    let mut spans = vec![Span::styled("ctx ", Style::new().fg(SAND))];
+    let mut spans = Vec::with_capacity(CTX_W + 2);
+    spans.push(Span::styled("ctx ", Style::new().fg(SAND)));
     for i in 0..CTX_W {
         let part = (filled - i as f32).clamp(0.0, 1.0);
         let glyph = EIGHTHS[(part * 8.0).round() as usize];
@@ -360,14 +362,18 @@ fn ctx_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
     spans
 }
 
-/// Raccourcis rappelés dans la barre d'état.
+/// Raccourcis rappelés dans la barre d'état (littéraux statiques, zéro alloc).
 fn key_hints() -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
     let word = Style::new().fg(ASH);
-    let mut spans = Vec::new();
-    for (k, w) in [("F3/F4", "chats"), ("F5", "scare"), ("Esc", "flee")] {
+    let mut spans = Vec::with_capacity(6);
+    for (k, w) in [
+        ("F3/F4", " chats  "),
+        ("F5", " scare  "),
+        ("Esc", " flee  "),
+    ] {
         spans.push(Span::styled(k, key));
-        spans.push(Span::styled(format!(" {w}  "), word));
+        spans.push(Span::styled(w, word));
     }
     spans
 }
