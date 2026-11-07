@@ -194,8 +194,21 @@ async fn run_once(cfg: &ProviderConfig, prompt: &str) -> Result<()> {
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+// Runtime resserré : la boucle TUI bloque un worker dans `event::poll`
+// (jamais de `.await`), 2 workers suffisent ; les tâches ne font que de
+// l'IO peu profonde (un POST reqwest + serde), 1 Mio de pile suffit.
+// Le pool bloquant reste paresseux (0 thread au repos, aucun usage).
+fn main() -> Result<()> {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .thread_stack_size(1024 * 1024)
+        .enable_all()
+        .build()
+        .context("construction du runtime tokio")?
+        .block_on(async_main())
+}
+
+async fn async_main() -> Result<()> {
     let args = parse_args()?;
     if args.help {
         print!("{HELP}");
