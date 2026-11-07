@@ -18,6 +18,7 @@ use crate::history::send_window;
 use crate::hub::Signal;
 use crate::provider::Completion;
 use crate::sessions::AgentStatus;
+use crate::web::WebAnswer;
 
 impl App {
     /// Réponse chat : ledger + historique + message (ou erreur système),
@@ -329,6 +330,32 @@ impl App {
                         sess.chat.push(Role::System, msg);
                     }
                 }
+            }
+        }
+    }
+
+    /// Web answer: ledger if synthesized (else 0 tokens, raw),
+    /// `[web:backend]` message (provider history untouched).
+    pub(crate) fn drain_web(&mut self, id: usize, reply: Result<WebAnswer>) {
+        let Some(sess) = self.sessions.get_mut(id) else {
+            return;
+        };
+        match reply {
+            Ok(done) => {
+                if done.prompt_tokens != 0 || done.completion_tokens != 0 {
+                    sess.ledger
+                        .record(done.prompt_tokens, done.completion_tokens, 0.0);
+                }
+                sess.chat.push(
+                    Role::Assistant,
+                    format!("[web:{}] {}", done.backend, done.text),
+                );
+                self.apparition.advance();
+            }
+            Err(err) => {
+                sess.chat
+                    .push(Role::System, format!("web search failed: {err:#}"));
+                self.apparition.omen(Omen::Error);
             }
         }
     }
