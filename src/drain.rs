@@ -89,7 +89,7 @@ impl App {
         if let Some(dest) = self.sessions.get_mut(deliver) {
             dest.ledger
                 .record(done.prompt_tokens, done.completion_tokens, 0.0);
-            let tagged = format!("{tag} {}", done.text.clone());
+            let tagged = format!("{tag} {}", done.text);
             dest.chat.push(Role::Assistant, tagged.clone());
             if dest.sending {
                 dest.inbox.push_back(QueuedTell {
