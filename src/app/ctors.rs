@@ -117,6 +117,8 @@ impl App {
             agents_tried: !lazy,
             screen: Screen::Chat,
             plus_btn: None,
+            side_rows: None,
+            tab_hits: Vec::new(),
             thinking: None,
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
