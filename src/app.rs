@@ -3,6 +3,8 @@
 
 mod ui;
 
+pub use self::ui::Screen;
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -13,6 +15,7 @@ use tokio::sync::mpsc;
 
 use crate::agents;
 use crate::apparition::Apparition;
+use crate::bus::Bus;
 use crate::chat::Role;
 use crate::commands;
 use crate::connect::{ConnectFlow, NOT_CONNECTED};
@@ -24,26 +27,6 @@ use crate::history::{send_window, short_name};
 use crate::mascot::{Mascot, MascotState};
 use crate::provider::{Completion, Provider, ProviderConfig};
 use crate::sessions::Sessions;
-
-/// Écran affiché dans la zone principale.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum Screen {
-    #[default]
-    Chat,
-    Tokens,
-    Bestiary,
-}
-
-impl Screen {
-    /// `target` si on n'y est pas déjà, sinon retour au chat (F2, F6).
-    fn toggle(self, target: Screen) -> Self {
-        if self == target {
-            Screen::Chat
-        } else {
-            target
-        }
-    }
-}
 
 /// Message async d'une tâche provider : chat (`idx`), agent
 /// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
@@ -64,6 +47,7 @@ pub struct App {
     tick: u64,
     busy: bool,
     pub(crate) sessions: Sessions,
+    pub(crate) bus: Bus,
     pub(crate) provider: Option<Arc<Provider>>,
     pub(crate) connect_flow: Option<ConnectFlow>,
     pub(crate) agents_md: Option<String>,
@@ -136,6 +120,7 @@ impl App {
             tick: 0,
             busy: false,
             sessions: Sessions::new(),
+            bus: Bus::new(),
             provider,
             connect_flow: None,
             agents_md,
@@ -191,13 +176,20 @@ impl App {
         Ok(())
     }
 
-    /// Boucle principale : rend à chaque tour, tick 100 ms même sans entrée.
+    /// Boucle principale : scrute les touches et les réponses toutes les
+    /// 10 ms (routage quasi instantané), ne rend que si besoin (touche,
+    /// réponse, tick 100 ms pour les animations).
     pub async fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
+        let mut last_tick = Instant::now();
+        let mut dirty = true;
         loop {
-            ghostty::draw_synced(terminal, |frame| self.draw(frame))?;
-            self.drain_replies();
+            if dirty {
+                ghostty::draw_synced(terminal, |frame| self.draw(frame))?;
+                dirty = false;
+            }
+            dirty |= self.drain_replies();
             self.sync_progress()?;
-            if event::poll(Duration::from_millis(100))? {
+            if event::poll(Duration::from_millis(10))? {
                 match event::read()? {
                     Event::Key(key) => {
                         if key.kind == KeyEventKind::Press && !self.on_key(key) {
@@ -207,8 +199,13 @@ impl App {
                     Event::Mouse(mev) => self.on_mouse(mev),
                     _ => {}
                 }
+                dirty = true;
             }
-            self.tick();
+            if last_tick.elapsed() >= Duration::from_millis(100) {
+                last_tick = Instant::now();
+                self.tick();
+                dirty = true;
+            }
         }
         Ok(())
     }
@@ -317,6 +314,7 @@ impl App {
         sess.history.push(("user".to_string(), text));
         let history = send_window(&sess.history, sess.pinned_system);
         sess.sending = true;
+        sess.auto_hops = 0;
         sess.sending_since = Some(Instant::now());
         tokio::spawn(async move {
             let reply = provider
@@ -326,9 +324,12 @@ impl App {
         });
     }
 
-    /// Réponses arrivées, routées vers leur chat (non bloquant, id invalide ignoré).
-    fn drain_replies(&mut self) {
+    /// Réponses arrivées, routées vers leur chat (non bloquant, id invalide
+    /// ignoré). Rend vrai si au moins un message a été routé (rendu sale).
+    fn drain_replies(&mut self) -> bool {
+        let mut routed = false;
         while let Ok(msg) = self.rx.try_recv() {
+            routed = true;
             match msg {
                 Incoming::Chat(id, reply) => self.drain_chat(id, reply),
                 Incoming::Agent(owner, agent_id, deliver, reply) => {
@@ -337,6 +338,7 @@ impl App {
                 Incoming::Compact(id, reply) => self.drain_compact(id, reply),
             }
         }
+        routed
     }
 
     /// Modèle effectif : celui du chat courant, sinon le défaut provider.
@@ -416,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn tell_rejette_cible_invalide_ou_occupee() {
+    fn tell_rejette_invalide_enfile_si_occupe() {
         let mut app = test_app();
         app.run_command("/tell 9 hello");
         assert_eq!(last_text(&app, 0), "chat 9 not found");
@@ -428,9 +430,12 @@ mod tests {
         app.sessions.get_mut(0).unwrap().sending = true;
         app.add_chat(); // courant = chat 2
         app.run_command("/tell 1 hello");
-        assert_eq!(last_text(&app, 1), "Chat 1 busy, retry");
-        // Refus = rien injecté nulle part.
-        assert!(app.sessions.get(0).unwrap().history.is_empty());
+        assert_eq!(last_text(&app, 1), "Chat 1 busy — queued");
+        // Enfilé : affiché aussitôt, versé à l'historique au déclenchement.
+        let dest = app.sessions.get(0).unwrap();
+        assert_eq!(dest.inbox.len(), 1);
+        assert!(dest.history.is_empty());
+        assert_eq!(last_text(&app, 0), "[from Chat 2] hello");
     }
 
     #[test]

@@ -10,6 +10,7 @@ mod agents;
 mod app;
 mod apparition;
 mod bestiary;
+mod bus;
 mod chat;
 mod cmds;
 mod commands;
@@ -87,8 +88,11 @@ COMMANDS (in chat):
     /thinking [level]  reasoning (default/low/medium/high)
     /model [name|reset]  chat model (reset = default)
     /agent [@<n>] <text>  sub-agent (reply goes to chat n if targeted)
-    /agents  list agents    /ask #<id> <text>  follow up with an agent
-    /tell <n> <text>  talk to chat n
+    /agents [all]  list agents    /ask #<id> <text>  follow up with an agent
+    /tell <n> <text>  talk to chat n (queued if busy)
+    /msg <n|@n|#id|all> <text>  talk to a chat, an agent, all
+    /link <a> <b>  replies from a go to b (auto)    /links  list
+    /unlink <a> <b>  remove a link
     /compact  compact history (summary + last 4)
     /connect [openai|muse]  interactive connect (masked key,
         Esc cancels); no arg: connection status

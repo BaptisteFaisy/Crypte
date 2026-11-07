@@ -20,10 +20,11 @@ cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 
 ## Archi (`src/`)
 
-`main.rs` (CLI + bootstrap), `app.rs` (état + boucle 100 ms),
+`main.rs` (CLI + bootstrap), `app.rs` (état + boucle 10 ms, tick 100 ms),
+`bus.rs` (adressage, files, liens auto, plafond 8 relais),
 `mouse.rs` (clic [+] = nouveau chat),
-`drain.rs` (routage réponses async), `cmds.rs` (handlers `/…`),
-`commands.rs` (parse + aide + usage),
+`drain.rs` (routage réponses async + pompes + retransmissions),
+`cmds.rs` (handlers `/…`), `commands.rs` (parse + aide + usage),
 `connect.rs` (flow `/connect` : clé masquée → modèle → provider),
 `history.rs` (fenêtre d'envoi + nommage des chats),
 `sessions.rs` (chats + sous-agents),
@@ -38,12 +39,13 @@ unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
 
 Flux : `send` (user → provider, tâche async) → `drain_replies`
 (`Incoming::Chat|Agent|Compact`) → ledger + historique + affichage.
-Relay : `/tell` injecte `[de Chat k]` + déclenche la réponse cible
-(`send_window` partagée) ; `/agent @<n>` livre ailleurs
-(`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id de Chat k]`,
+Bus : `/tell`/`/msg` déposent (affiché aussitôt, déclenché si libre,
+enfilé sinon, pompé en groupe à la tombée) ; `/agent @<n>` livre ailleurs
+(`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id from Chat k]`,
 statut sur le propriétaire, ledger sur la livraison) ; `/ask` poursuit
-l'échange agent (`Sessions::ask_agent`, refusé si en cours, 20 messages
-max). Chaque appel LLM est déclenché par le user (pas de boucles auto).
+l'échange agent (enfilé si en cours, 20 messages max) ; `/link` retransmet
+chaque réponse en éventail (`[auto …]`, 8 relais max). Chaque chaîne reste
+d'origine user (commande ou lien) : pas de boucles infinies.
 `/compact` résume via le provider puis remplace l'historique par
 `[agents.md pinné?]` + `[résumé]` + 4 derniers (voir
 `agents::compacted_history`, pure et testée).

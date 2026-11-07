@@ -3,12 +3,11 @@
 //! `impl App` déporté hors `app.rs` (limite 500 lignes) : chaque handler
 //! lit/écrit l'état via les accès `pub(crate)` de [`App`].
 
-use std::time::Instant;
-
 use crate::agents;
 use crate::app::{App, Incoming};
+use crate::bus::{LinkEnd, LinkError, QueuedAsk, QueuedTell, Target};
 use crate::chat::Role;
-use crate::commands::{self, Command};
+use crate::commands::{self, Command, MsgTarget};
 use crate::connect::NOT_CONNECTED;
 use crate::history::send_window;
 use crate::provider::{provider_label, ProviderConfig};
@@ -29,9 +28,13 @@ impl App {
             Some(Command::Model(arg)) => self.cmd_model(arg),
             Some(Command::Thinking(arg)) => self.cmd_thinking(arg),
             Some(Command::Agent { target, prompt }) => self.cmd_agent(target, prompt),
-            Some(Command::Agents) => self.cmd_agents(),
+            Some(Command::Agents { all }) => self.cmd_agents(all),
             Some(Command::Ask { agent, text }) => self.cmd_ask(agent, text),
             Some(Command::Tell { target, text }) => self.cmd_tell(target, text),
+            Some(Command::Msg { to, text }) => self.cmd_msg(to, text),
+            Some(Command::Link { from, to }) => self.cmd_link(from, to),
+            Some(Command::Links) => self.push_system(self.bus.list_text()),
+            Some(Command::Unlink { from, to }) => self.cmd_unlink(from, to),
             Some(Command::Compact) => self.cmd_compact(),
             Some(Command::Hint(msg)) => self.push_system(msg.to_string()),
             Some(Command::Connect(arg)) => self.cmd_connect(arg),
@@ -160,105 +163,202 @@ impl App {
         });
     }
 
-    /// `/agents` : liste les sous-agents du chat courant.
-    fn cmd_agents(&mut self) {
-        let sess = self.sessions.current();
-        let text = if sess.agents.is_empty() {
-            String::from("no agents")
+    /// `/agents [all]` : sous-agents du chat courant, ou de tous les
+    /// chats (`all`, préfixés `Chat k`) ; file d'attente entre crochets.
+    fn cmd_agents(&mut self, all: bool) {
+        let here = self.sessions.index();
+        let mut rows = Vec::new();
+        for (i, sess) in self.sessions.iter().enumerate() {
+            if !all && i != here {
+                continue;
+            }
+            let scope = if all {
+                format!("Chat {} ", i + 1)
+            } else {
+                String::new()
+            };
+            for a in sess.agents.iter() {
+                let queued = if a.inbox.is_empty() {
+                    String::new()
+                } else {
+                    format!(" [queued={}]", a.inbox.len())
+                };
+                rows.push(format!(
+                    "{scope}#{id} {status} in={pin} out={pout} {prompt}{queued}",
+                    scope = scope,
+                    id = a.id,
+                    status = a.status.label(),
+                    pin = a.prompt_tokens,
+                    pout = a.completion_tokens,
+                    prompt = a.prompt,
+                    queued = queued
+                ));
+            }
+        }
+        if rows.is_empty() {
+            self.push_system(String::from("no agents"));
         } else {
-            sess.agents
-                .iter()
-                .map(|a| {
-                    format!(
-                        "#{} {} in={} out={} {}",
-                        a.id,
-                        a.status.label(),
-                        a.prompt_tokens,
-                        a.completion_tokens,
-                        a.prompt
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
-        self.push_system(text);
+            self.push_system(rows.join("\n"));
+        }
     }
 
     /// `/ask #<id> <texte>` : suite de conversation avec l'agent (cherché
-    /// dans tous les chats, réponse livrée ici) ; refusé s'il est en cours.
+    /// dans tous les chats, réponse livrée ici) ; enfilé s'il est en cours
+    /// (déclenché dès qu'il est libre, zéro réessaie).
     fn cmd_ask(&mut self, agent_id: usize, text: String) {
-        let Some(provider) = self.provider.clone() else {
+        if self.provider.is_none() {
             self.push_system(String::from(NOT_CONNECTED));
             return;
-        };
+        }
         let here = self.sessions.index();
-        let (owner, history) = match self.sessions.ask_agent(agent_id, text) {
+        match self.sessions.ask_agent(agent_id, text.clone()) {
             Err(AskError::Unknown) => {
                 self.push_system(format!("agent#{agent_id} unknown"));
-                return;
             }
             Err(AskError::Busy) => {
-                self.push_system(format!(
-                    "agent#{agent_id} still running, wait for its reply"
-                ));
-                return;
+                let pos = self.enqueue_ask(agent_id, here, text);
+                self.push_system(format!("agent#{agent_id} busy — queued (position {pos})"));
             }
-            Ok(ready) => ready,
-        };
-        let model = self.effective_model();
-        let effort = self.thinking.clone();
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            let reply = provider
-                .complete_full(&history, &model, effort.as_deref())
-                .await;
-            let _ = tx.send(Incoming::Agent(owner, agent_id, here, reply));
+            Ok((owner, history)) => {
+                if let Some((_, agent)) = self.sessions.find_agent_mut(agent_id) {
+                    agent.auto_hops = 0;
+                }
+                self.launch_agent(owner, agent_id, here, history);
+            }
+        }
+    }
+
+    /// Enfile un ask sur l'agent (connu : `Busy` le prouve) ; rend la position.
+    fn enqueue_ask(&mut self, agent_id: usize, deliver: usize, text: String) -> usize {
+        let (_, agent) = self
+            .sessions
+            .find_agent_mut(agent_id)
+            .expect("agent connu (Busy renvoyé par ask_agent)");
+        agent.inbox.push_back(QueuedAsk {
+            deliver,
+            text,
+            hops: 0,
         });
+        agent.inbox.len()
     }
 
     /// `/tell <n> <texte>` : injecte le texte dans le chat n (préfixé
-    /// `[de Chat k]`) et déclenche sa réponse ; refusé s'il est occupé.
+    /// `[de Chat k]`, affiché aussitôt) et déclenche sa réponse ; s'il est
+    /// occupé, enfilé (déclenché dès qu'il est libre, zéro réessaie).
     fn cmd_tell(&mut self, target: usize, text: String) {
-        let Some(provider) = self.provider.clone() else {
+        if self.provider.is_none() {
             self.push_system(String::from(NOT_CONNECTED));
             return;
-        };
+        }
         let here = self.sessions.index();
         let idx = target - 1;
         if idx == here {
             self.push_system(String::from("this is the current chat — type directly"));
             return;
         }
-        match self.sessions.get(idx) {
-            None => {
-                self.push_system(format!("chat {target} not found"));
-                return;
-            }
-            Some(dest) if dest.sending => {
-                self.push_system(format!("Chat {target} busy, retry"));
-                return;
-            }
-            Some(_) => {}
+        if self.sessions.get(idx).is_none() {
+            self.push_system(format!("chat {target} not found"));
+            return;
         }
-        let model = self.effective_model_for(idx);
-        let effort = self.thinking.clone();
-        let tx = self.tx.clone();
         let envelope = format!("[from Chat {}] {text}", here + 1);
-        let history = {
-            let dest = self.sessions.get_mut(idx).expect("chat validé ci-dessus");
-            dest.chat.push(Role::User, envelope.clone());
-            dest.history.push((String::from("user"), envelope));
-            dest.sending = true;
-            dest.sending_since = Some(Instant::now());
-            send_window(&dest.history, dest.pinned_system)
-        };
-        tokio::spawn(async move {
-            let reply = provider
-                .complete_full(&history, &model, effort.as_deref())
-                .await;
-            let _ = tx.send(Incoming::Chat(idx, reply));
-        });
-        self.push_system(format!("sent to Chat {target}"));
+        if self.deliver_tell(idx, envelope, 0) {
+            self.push_system(format!("Chat {target} busy — queued"));
+        } else {
+            self.push_system(format!("sent to Chat {target}"));
+        }
+    }
+
+    /// Dépose un tell (user ou auto) dans le chat `idx` : affiché aussitôt,
+    /// déclenché si libre, enfilé sinon. Rend vrai si enfilé.
+    pub(crate) fn deliver_tell(&mut self, idx: usize, envelope: String, hops: u8) -> bool {
+        let dest = self.sessions.get_mut(idx).expect("chat validé ci-dessus");
+        dest.chat.push(Role::User, envelope.clone());
+        if dest.sending {
+            dest.inbox.push_back(QueuedTell { envelope, hops });
+            return true;
+        }
+        dest.history.push((String::from("user"), envelope));
+        dest.auto_hops = hops;
+        self.launch_chat(idx);
+        false
+    }
+
+    /// `/msg <cible|all> <texte>` : parle à un chat (`2`, `@2`), un agent
+    /// (`#3`, livré ici) ou tous les autres chats (`all`, en éventail).
+    /// Enfile si occupé, jamais refusé.
+    fn cmd_msg(&mut self, to: MsgTarget, text: String) {
+        if self.provider.is_none() {
+            self.push_system(String::from(NOT_CONNECTED));
+            return;
+        }
+        match to {
+            MsgTarget::One(Target::Chat(n)) => self.cmd_tell(n, text),
+            MsgTarget::One(Target::Agent(id)) => self.cmd_ask(id, text),
+            MsgTarget::All => self.cmd_broadcast(text),
+        }
+    }
+
+    /// `/msg all` : dépose le texte dans tous les autres chats (affiché
+    /// aussitôt partout, chaque libre déclenché en parallèle, sinon enfilé).
+    fn cmd_broadcast(&mut self, text: String) {
+        let here = self.sessions.index();
+        let others: Vec<usize> = (0..self.sessions.count()).filter(|i| *i != here).collect();
+        if others.is_empty() {
+            self.push_system(String::from("no other chat — /new to open one"));
+            return;
+        }
+        let mut queued = 0usize;
+        for idx in &others {
+            let envelope = format!("[from Chat {}] {text}", here + 1);
+            if self.deliver_tell(*idx, envelope, 0) {
+                queued += 1;
+            }
+        }
+        let fired = others.len() - queued;
+        self.push_system(format!(
+            "broadcast to {} chats ({fired} triggered, {queued} queued)",
+            others.len()
+        ));
+    }
+
+    /// `/link <a> <b>` : chaque réponse de `a` est retransmise à `b`
+    /// (déclenche sa réponse ; 8 relais max, voir `/links`). Extrémités
+    /// validées (chat existant, agent connu).
+    fn cmd_link(&mut self, from: LinkEnd, to: LinkEnd) {
+        if let Err(msg) = self.check_link_end(from) {
+            self.push_system(msg);
+            return;
+        }
+        if let Err(msg) = self.check_link_end(to) {
+            self.push_system(msg);
+            return;
+        }
+        match self.bus.link(from, to) {
+            Ok(()) => self.push_system(format!("linked: {} → {}", from.label(), to.label())),
+            Err(LinkError::Same) => {
+                self.push_system(String::from("a link to itself is useless"));
+            }
+            Err(LinkError::Exists) => self.push_system(String::from("link already present")),
+        }
+    }
+
+    /// `/unlink <a> <b>` : retire le lien (note s'il n'existait pas).
+    fn cmd_unlink(&mut self, from: LinkEnd, to: LinkEnd) {
+        if self.bus.unlink(from, to) {
+            self.push_system(format!("unlinked: {} → {}", from.label(), to.label()));
+        } else {
+            self.push_system(String::from("no link in that direction"));
+        }
+    }
+
+    /// Valide une extrémité de lien (chat existant, agent connu).
+    fn check_link_end(&self, end: LinkEnd) -> Result<(), String> {
+        match end {
+            LinkEnd::Chat(idx) if self.sessions.get(idx).is_some() => Ok(()),
+            LinkEnd::Chat(idx) => Err(format!("chat {} not found", idx + 1)),
+            LinkEnd::Agent(id) if self.sessions.has_agent(id) => Ok(()),
+            LinkEnd::Agent(id) => Err(format!("agent#{id} unknown")),
+        }
     }
 
     /// Limite effective du chat courant : fenêtre du modèle, plafonnée à 1M.
