@@ -24,6 +24,7 @@ mod history;
 mod hub;
 mod mascot;
 mod mouse;
+mod permissions;
 mod provider;
 mod sessions;
 mod sidebar;
@@ -98,6 +99,7 @@ COMMANDS (in chat):
     /compact  compact history (summary + last 4)
     /connect [openai|muse]  interactive connect (masked key,
         Esc cancels); no arg: connection status
+    /permissions [yolo|auto]  future tools mode (remembered)
     context limit: model window capped at 1M est. tokens (see /usage)
 ";
 

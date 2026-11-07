@@ -212,6 +212,14 @@ the field is omitted from the JSON). `/thinking` shows the level,
 `/thinking default` goes back to default (omitted). Levels:
 `default` / `low` / `medium` / `high`.
 
+## Permissions
+
+Mode for future tools (today the crypt modifies no files yet — the mode
+is remembered for later). `/permissions` shows the mode, `/permissions yolo`
+runs everything without asking, `/permissions auto` (default) asks
+confirmation before every change. The choice is persisted in
+`~/.config/kiro-horror-tui/permissions` and reloaded at startup.
+
 ## Sub-agents
 
 `/agent [@<n>] <text>` starts a side request (no history but

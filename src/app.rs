@@ -9,6 +9,7 @@ mod ui;
 
 pub use self::ui::Screen;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -29,6 +30,7 @@ use crate::ghostty;
 use crate::history::{send_window, short_name};
 use crate::hub::Hub;
 use crate::mascot::{Mascot, MascotState};
+use crate::permissions::Mode;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
 
@@ -60,6 +62,9 @@ pub struct App {
     /// Rectangle du bouton [+] (mémorisé au rendu, `None` hors sidebar).
     pub(crate) plus_btn: Option<Rect>,
     pub(crate) thinking: Option<String>,
+    pub(crate) permissions: Mode,
+    /// Fichier de persistance du mode (`None` si `HOME` manquant).
+    pub(crate) permissions_path: Option<PathBuf>,
     pub(crate) tx: mpsc::UnboundedSender<Incoming>,
     rx: mpsc::UnboundedReceiver<Incoming>,
 }
@@ -354,6 +359,27 @@ mod tests {
         assert_eq!(last_text(&app, 0), commands::TELL_USAGE);
         app.run_command("/ask #1");
         assert_eq!(last_text(&app, 0), commands::ASK_USAGE);
+    }
+
+    #[test]
+    fn permissions_affiche_change_persiste_et_rejette() {
+        let mut app = test_app();
+        app.permissions = Mode::Auto;
+        let dir = std::env::temp_dir().join(format!("kh-app-{}-perms", std::process::id()));
+        app.permissions_path = Some(dir.join("permissions"));
+        app.run_command("/permissions");
+        assert!(last_text(&app, 0).starts_with("permissions: auto (asks"));
+        app.run_command("/permissions yolo");
+        assert!(last_text(&app, 0).starts_with("permissions: yolo (runs"));
+        assert_eq!(app.permissions, Mode::Yolo);
+        assert_eq!(
+            crate::permissions::load_from(&dir.join("permissions")),
+            Mode::Yolo
+        );
+        app.run_command("/permissions turbo");
+        assert!(last_text(&app, 0).starts_with("invalid mode: turbo"));
+        assert_eq!(app.permissions, Mode::Yolo);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
