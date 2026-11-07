@@ -1,6 +1,6 @@
 //! Commandes slash (`/usage` `/new` `/bestiary` `/thinking` `/model` `/agent`
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
-//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/settings` `/help`).
+//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/settings` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -69,6 +69,7 @@ pub enum Command {
     SpecRun {
         name: String,
     },
+    Mcp(Option<String>),
     Unknown(String),
 }
 
@@ -93,7 +94,7 @@ pub const SPEC_USAGE: &str =
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
 /// Matche le premier mot ; cibles + texte consomment le reste,
-/// `/thinking` `/model` `/connect` `/permissions` `/tools` ont un arg optionnel.
+/// `/thinking` `/model` `/connect` `/permissions` `/tools` `/mcp` ont un arg optionnel.
 pub fn parse(input: &str) -> Option<Command> {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
@@ -119,6 +120,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/permissions" => Some(Command::Permissions(opt_arg(&mut parts))),
         "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
         "/kiro" => Some(Command::Kiro),
+        "/mcp" => Some(Command::Mcp(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),
@@ -135,7 +137,7 @@ pub fn parse(input: &str) -> Option<Command> {
     }
 }
 
-/// Second mot optionnel (`/thinking` `/model` `/connect` `/permissions`).
+/// Second mot optionnel (`/thinking` `/model` `/connect` `/permissions` `/mcp`).
 fn opt_arg(parts: &mut std::str::SplitWhitespace<'_>) -> Option<String> {
     parts.next().map(str::to_string)
 }

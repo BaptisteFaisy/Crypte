@@ -37,6 +37,16 @@ fn parse_bestiary_sans_argument() {
 }
 
 #[test]
+fn parse_mcp_refresh_optionnel() {
+    assert_eq!(parse("/mcp"), Some(Command::Mcp(None)));
+    assert_eq!(
+        parse("/mcp refresh"),
+        Some(Command::Mcp(Some(String::from("refresh"))))
+    );
+    assert!(help_text().contains("/mcp [refresh]"));
+}
+
+#[test]
 fn parse_matches_commands_first_word_only() {
     assert_eq!(parse("/usage"), Some(Command::Usage));
     assert_eq!(parse("  /new x  "), Some(Command::New));

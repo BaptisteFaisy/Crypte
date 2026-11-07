@@ -50,6 +50,7 @@ impl App {
             Some(Command::SpecNew { name, idea }) => self.cmd_spec_new(name, idea),
             Some(Command::SpecShow { name }) => self.cmd_spec_show(name),
             Some(Command::SpecRun { name }) => self.cmd_spec_run(name),
+            Some(Command::Mcp(arg)) => self.cmd_mcp(arg),
             Some(Command::Unknown(word)) => {
                 self.push_system(format!("unknown command: {word} — /help for help"));
             }

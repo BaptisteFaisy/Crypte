@@ -26,7 +26,7 @@ impl Incoming {
     /// recherche web brute (aucun appel LLM).
     pub(crate) fn usage(&self) -> Option<(u64, u64)> {
         let billed = match self {
-            Incoming::ToolDone(..) | Incoming::Vps(..) => return None,
+            Incoming::ToolDone(..) | Incoming::Vps(..) | Incoming::McpRefresh(..) => return None,
             Incoming::Chat(_, r)
             | Incoming::Compact(_, r)
             | Incoming::Agent(_, _, _, r)

@@ -14,6 +14,7 @@ pub mod hooks;
 pub mod ignore;
 pub mod mcp;
 pub mod mcp_client;
+pub mod mcp_cmds;
 pub mod mcp_conn;
 pub mod mcp_pool;
 pub mod spec;
