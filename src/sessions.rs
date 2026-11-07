@@ -139,6 +139,7 @@ impl Sessions {
             chats,
             current,
             next_agent_id: 1,
+            session: crate::workspace::session_id(),
         }
     }
 
@@ -306,5 +307,18 @@ mod tests {
         assert_eq!(ws, base.join(&session).join("agent-1"));
         assert!(ws.is_dir());
         std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn from_chats_restaure_avec_namespace_frais_et_courant_borne() {
+        let chats = vec![
+            ChatSession::new(String::from("a")),
+            ChatSession::new(String::from("b")),
+        ];
+        let s = Sessions::from_chats(chats, 9);
+        assert!(!s.session.is_empty());
+        assert_eq!(s.current().name, "b");
+        let vide = Sessions::from_chats(Vec::new(), 0);
+        assert_eq!(vide.current().name, "Chat 1");
     }
 }
