@@ -99,11 +99,13 @@ fn plus_rect(area: Rect, chats: usize) -> Option<Rect> {
     }
 }
 
-/// Ligne bouton : `[+]` citrouille gras + `nouveau chat` sable.
-/// Le libellé tient presque toujours : emprunté, jamais copié.
+/// Ligne bouton : `[+]` citrouille gras + `new chat` sable.
+/// Sidebar étroite (< 8) : `[+]` seul, sinon emprunté, jamais copié.
 fn plus_line(width: usize) -> Line<'static> {
     let avail = width.saturating_sub(PLUS_HEAD.len());
-    let rest: Cow<'static, str> = if PLUS_REST.len() <= avail {
+    let rest: Cow<'static, str> = if width < 8 {
+        Cow::Borrowed("")
+    } else if PLUS_REST.len() <= avail {
         Cow::Borrowed(PLUS_REST)
     } else {
         Cow::Owned(PLUS_REST.chars().take(avail).collect())

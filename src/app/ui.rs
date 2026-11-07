@@ -46,6 +46,11 @@ impl Screen {
 const EIGHTHS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
 /// Largeur de la jauge de contexte (cellules).
 const FEAR_W: usize = 12;
+/// Taille minimale du terminal : 70x17 (compact sous 80 colonnes).
+pub(crate) const MIN_W: u16 = 70;
+pub(crate) const MIN_H: u16 = 17;
+/// Seuil compact : sous 80 colonnes, sidebar réduite, panneau droit masqué.
+const COMPACT_W: u16 = 80;
 /// Onglets de l'en-tête : écran, libellé, touche.
 const TABS: [(Screen, &str, &str); 4] = [
     (Screen::Chat, "chat", ""),
@@ -66,8 +71,8 @@ impl App {
         self.tab_hits.clear();
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
-        if area.width < 80 || area.height < 24 {
-            let msg = "Terminal too small: 80x24 required (q to quit)";
+        if area.width < MIN_W || area.height < MIN_H {
+            let msg = "Terminal too small: 70x17 required (q to quit)";
             let style = Style::new().fg(CANDLE);
             frame.render_widget(Paragraph::new(msg).style(style), area);
             return;
@@ -90,7 +95,11 @@ impl App {
     }
 
     /// Corps chat : cercueils | discussion | Kiro + apparition.
+    /// Sous 80 colonnes : cercueils réduits | discussion (droit masqué).
     fn draw_chat(&mut self, frame: &mut Frame, area: Rect) {
+        if area.width < COMPACT_W {
+            return self.draw_chat_compact(frame, area);
+        }
         let side_w = if area.width >= 110 { 22 } else { 18 };
         let [side, chat, right] = Layout::horizontal([
             Constraint::Length(side_w),
@@ -120,6 +129,23 @@ impl App {
             PUMPKIN
         };
         draw_card(frame, omen, creature, accent, &mut self.bank);
+    }
+
+    /// Corps compact (< 80 col.) : sidebar 14 + discussion au reste.
+    /// Kiro et apparitions masqués : le chat reste pleinement utilisable.
+    fn draw_chat_compact(&mut self, frame: &mut Frame, area: Rect) {
+        let [side, chat] =
+            Layout::horizontal([Constraint::Length(14), Constraint::Min(30)]).areas(area);
+        let hits = self.sessions.draw_sidebar(frame, side);
+        self.side_rows = hits.chats;
+        self.plus_btn = hits.plus;
+        let sess = self.sessions.current();
+        let view = ChatView {
+            title: &sess.name,
+            tick: self.tick,
+            sending: sess.sending,
+        };
+        sess.chat.draw(frame, chat, view);
     }
 
     /// Panneau de Kiro : spectre au repos, ectoplasme quand il a peur.
@@ -198,7 +224,10 @@ impl App {
     }
 
     /// Barre d'état : pastilles powerline à gauche, raccourcis à droite.
+    /// Sous 80 colonnes : pastilles courtes (rate compact, modèle à 10,
+    /// mode court) pour tenir à 70.
     fn draw_status(&self, frame: &mut Frame, area: Rect) {
+        let compact = area.width < COMPACT_W;
         let sess = self.sessions.current();
         let mut left = Vec::new();
         let chat = format!(
@@ -207,26 +236,43 @@ impl App {
             self.sessions.count()
         );
         left.extend(pill(&chat, PUMPKIN, VOID));
-        left.extend(pill(&short_model(self.effective_model_ref()), UMBER, BONE));
-        let rate = format!(
-            "{} tok · {} total · {}",
-            sess.ledger.total(),
-            self.sessions.grand_total(),
-            fmt_tps(sess.ledger.last_tps())
-        );
+        let model = short_model(self.effective_model_ref());
+        let model = if compact {
+            model.chars().take(10).collect::<String>()
+        } else {
+            model.into_owned()
+        };
+        left.extend(pill(&model, UMBER, BONE));
+        let rate = if compact {
+            format!(
+                "{} tok · {}",
+                sess.ledger.total(),
+                fmt_tps(sess.ledger.last_tps())
+            )
+        } else {
+            format!(
+                "{} tok · {} total · {}",
+                sess.ledger.total(),
+                self.sessions.grand_total(),
+                fmt_tps(sess.ledger.last_tps())
+            )
+        };
         left.extend(pill(&rate, theme::lerp(VOID, UMBER, 0.5), SAND));
-        let mode = self.bank.mode();
+        let mode = short_mode(self.bank.mode());
         let mode_fg = if mode == "kitty" { ECTO } else { ASH };
         let mode_style = Style::new().fg(mode_fg);
         left.push(Span::styled(" ◆ ", mode_style));
         left.push(Span::styled(mode, mode_style));
         let used: usize = left.iter().map(|s| s.width()).sum();
         frame.render_widget(Paragraph::new(Line::from(left)), area);
-        let hints = key_hints();
-        let hints_w: usize = hints.iter().map(|s| s.width()).sum();
-        if used + hints_w + 2 <= area.width as usize {
-            let right = Paragraph::new(Line::from(hints)).alignment(Alignment::Right);
-            frame.render_widget(right, area);
+        let width = area.width as usize;
+        for hints in [key_hints(false), key_hints(true)] {
+            let hints_w: usize = hints.iter().map(|s| s.width()).sum();
+            if used + hints_w + 2 <= width {
+                let right = Paragraph::new(Line::from(hints)).alignment(Alignment::Right);
+                frame.render_widget(right, area);
+                break;
+            }
         }
     }
 }
@@ -323,9 +369,20 @@ fn fear_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
     spans
 }
 
-/// Raccourcis rappelés dans la barre d'état (littéraux statiques, zéro alloc).
-fn key_hints() -> Vec<Span<'static>> {
+/// Nom de mode d'image court pour la barre d'état compacte.
+fn short_mode(mode: &str) -> &str {
+    match mode {
+        "demi-blocs" => "blocs",
+        other => other,
+    }
+}
+
+/// Raccourcis rappelés dans la barre d'état (courts si `short`).
+fn key_hints(short: bool) -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
+    if short {
+        return vec![Span::styled("F3/F4 F5 F6", key)];
+    }
     let word = Style::new().fg(ASH);
     let mut spans = Vec::with_capacity(6);
     for (k, w) in [("F3/F4", " chats  "), ("F5", " scare  "), ("q", " quit  ")] {
@@ -363,7 +420,7 @@ mod tests {
     #[test]
     fn header_fits_four_tabs_and_gauge_at_80_columns() {
         let mut app = App::offline().unwrap();
-        for w in [80, 120] {
+        for w in [70, 80, 120] {
             let mut term = Terminal::new(TestBackend::new(w, 24)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();
             let buf = term.backend().buffer();
@@ -373,7 +430,9 @@ mod tests {
             }
             assert!(!head.contains("grimoire"), "{w} cols: {head:?}");
             // 4 onglets : les touches (F6/F7/F8) tiennent dès 80 colonnes.
-            assert!(head.contains("F8"), "{w} cols: {head:?}");
+            if w >= 80 {
+                assert!(head.contains("F8"), "{w} cols: {head:?}");
+            }
         }
     }
 
@@ -385,14 +444,38 @@ mod tests {
             .current_mut()
             .chat
             .push(Role::Assistant, "les os craquent sous la lune");
-        for (w, h) in [(80, 24), (120, 40), (200, 60), (60, 20)] {
+        for (w, h) in [(70, 17), (80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [Screen::Chat, Screen::Bestiary, Screen::Almanac] {
+            for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
                 app.screen = screen;
                 app.spook();
                 app.tick();
                 term.draw(|f| app.draw(f)).unwrap();
             }
+        }
+    }
+
+    #[test]
+    fn minimum_70x17_shows_ui_not_too_small() {
+        let mut app = App::offline().unwrap();
+        app.almanac = crate::almanac::Almanac::demo(crate::almanac::today());
+        for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
+            app.screen = screen;
+            let mut term = Terminal::new(TestBackend::new(70, 17)).unwrap();
+            term.draw(|f| app.draw(f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let top: String = (0..70).map(|x| buf[(x, 0)].symbol()).collect();
+            assert!(top.contains("CRYPT"), "header absent à 70x17 : {top:?}");
+            assert!(!top.contains("too small"), "gate à 70x17 : {top:?}");
+            let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
+            assert!(filled > 60, "frame presque vide à 70x17 : {filled}");
+        }
+        for (w, h) in [(69, 17), (70, 16)] {
+            let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+            term.draw(|f| app.draw(f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let top: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
+            assert!(top.contains("too small"), "pas de gate à {w}x{h} : {top:?}");
         }
     }
 }
