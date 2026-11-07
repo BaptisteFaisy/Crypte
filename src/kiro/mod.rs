@@ -14,6 +14,8 @@ pub mod hooks;
 pub mod ignore;
 pub mod mcp;
 pub mod spec;
+pub mod spec_prompts;
+pub mod spec_run;
 pub mod status;
 pub mod steering;
 
