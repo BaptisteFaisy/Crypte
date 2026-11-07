@@ -110,6 +110,7 @@ répondent `non connecté : /connect openai|muse`.
 | F2 | basculer chat / grimoire (tokens + âmes par chat) |
 | F3 / F4 | chat précédent / suivant |
 | Ctrl+N | nouveau chat |
+| Clic `[+]` (sidebar) | nouveau chat (souris capturée par l'app) |
 | F5 | effroi : Kiro a peur 2 s, jump scare, éclair, peur + |
 | F6 | basculer chat / bestiaire (flèches pour choisir) |
 
@@ -216,11 +217,13 @@ préfixé aux appels `/agent`. Exclu de `/compact` (résumé méta) et de
 ## Modules (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (état + boucle 100 ms),
+`mouse.rs` (clic [+] = nouveau chat),
 `drain.rs` (routage des réponses async vers les chats),
 `chat.rs` (historique + saisie), `mascot.rs` (fantôme),
 `fx.rs` (overlay horreur), `tokens.rs` (compteur tiktoken),
 `provider.rs` (client OpenAI-compatible, timeout 60 s),
-`sessions.rs` (chats multiples + sous-agents + sidebar),
+`sessions.rs` (chats multiples + sous-agents),
+`sidebar.rs` (colonne cercueils + bouton [+] nouveau chat),
 `commands.rs` (parse des commandes `/…` + aide + usage),
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
 `/compact` `/connect`), `connect.rs` (flow `/connect` : clé masquée → modèle),

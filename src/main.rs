@@ -21,13 +21,18 @@ mod gfx;
 mod ghostty;
 mod history;
 mod mascot;
+mod mouse;
 mod provider;
 mod sessions;
+mod sidebar;
 mod theme;
 mod tokens;
 
-use anyhow::{Context, Result};
+use std::io;
 
+use anyhow::{Context, Result};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::execute;
 use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
 
 use crate::app::{App, Screen};
@@ -69,7 +74,7 @@ AGENTS.MD (contexte systeme, charge une fois — restart pour recharger) :
 
 TOUCHES (terminal >= 80x24) :
     Entree  envoyer    Echap/q  quitter    F2  grimoire (tokens)    F5  effroi
-    F3/F4  chat precedent/suivant    Ctrl+N  nouveau chat    F6  bestiaire
+    F3/F4  chat precedent/suivant    Ctrl+N ou clic [+]  nouveau chat    F6  bestiaire
 
 GHOSTTY :
     Images via le protocole Kitty (demi-blocs ailleurs), fond de fenetre,
@@ -203,11 +208,13 @@ async fn main() -> Result<()> {
         Err(_) => App::disconnected_with_agents(agents_md),
     };
     let mut terminal = ratatui::init();
+    let _ = execute!(io::stdout(), EnableMouseCapture);
     let result = match app.attach_terminal() {
         Ok(()) => app.run(&mut terminal).await,
         Err(err) => Err(err),
     };
     let _ = crate::ghostty::leave();
+    let _ = execute!(io::stdout(), DisableMouseCapture);
     ratatui::restore();
     result
 }

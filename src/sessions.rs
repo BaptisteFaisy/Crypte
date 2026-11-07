@@ -1,21 +1,11 @@
-//! Chats multiples + sidebar gauche.
+//! Chats multiples + sous-agents.
 //!
-//! `Sessions` garde les chats ouverts et le courant ; `draw_sidebar` rend
-//! la liste des chats (nom + tokens + `…` si envoi en cours + ` A{n}` si
-//! sous-agents actifs) dans la colonne gauche, chat courant mis en relief.
+//! `Sessions` garde les chats ouverts et le courant ; le rendu de la
+//! colonne gauche vit dans `sidebar` (`Sessions::draw_sidebar`).
 
 use std::time::Instant;
 
-use ratatui::{
-    layout::Rect,
-    style::{Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
-};
-
 use crate::chat::ChatState;
-use crate::theme;
 use crate::tokens::TokenLedger;
 
 /// Un chat : affichage, historique provider, usage tokens, envoi en cours.
@@ -294,83 +284,11 @@ impl Sessions {
             .map(|c| c.agents_total())
             .fold(0, u64::saturating_add)
     }
-
-    /// Sidebar « cercueils » : une ligne par chat (nom + tokens + `…` si
-    /// envoi + ` A{n}`), le chat courant marqué d'une barre citrouille.
-    pub fn draw_sidebar(&self, frame: &mut Frame, area: Rect) {
-        let block = Block::new()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(theme::UMBER))
-            .title(theme::title("cercueils", theme::SAND, theme::BONE));
-        let inner_w = area.width.saturating_sub(2) as usize;
-        if inner_w < 3 {
-            frame.render_widget(block, area);
-            return;
-        }
-        let lines: Vec<Line<'static>> = self
-            .chats
-            .iter()
-            .enumerate()
-            .map(|(i, c)| {
-                sidebar_line(
-                    i == self.current,
-                    &c.name,
-                    c.ledger.total(),
-                    c.sending,
-                    self.running_agents(i),
-                    inner_w,
-                )
-            })
-            .collect();
-        frame.render_widget(Paragraph::new(lines).block(block), area);
-    }
 }
 
 impl Default for Sessions {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Une ligne de sidebar : `▍` + nom tronqué + `123t` + `…` si envoi +
-/// ` A{n}`. Le chat courant : barre citrouille, nom os gras, fond braise.
-fn sidebar_line(
-    current: bool,
-    name: &str,
-    total: u64,
-    sending: bool,
-    agents: usize,
-    width: usize,
-) -> Line<'static> {
-    let tokens = format!(" {total}t");
-    let agents = if agents > 0 {
-        format!(" A{agents}")
-    } else {
-        String::new()
-    };
-    let suffix = if sending { "…" } else { "" };
-    let used = 2 + tokens.chars().count() + agents.chars().count() + suffix.chars().count();
-    let name_w = width.saturating_sub(used);
-    let name: String = name.chars().take(name_w).collect();
-    let pad = " ".repeat(name_w.saturating_sub(name.chars().count()));
-    let (bar, name_style) = if current {
-        let bold = Style::new().fg(theme::BONE).add_modifier(Modifier::BOLD);
-        (Style::new().fg(theme::PUMPKIN), bold)
-    } else {
-        (Style::new().fg(theme::UMBER), Style::new().fg(theme::SAND))
-    };
-    let line = Line::from(vec![
-        Span::styled("▍ ", bar),
-        Span::styled(format!("{name}{pad}"), name_style),
-        Span::styled(tokens, Style::new().fg(theme::ASH)),
-        Span::styled(agents, Style::new().fg(theme::ECTO)),
-        Span::styled(suffix, Style::new().fg(theme::CANDLE)),
-    ]);
-    if current {
-        line.style(Style::new().bg(theme::lerp(theme::VOID, theme::DRIED, 0.55)))
-    } else {
-        line
     }
 }
 
