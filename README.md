@@ -222,6 +222,15 @@ runs everything without asking, `/permissions auto` (default) asks
 confirmation before every change. The choice is persisted in
 `~/.config/kiro-horror-tui/permissions` and reloaded at startup.
 
+## History
+
+Chats survive restarts: display, provider context, model, agents.md pin
+and token ledger are autosaved every ~5 s (and on exit) to
+`~/.config/kiro-horror-tui/chats.json`, and silently restored at startup
+(agents.md re-pinned when loaded). Sub-agents are not restored (their
+delivered replies stay visible in the chat). An unreadable file starts
+fresh, the file kept as `chats.json.corrupt`.
+
 ## Sub-agents
 
 `/agent [@<n>] <text>` starts a side request (no history but
