@@ -1,5 +1,5 @@
 //! Commandes slash (`/usage` `/new` `/thinking` `/model` `/agent` `/agents`
-//! `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact` `/connect` `/permissions` `/web` `/tools` `/help`).
+//! `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact` `/connect` `/permissions` `/web` `/tools` `/kiro` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -52,6 +52,7 @@ pub enum Command {
     Permissions(Option<String>),
     Web(String),
     Tools(Option<String>),
+    Kiro,
     Unknown(String),
 }
 
@@ -95,6 +96,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/connect" => Some(Command::Connect(opt_arg(&mut parts))),
         "/permissions" => Some(Command::Permissions(opt_arg(&mut parts))),
         "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
+        "/kiro" => Some(Command::Kiro),
         "/links" => Some(Command::Links),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),
@@ -250,7 +252,7 @@ pub fn effort_values() -> Vec<&'static str> {
     .collect()
 }
 
-/// Aide : les 18 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 19 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (current chat + session total)\n\
@@ -270,6 +272,7 @@ pub fn help_text() -> &'static str {
      /permissions [yolo|auto] — tools mode: ask or run free (remembered)\n\
      /web <query> — web search + summary with cited sources\n\
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
+     /kiro — kiro .kiro/ status (steering, specs, hooks, mcp)\n\
      /help — this help\n\
      Keys: F5 scare · F6 bestiary · F7 hub · F8 almanac · Ctrl+N\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
@@ -300,6 +303,12 @@ mod tests {
             Some(Command::Tools(Some(String::from("off"))))
         );
         assert!(help_text().contains("/tools [on|off]"));
+    }
+
+    #[test]
+    fn parse_kiro_sans_argument() {
+        assert_eq!(parse("/kiro"), Some(Command::Kiro));
+        assert!(help_text().contains("/kiro"));
     }
 
     #[test]

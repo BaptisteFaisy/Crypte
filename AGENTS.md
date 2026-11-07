@@ -58,6 +58,9 @@ réécrit s'il est illisible) + `almanac/view.rs` (écran F8).
 argv purs, `exec.rs` exécution + timeout + journal, `flow.rs` boucle +
 confirmations y/n, `log.rs` JSONL tailles seules, `live.rs` tests live
 ignorés).
+`kiro/` (compat Kiro T1 : `steering.rs`, `spec.rs`, `hooks.rs`, `mcp.rs`,
+`ignore.rs`, `status.rs`, `glob.rs`, `cmds.rs` (`/kiro`) ; steering
+`always` fusionné au pin agents.md, voir `agents::load_merged`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async, outillé si `/tools on`) →
@@ -81,6 +84,8 @@ d'origine user (commande ou lien) : pas de boucles infinies.
 `/compact` résume via le provider puis remplace l'historique par
 `[agents.md pinné?]` + `[résumé]` + 4 derniers (voir
 `agents::compacted_history`, pure et testée).
+Kiro : `.kiro/` projet + `~/.kiro/` lus comme Kiro (steering `always`
+→ pin, `/kiro` = statut ; T2+ : exécution specs, hooks, client MCP).
 `/web` cherche (Tavily → Brave → DuckDuckGo → Wikipedia FR+EN) +
 fetch top-3 parallèle, synthèse LLM avec sources `[n]`
 (`Incoming::Web`, tag `[web:backend]`, brut si déconnecté,
@@ -95,6 +100,9 @@ historique inchangé).
 - Zéro duplication : extraire et partager les helpers, une seule
   implémentation par logique (`compacted_history`, `without_pinned`,
   `usage_line` vivent dans `agents.rs`).
+- `.kiro/` : mêmes fichiers que Kiro (workspace + global) ; tests via
+  chemins injectés + `KH_KIRO_PROJECT` / `KH_KIRO_GLOBAL`, jamais le
+  `~/.kiro` réel (déterminisme).
 - Couleurs : uniquement via `theme.rs` (jamais de `Color::Rgb` ailleurs,
   sauf les fonds RGBA de `gfx.rs` et `bestiary.rs`, documentés = `theme::VOID`).
 - Pixel art : grilles `assets/pixel/*.txt` 32×32, lettres de palette

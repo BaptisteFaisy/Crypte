@@ -43,6 +43,7 @@ impl App {
             Some(Command::Permissions(arg)) => self.cmd_permissions(arg),
             Some(Command::Web(query)) => self.cmd_web(query),
             Some(Command::Tools(arg)) => self.cmd_tools(arg),
+            Some(Command::Kiro) => self.cmd_kiro(),
             Some(Command::Unknown(word)) => {
                 self.push_system(format!("unknown command: {word} — /help for help"));
             }
