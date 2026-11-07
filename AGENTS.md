@@ -32,6 +32,7 @@ fichier illisible préservé en `.corrupt`),
 `connect.rs` (flow `/connect` : clé masquée → modèle → provider),
 `history.rs` (fenêtre d'envoi + nommage des chats),
 `sessions.rs` + `sessions/` (chats `chat.rs` + sous-agents `subagents.rs`),
+`workspace.rs` (workspaces `<session>/agent`, zéro token),
 `sidebar.rs` (colonne cercueils + bouton [+]), `chat.rs` (historique +
 saisie + prompt custom masquable), `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :

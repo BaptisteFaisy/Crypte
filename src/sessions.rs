@@ -9,6 +9,8 @@ mod subagents;
 pub use chat::ChatSession;
 pub use subagents::{AgentStatus, AskError, SubAgent};
 
+use std::path::Path;
+
 use crate::tokens::TokenLedger;
 
 /// Chats ouverts + position du courant (jamais vide, index toujours valide).
@@ -16,6 +18,8 @@ pub struct Sessions {
     chats: Vec<ChatSession>,
     current: usize,
     next_agent_id: usize,
+    /// Namespace des workspaces agents (`<unix_secs>-<pid>`, un par run).
+    session: String,
 }
 
 impl Sessions {
@@ -25,6 +29,7 @@ impl Sessions {
             chats: vec![ChatSession::new(String::from("Chat 1"))],
             current: 0,
             next_agent_id: 1,
+            session: crate::workspace::session_id(),
         }
     }
 
@@ -61,6 +66,18 @@ impl Sessions {
         chat.agents.push(SubAgent::new(id, prompt, history));
         self.next_agent_id += 1;
         Some(id)
+    }
+
+    /// Attache le workspace disque de l'agent (`<session>/agent-<id>`,
+    /// créé en pur code, zéro appel LLM). Silencieux si pas de base,
+    /// id inconnu ou échec disque — l'agent tourne quand même. Base
+    /// `None` = pas de workspace (tests).
+    pub fn attach_workspace(&mut self, agent_id: usize, base: Option<&Path>) {
+        let session = self.session.clone();
+        let (Some(dir), Some((_, agent))) = (base, self.find_agent_mut(agent_id)) else {
+            return;
+        };
+        agent.workspace = crate::workspace::create(dir, &session, agent_id).ok();
     }
 
     /// Retrouve un agent par son id global : `(chat idx, agent)`.
@@ -270,5 +287,24 @@ mod tests {
         s.current_mut().ledger.record(100, 0, 1.0);
         assert_eq!(s.grand_total(), 142);
         assert_eq!(s.agents_grand_total(), 12);
+    }
+
+    #[test]
+    fn attach_workspace_pose_le_dossier_ou_rien() {
+        let mut s = Sessions::new();
+        s.add_agent(0, "loin", user("u")).unwrap();
+        // Id inconnu : rien ne se passe.
+        s.attach_workspace(42, None);
+        // Sans base : pas de workspace, agent intact.
+        s.attach_workspace(1, None);
+        assert!(s.find_agent_mut(1).unwrap().1.workspace.is_none());
+        // Avec base : dossier créé sous la session, chemin stocké.
+        let session = s.session.clone();
+        let base = std::env::temp_dir().join(format!("kh-ws-{}-attach", std::process::id()));
+        s.attach_workspace(1, Some(&base));
+        let ws = s.find_agent_mut(1).unwrap().1.workspace.clone().unwrap();
+        assert_eq!(ws, base.join(&session).join("agent-1"));
+        assert!(ws.is_dir());
+        std::fs::remove_dir_all(&base).ok();
     }
 }
