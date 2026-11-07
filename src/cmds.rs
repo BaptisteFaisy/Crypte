@@ -10,8 +10,8 @@ use crate::app::{App, Incoming};
 use crate::chat::Role;
 use crate::commands::{self, Command};
 use crate::connect::NOT_CONNECTED;
-use crate::provider::{provider_label, ProviderConfig};
 use crate::history::send_window;
+use crate::provider::{provider_label, ProviderConfig};
 use crate::sessions::AskError;
 
 /// Historique minimal (messages) pour lancer un compactage.
@@ -58,10 +58,7 @@ impl App {
             crate::tokens::context_estimate(&window)
         };
         msg.push('\n');
-        msg.push_str(&format!(
-            "contexte : {}",
-            crate::tokens::fmt_context(used)
-        ));
+        msg.push_str(&format!("contexte : {}", crate::tokens::fmt_context(used)));
         self.push_system(msg);
     }
 
