@@ -1,0 +1,46 @@
+# kiro-horror-tui — contexte agents
+
+Chat LLM dans une crypte hantée (TUI ratatui) : multi-chats, mascotte
+fantôme Kiro (F5), effets horreur, compteur tokens, sous-agents `/agent`,
+compaction `/compact`. UI et messages **en français**.
+
+## Commandes
+
+```sh
+cargo build                      # debug, 0 warning exigé
+cargo test                       # tous les tests doivent être verts
+cargo fmt --check                # formatage propre exigé
+./target/debug/kiro-horror-tui --smoke   # headless 80x24, sans réseau ni clé
+./target/debug/kiro-horror-tui --muse-auth --once "Reply with exactly: OK"
+cargo build --release            # met à jour `kiro-horror-tui` (symlink)
+```
+
+## Archi (`src/`)
+
+`main.rs` (CLI + bootstrap), `app.rs` (état + boucle 100 ms),
+`cmds.rs` (handlers `/…`), `commands.rs` (parse + aide + usage),
+`sessions.rs` (chats + sous-agents + sidebar), `chat.rs` (historique +
+saisie), `provider.rs` (client OpenAI-compatible, timeout 60 s),
+`tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :
+chargement, pin, compaction pure), `mascot.rs` (fantôme), `fx.rs`
+(overlay horreur).
+
+Flux : `send` (user → provider, tâche async) → `drain_replies`
+(`Incoming::Chat|Agent|Compact`) → ledger + historique + affichage.
+`/compact` résume via le provider puis remplace l'historique par
+`[agents.md pinné?]` + `[résumé]` + 4 derniers (voir
+`agents::compacted_history`, pure et testée).
+
+## Conventions
+
+- Fichier < 500 lignes, fonction < 50 lignes ; au-delà : découper.
+  Vérifier : `wc -l` sur les fichiers touchés.
+- Zéro duplication : extraire et partager les helpers, une seule
+  implémentation par logique (`compacted_history`, `without_pinned`,
+  `usage_line` vivent dans `agents.rs`).
+- UI et messages en français ; clé API **jamais affichée ni logguée**
+  (ni chat, ni log, ni test — les tests réseau lisent le store).
+- `AGENTS.md` chargé une fois au démarrage (`--agents-file` prime,
+  sinon `./AGENTS.md` puis `./AGENT.md`, restart pour recharger) ;
+  injecté en tête de chaque chat + `/agent` ; exclu de `/compact`
+  (résumé méta) et de `--once` (brut).
