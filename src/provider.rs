@@ -430,31 +430,16 @@ pub(crate) fn truncate(s: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_env::EnvScope;
 
-    /// Vars neutralisées pendant le test (restore ensuite).
+    /// Vars neutralisées pendant le test (restaurées par `EnvScope`).
     const KH_VARS: [&str; 3] = ["KH_API_KEY", "KH_BASE_URL", "KH_MODEL"];
-
-    fn save_env() -> Vec<(String, Option<String>)> {
-        KH_VARS
-            .iter()
-            .map(|k| (k.to_string(), std::env::var(k).ok()))
-            .collect()
-    }
-
-    fn restore_env(saved: Vec<(String, Option<String>)>) {
-        for (key, val) in saved {
-            match val {
-                Some(v) => std::env::set_var(&key, v),
-                None => std::env::remove_var(&key),
-            }
-        }
-    }
 
     #[test]
     fn muse_auth_fixture_is_parsed() {
-        let saved = save_env();
+        let env = EnvScope::new(&KH_VARS);
         for key in KH_VARS {
-            std::env::remove_var(key);
+            env.unset(key);
         }
         let path = std::env::temp_dir().join(format!(
             "kh-muse-auth-{}-{}.json",
@@ -471,7 +456,6 @@ mod tests {
         .unwrap();
         let cfg = ProviderConfig::from_muse_auth(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
-        restore_env(saved);
         assert_eq!(cfg.base_url, MUSE_BASE_URL);
         assert_eq!(cfg.api_key, "kh-test-key");
         assert_eq!(cfg.model, MUSE_DEFAULT_MODEL);
