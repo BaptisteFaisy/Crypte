@@ -26,7 +26,7 @@ ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
 `app/ctors.rs` (constructeurs), `app/model.rs` (modèle effectif + thinking),
 `bus.rs` (adressage, files, liens auto, plafond 8 relais),
 `mouse.rs` (molette = défilement de l'historique ; clics : [+] = nouveau
-chat, lignes sidebar = choisir, onglets = écrans),
+chat, × = fermer, lignes sidebar = choisir, onglets = écrans),
 `scroll.rs` (défilement : décalage depuis le bas + fenêtre visible),
 `drain.rs` (routage réponses async + pompes + retransmissions),
 `events.rs` (flux JSONL temps réel `--events-log`/`KH_EVENTS_LOG` :
@@ -43,9 +43,10 @@ maitre `master.key` ou `KH_SETTINGS_KEY`), ecran `ui.rs`, touches
 fichier illisible préservé en `.corrupt`),
 `connect.rs` (handlers + flow `/connect` : statut, store Muse, clé masquée → modèle),
 `history.rs` (fenêtre d'envoi + nommage des chats),
-`sessions.rs` + `sessions/` (chats `chat.rs` + sous-agents `subagents.rs`),
+`sessions.rs` + `sessions/` (chats `chat.rs` + sous-agents `subagents.rs` +
+fermeture `close.rs`),
 `workspace.rs` (workspaces `<session>/agent`, zéro token),
-`sidebar.rs` (colonne cercueils + bouton [+]), `chat.rs` (historique +
+`sidebar.rs` (colonne cercueils + bouton [+] + croix ×), `chat.rs` (historique +
 saisie + prompt custom masquable), `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :
 chargement, pin, compaction pure), `mascot.rs` (fantôme), `fx.rs`

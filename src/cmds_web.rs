@@ -9,6 +9,7 @@ impl App {
     /// Async (`Incoming::Web`) ; works disconnected too (raw results).
     pub(crate) fn cmd_web(&mut self, query: String) {
         let id = self.sessions.index();
+        self.sessions.current_mut().waiting = true;
         let provider = self.provider.clone();
         let model = self.effective_model();
         let effort = self.thinking.clone();

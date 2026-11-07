@@ -170,6 +170,8 @@ exempt, stays the remedy).
 | `q` (empty input) | quit |
 | Ctrl+N | new chat |
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
+| Click `×` (sidebar) | close that chat (refused if a reply is in flight) |
+| Ctrl+W | close the current chat |
 | F5 | scare: Kiro scared 2s, jump scare, lightning flash |
 | F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
@@ -411,13 +413,13 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 ## Modules (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (state + 100ms loop),
-`mouse.rs` ([+] click = new chat),
+`mouse.rs` ([+] click = new chat, × click = close chat),
 `drain.rs` (routing async replies to chats),
 `chat.rs` (history + input + maskable custom prompt), `mascot.rs` (ghost),
 `fx.rs` (horror overlay), `tokens.rs` (tiktoken counter),
 `provider.rs` (OpenAI-compatible client, 60s timeout),
-`sessions.rs` (multi-chats + sub-agents),
-`sidebar.rs` (coffins column + [+] new-chat button),
+`sessions.rs` (multi-chats + sub-agents + `sessions/close.rs` closing),
+`sidebar.rs` (coffins column + [+] new-chat button + × close),
 `commands.rs` (parsing `/…` commands), `texts.rs` (help + usage texts),
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
 `/compact` `/connect` `/web` `/settings`),

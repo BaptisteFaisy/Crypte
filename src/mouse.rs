@@ -1,10 +1,10 @@
 //! Souris : molette = défilement de l'historique, clic gauche = bouton [+]
-//! (nouveau chat), lignes de la sidebar (choisir le chat), onglets de
-//! l'en-tête (changer d'écran).
+//! (nouveau chat), croix × (fermer le chat), lignes de la sidebar
+//! (choisir le chat), onglets de l'en-tête (changer d'écran).
 //!
 //! La capture souris est activée par `main` (désactivée en sortie) ;
 //! les rectangles sont mémorisés à chaque frame (`App::plus_btn`,
-//! `App::side_rows`, `App::tab_hits`, `ChatState::area`).
+//! `App::close_btns`, `App::side_rows`, `App::tab_hits`, `ChatState::area`).
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Position;
@@ -14,8 +14,8 @@ use crate::chat::SCROLL_STEP;
 
 impl App {
     /// Molette : défiler le chat ; clic gauche : [+] = nouveau chat,
-    /// ligne = choisir le chat, onglet = changer d'écran (les autres
-    /// clics sont ignorés).
+    /// × = fermer le chat, ligne = choisir le chat, onglet = changer
+    /// d'écran (le reste est ignoré).
     pub(crate) fn on_mouse(&mut self, mev: MouseEvent) {
         match mev.kind {
             MouseEventKind::ScrollUp => return self.wheel(mev, -SCROLL_STEP),
@@ -28,6 +28,14 @@ impl App {
         let at = Position::new(mev.column, mev.row);
         if self.plus_btn.is_some_and(|r| r.contains(at)) {
             self.add_chat();
+            return;
+        }
+        if let Some(idx) = self
+            .close_btns
+            .iter()
+            .position(|r| r.is_some_and(|r| r.contains(at)))
+        {
+            self.close_chat(idx);
             return;
         }
         if let Some(tab) = self
@@ -176,6 +184,51 @@ mod tests {
         app.side_rows = None;
         app.on_mouse(click(5, 3)); // plus de sidebar → inchangé
         assert_eq!(app.sessions.index(), 0);
+    }
+
+    #[test]
+    fn clic_croix_ferme_le_chat_corps_de_ligne_choisit() {
+        let mut app = test_app();
+        app.add_chat();
+        app.add_chat();
+        app.side_rows = Some(Rect::new(1, 2, 16, 3));
+        app.close_btns = vec![
+            Some(Rect::new(16, 2, 1, 1)),
+            Some(Rect::new(16, 3, 1, 1)),
+            None, // croix masquée : le clic choisit, comme avant
+        ];
+        app.on_mouse(click(16, 3)); // × du chat 2 → fermé
+        assert_eq!(app.sessions.count(), 2);
+        app.on_mouse(click(5, 3)); // corps de ligne → choisir
+        assert_eq!(app.sessions.index(), 1);
+        app.on_mouse(click(16, 4)); // pas de croix ici → inchangé
+        assert_eq!(app.sessions.count(), 2);
+    }
+
+    #[test]
+    fn clic_croix_du_dernier_chat_motive_le_refus() {
+        let mut app = test_app();
+        app.side_rows = Some(Rect::new(1, 2, 16, 1));
+        app.close_btns = vec![Some(Rect::new(16, 2, 1, 1))];
+        app.on_mouse(click(16, 2));
+        assert_eq!(app.sessions.count(), 1);
+        let last = app.sessions.current().chat.messages().last().unwrap();
+        assert_eq!(last.text, "cannot close the last chat");
+    }
+
+    #[test]
+    fn rendu_puis_clic_croix_ferme_le_bon_chat() {
+        use ratatui::{backend::TestBackend, Terminal};
+        let mut app = test_app();
+        app.add_chat();
+        let mut term = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        term.draw(|f| app.draw(f)).unwrap();
+        // La case mémorisée porte bien la croix dessinée.
+        let cross = app.close_btns[1].expect("× du chat 2 mémorisée");
+        assert_eq!(term.backend().buffer()[(cross.x, cross.y)].symbol(), "×");
+        app.on_mouse(click(cross.x, cross.y));
+        assert_eq!(app.sessions.count(), 1);
+        assert_eq!(app.sessions.current().name, "Chat 1");
     }
 
     #[test]

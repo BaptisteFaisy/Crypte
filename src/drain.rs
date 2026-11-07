@@ -173,6 +173,7 @@ impl App {
         let Some(sess) = self.sessions.get_mut(id) else {
             return;
         };
+        sess.waiting = false;
         match reply {
             Ok(done) => {
                 sess.ledger
@@ -354,7 +355,7 @@ impl App {
 
     /// Tell automatique (lien) : déposé aussitôt dans le chat cible
     /// (déclenché ou enfilé, voir `deliver_tell`). Cible inconnue
-    /// (chats jamais supprimés) : ignoré.
+    /// (chat fermé entre-temps) : ignoré.
     fn auto_tell(&mut self, idx: usize, from: LinkEnd, text: &str, hops: u8) {
         if self.sessions.get(idx).is_none() {
             return;
@@ -417,6 +418,7 @@ impl App {
         let Some(sess) = self.sessions.get_mut(id) else {
             return;
         };
+        sess.waiting = false;
         match reply {
             Ok(done) => {
                 if done.prompt_tokens != 0 || done.completion_tokens != 0 {

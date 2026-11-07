@@ -20,7 +20,7 @@ use crate::hub::Hub;
 use crate::mascot::Mascot;
 use crate::pool::{SpawnPool, INCOMING_CAP};
 use crate::provider::{Provider, ProviderConfig};
-use crate::sessions::Sessions;
+use crate::sessions::{CloseOutcome, Sessions};
 
 impl App {
     /// Construit l'app (lit la config provider depuis l'environnement).
@@ -122,6 +122,7 @@ impl App {
             right_delta: 0,
             plus_btn: None,
             side_rows: None,
+            close_btns: Vec::new(),
             tab_hits: Vec::new(),
             thinking: None,
             permissions: crate::permissions::load(),
@@ -159,6 +160,30 @@ impl App {
         self.pin_all_empty();
         if let Some(msg) = msg {
             self.sessions.current_mut().chat.push(Role::System, msg);
+        }
+    }
+
+    /// Ferme le chat `idx` (clic ×, Ctrl+W) : liens bus re-pointés,
+    /// événement émis, refus motivé sinon (dernier, réponse en vol).
+    pub(crate) fn close_chat(&mut self, idx: usize) {
+        let name = self.sessions.get(idx).map(|c| c.name.clone());
+        match self.sessions.close(idx) {
+            CloseOutcome::Closed => {
+                crate::sessions::shift_bus_links(&mut self.bus, idx);
+                if let Some(name) = name {
+                    self.events
+                        .emit(&crate::events::Event::chat_closed(idx, &name));
+                }
+            }
+            CloseOutcome::LastChat => {
+                self.push_system(String::from("cannot close the last chat"));
+            }
+            CloseOutcome::Busy => {
+                self.push_system(String::from("cannot close: a reply is in flight"));
+            }
+            CloseOutcome::Unknown => {
+                self.push_system(format!("chat {} not found", idx + 1));
+            }
         }
     }
 
