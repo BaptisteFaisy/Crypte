@@ -49,13 +49,18 @@ const NAMED_ENTITIES: &[(&str, char)] = &[
     ("mdash", '—'),
     ("laquo", '«'),
     ("raquo", '»'),
+    ("lsquo", '‘'),
+    ("rsquo", '’'),
+    ("ldquo", '“'),
+    ("rdquo", '”'),
     ("middot", '·'),
     ("plusmn", '±'),
     ("times", '×'),
     ("divide", '÷'),
 ];
 
-/// `title` / `url` / `text_field` items → results (empty URLs dropped).
+/// `title` / `url` / `text_field` items → results (only the URL is
+/// required, and it must be http(s) ; missing title/snippet tolerated).
 pub(super) fn parse_json_results(
     items: &[serde_json::Value],
     text_field: &str,
@@ -63,12 +68,18 @@ pub(super) fn parse_json_results(
     items
         .iter()
         .filter_map(|item| {
-            let url = item.get("url")?.as_str().unwrap_or_default();
-            if url.is_empty() {
+            let url = item.get("url").and_then(|v| v.as_str()).unwrap_or_default();
+            if !(url.starts_with("http://") || url.starts_with("https://")) {
                 return None;
             }
-            let title = item.get("title")?.as_str().unwrap_or_default();
-            let snippet = item.get(text_field)?.as_str().unwrap_or_default();
+            let title = item
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let snippet = item
+                .get(text_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             Some(SearchResult {
                 title: strip_html(title),
                 url: url.to_string(),
@@ -144,57 +155,38 @@ fn ddg_snippet(html: &str, after: usize) -> String {
         .unwrap_or_default()
 }
 
-/// Merges opensearch `[query, titles, descs, urls]` with the `extracts`
-/// intros (extract wins, opensearch description is the fallback).
-pub(super) fn parse_wikipedia(
-    opensearch: &serde_json::Value,
-    extracts: &serde_json::Value,
-) -> Vec<SearchResult> {
-    let empty = Vec::new();
-    let titles = opensearch
-        .get(1)
-        .and_then(|v| v.as_array())
+/// `generator=search` response → results: pages map is unordered, so
+/// rank by `index` first ; snippet = plain-text intro (may be empty).
+pub(super) fn parse_wiki_generator(json: &serde_json::Value, lang: &str) -> Vec<SearchResult> {
+    let empty = serde_json::Map::new();
+    let pages = json
+        .pointer("/query/pages")
+        .and_then(|v| v.as_object())
         .unwrap_or(&empty);
-    let descs = opensearch
-        .get(2)
-        .and_then(|v| v.as_array())
-        .unwrap_or(&empty);
-    let urls = opensearch
-        .get(3)
-        .and_then(|v| v.as_array())
-        .unwrap_or(&empty);
-    let intro = |title: &str| {
-        extracts
-            .pointer("/query/pages")
-            .and_then(|v| v.as_object())
-            .and_then(|pages| {
-                pages
-                    .values()
-                    .find(|p| p.get("title").and_then(|t| t.as_str()) == Some(title))
-            })
-            .and_then(|p| p.get("extract"))
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-    };
-    titles
-        .iter()
-        .enumerate()
-        .filter_map(|(i, value)| {
-            let title = value.as_str().unwrap_or_default();
+    let mut hits: Vec<(u64, &str, &str)> = pages
+        .values()
+        .filter_map(|p| {
+            let title = p.get("title")?.as_str()?;
             if title.is_empty() {
                 return None;
             }
-            let url = urls.get(i).and_then(|u| u.as_str()).unwrap_or_default();
-            let extract = intro(title);
-            let desc = descs.get(i).and_then(|d| d.as_str()).unwrap_or_default();
-            let snippet = if extract.is_empty() { desc } else { extract };
-            Some(SearchResult {
-                title: title.to_string(),
-                url: url.to_string(),
-                snippet: crate::provider::truncate(snippet, MAX_SNIPPET),
-            })
+            let index = p.get("index").and_then(|v| v.as_u64()).unwrap_or(u64::MAX);
+            let extract = p
+                .get("extract")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            Some((index, title, extract))
         })
+        .collect();
+    hits.sort_by_key(|(index, _, _)| *index);
+    let base = format!("https://{lang}.wikipedia.org/wiki");
+    hits.into_iter()
         .take(MAX_RESULTS)
+        .map(|(_, title, extract)| SearchResult {
+            title: title.to_string(),
+            url: wiki_url(&base, title),
+            snippet: crate::provider::truncate(extract, MAX_SNIPPET),
+        })
         .collect()
 }
 
@@ -212,12 +204,18 @@ pub(super) fn unwrap_ddg_url(href: &str) -> String {
             let mut bytes = end.as_bytes().iter();
             while let Some(&b) = bytes.next() {
                 if b == b'%' {
-                    let hi = bytes.next().copied().unwrap_or(b'0');
-                    let lo = bytes.next().copied().unwrap_or(b'0');
-                    let hex = |c: u8| (c as char).to_digit(16).unwrap_or(0) as u8;
-                    buf.push(hex(hi) * 16 + hex(lo));
-                } else if b == b'+' {
-                    buf.push(b' ');
+                    let hi = bytes.next().copied();
+                    let lo = bytes.next().copied();
+                    match (hi, lo) {
+                        (Some(h), Some(l)) if h.is_ascii_hexdigit() && l.is_ascii_hexdigit() => {
+                            let hex = |c: u8| (c as char).to_digit(16).unwrap_or(0) as u8;
+                            buf.push(hex(h) * 16 + hex(l));
+                        }
+                        _ => {
+                            buf.push(b'%');
+                            buf.extend(hi.iter().chain(lo.iter()));
+                        }
+                    }
                 } else {
                     buf.push(b);
                 }
@@ -231,35 +229,6 @@ pub(super) fn unwrap_ddg_url(href: &str) -> String {
     } else {
         String::new()
     }
-}
-
-/// Full-text hits → `(titles, opensearch-shaped value)`: page URLs built
-/// (`/wiki/Title_With_Underscores`, encoded), snippets stripped.
-pub(super) fn wiki_hits(found: &serde_json::Value, lang: &str) -> (Vec<String>, serde_json::Value) {
-    let empty = Vec::new();
-    let hits = found
-        .pointer("/query/search")
-        .and_then(|v| v.as_array())
-        .unwrap_or(&empty);
-    let base = format!("https://{lang}.wikipedia.org/wiki/");
-    let mut titles = Vec::new();
-    let mut names = Vec::new();
-    let mut descs = Vec::new();
-    let mut urls = Vec::new();
-    for hit in hits {
-        let Some(title) = hit.get("title").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        titles.push(title.to_string());
-        names.push(serde_json::Value::String(title.to_string()));
-        let raw = hit
-            .get("snippet")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default();
-        descs.push(serde_json::Value::String(strip_html(raw)));
-        urls.push(serde_json::Value::String(wiki_url(&base, title)));
-    }
-    (titles, serde_json::json!(["", names, descs, urls]))
 }
 
 /// Page URL for a Wikipedia title (spaces → `_`, rest encoded).
@@ -348,11 +317,13 @@ fn decode_entity(entity: &str, out: &mut String) {
             if let Some((_, ch)) = NAMED_ENTITIES.iter().find(|(n, _)| *n == name) {
                 out.push(*ch);
             } else {
-                match name
-                    .strip_prefix('#')
-                    .and_then(|n| n.parse::<u32>().ok())
-                    .and_then(char::from_u32)
-                {
+                let num = name.strip_prefix('#').and_then(|n| {
+                    n.strip_prefix('x')
+                        .or_else(|| n.strip_prefix('X'))
+                        .map(|h| u32::from_str_radix(h, 16).ok())
+                        .unwrap_or_else(|| n.parse::<u32>().ok())
+                });
+                match num.and_then(char::from_u32) {
                     Some(ch) => out.push(ch),
                     None => out.push_str(entity),
                 }
@@ -382,13 +353,21 @@ mod tests {
             "glued words"
         );
         assert_eq!(strip_html("caf&eacute; &unknown;"), "café &unknown;");
+        assert_eq!(
+            strip_html("&ldquo;hi&rdquo;, it&rsquo;s &#x27;ok&#x27;"),
+            "\u{201c}hi\u{201d}, it\u{2019}s 'ok'"
+        );
     }
 
     #[test]
     fn unwrap_ddg_url_decodes_and_filters() {
         assert_eq!(
-            unwrap_ddg_url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa+b&rut=xx"),
-            "https://example.com/a b"
+            unwrap_ddg_url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa%2Bb&rut=xx"),
+            "https://example.com/a+b"
+        );
+        assert_eq!(
+            unwrap_ddg_url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2F%zz"),
+            "https://example.com/%zz"
         );
         assert_eq!(
             unwrap_ddg_url("https://example.com/direct"),
@@ -444,49 +423,30 @@ mod tests {
         let items = tavily.get("results").and_then(|v| v.as_array()).unwrap();
         let found = parse_json_results(items, "content");
         assert_eq!(found[0].snippet, "long content here");
-    }
-
-    #[test]
-    fn wiki_hits_builds_urls_and_strips_snippets() {
-        let found = serde_json::json!({"query": {"search": [
-            {"title": "C++", "snippet": "A <b>language</b>."},
-            {"title": "Theorie du chaos", "snippet": ""},
-            {"nope": true},
-        ]}});
-        let (titles, os) = wiki_hits(&found, "fr");
-        assert_eq!(titles, ["C++", "Theorie du chaos"]);
-        let url = |i: usize| {
-            os.get(3)
-                .and_then(|u| u.get(i))
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-        };
-        assert!(url(0).starts_with("https://fr.wikipedia.org/wiki/"));
-        assert!(!url(0).contains(' '));
-        assert!(url(1).ends_with("Theorie_du_chaos"));
-        let desc = os.get(2).and_then(|d| d.get(0)).and_then(|v| v.as_str());
-        assert_eq!(desc, Some("A language."));
-    }
-
-    #[test]
-    fn parse_wikipedia_prefers_extracts() {
-        let os = serde_json::json!([
-            "tokio",
-            ["Tokio (software)", "Tokyo Rose"],
-            ["os desc", ""],
-            [
-                "https://en.wikipedia.org/wiki/Tokio",
-                "https://en.wikipedia.org/wiki/Rose"
-            ],
+        let sparse = serde_json::json!([
+            {"url": "https://s.example/kept"},
+            {"url": "javascript:alert(1)", "title": "x", "description": "dropped"},
         ]);
-        let ex = serde_json::json!({"query": {"pages": {
-            "1": {"title": "Tokio (software)", "extract": ""},
-            "2": {"title": "Tokyo Rose", "extract": "Allied nickname for broadcasters."},
+        let found = parse_json_results(sparse.as_array().unwrap(), "description");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].url, "https://s.example/kept");
+        assert_eq!(found[0].snippet, "");
+    }
+
+    #[test]
+    fn parse_wiki_generator_ranks_by_index() {
+        let json = serde_json::json!({"query": {"pages": {
+            "9": {"title": "Second", "index": 2, "extract": "second intro"},
+            "3": {"title": "First", "index": 1, "extract": ""},
+            "7": {"title": "", "index": 0, "extract": "dropped"},
         }}});
-        let found = parse_wikipedia(&os, &ex);
+        let found = parse_wiki_generator(&json, "en");
         assert_eq!(found.len(), 2);
-        assert_eq!(found[0].snippet, "os desc");
-        assert_eq!(found[1].snippet, "Allied nickname for broadcasters.");
-        assert_eq!(found[1].url, "https://en.wikipedia.org/wiki/Rose");
+        assert_eq!(found[0].title, "First");
+        assert_eq!(found[0].url, "https://en.wikipedia.org/wiki/First");
+        assert_eq!(found[0].snippet, "");
+        assert_eq!(found[1].title, "Second");
+        assert_eq!(found[1].snippet, "second intro");
+        assert!(parse_wiki_generator(&serde_json::json!({}), "en").is_empty());
     }
 }

@@ -266,10 +266,11 @@ cited sources (`[n]` + `Sources:` footer), tagged `[web:backend]`.
 Backend chain, first non-empty wins: Tavily (`TAVILY_API_KEY`) →
 Brave (`BRAVE_API_KEY`) → DuckDuckGo (free) → Wikipedia FR+EN
 (free, always available). No key required: free backends work out
-of the box, premium keys just rank first. Optimized: 8 s per
-backend, top-3 pages fetched in parallel, budgeted context, 10 min
-cache. Works disconnected too (raw results, zero tokens); the
-provider history is untouched (display + ledger only, like agents).
+of the box, premium keys just rank first. Optimized: 8 s per backend,
+20 s deadline, fetch skipped when snippets suffice, query-relevant
+passages, fair per-source budgets, 10 min cache. Works disconnected
+too (raw results, zero tokens); the provider history is untouched
+(display + ledger only, like agents).
 
 ## AGENTS.md (system context)
 
