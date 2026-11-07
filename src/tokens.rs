@@ -5,6 +5,7 @@
 //! `TokenLedger` accumule l'usage réel retourné par l'API (seule source
 //! fiable cross-provider), lu par `/usage` et la barre de statut.
 
+use std::borrow::Cow;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
@@ -283,6 +284,16 @@ pub fn usage_text(
         total.total(),
         fmt_tps(total.avg_tps()),
     )
+}
+
+/// Nom court de modèle : après le dernier '/', max 14 caractères.
+/// Emprunté quand rien n'est tronqué (cas courant, zéro alloc).
+pub fn short_model(model: &str) -> Cow<'_, str> {
+    let base = model.rsplit('/').next().unwrap_or(model);
+    match base.char_indices().map(|(i, _)| i).nth(14) {
+        Some(end) => Cow::Owned(base[..end].to_string()),
+        None => Cow::Borrowed(base),
+    }
 }
 
 #[cfg(test)]

@@ -10,7 +10,6 @@ mod ui;
 
 pub use self::ui::Screen;
 
-use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -124,7 +123,7 @@ impl App {
     pub async fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let mut last_tick = Instant::now();
         let mut dirty = true;
-        loop {
+        'main: loop {
             if dirty {
                 ghostty::draw_synced(terminal, |frame| self.render_frame(frame))?;
                 dirty = false;
@@ -132,16 +131,22 @@ impl App {
             dirty |= self.drain_replies();
             self.sync_progress()?;
             if event::poll(Duration::from_millis(10))? {
-                match event::read()? {
-                    Event::Key(key) => {
-                        if key.kind == KeyEventKind::Press && !self.on_key(key) {
-                            break;
+                // Rafale : vide la file d'attente (frappe rapide sans retard).
+                loop {
+                    match event::read()? {
+                        Event::Key(key) => {
+                            if key.kind == KeyEventKind::Press && !self.on_key(key) {
+                                break 'main;
+                            }
                         }
+                        Event::Mouse(mev) => self.on_mouse(mev),
+                        _ => {}
                     }
-                    Event::Mouse(mev) => self.on_mouse(mev),
-                    _ => {}
+                    dirty = true;
+                    if !event::poll(Duration::ZERO)? {
+                        break;
+                    }
                 }
-                dirty = true;
             }
             if last_tick.elapsed() >= Duration::from_millis(100) {
                 last_tick = Instant::now();
@@ -256,16 +261,6 @@ impl App {
     pub(crate) fn refresh_ctx_cache(&mut self) {
         self.ctx_used = self.context_used();
         self.ctx_limit = self.context_limit();
-    }
-}
-
-/// Nom court de modèle : après le dernier '/', max 14 caractères.
-/// Emprunté quand rien n'est tronqué (cas courant, zéro alloc).
-pub fn short_model(model: &str) -> Cow<'_, str> {
-    let base = model.rsplit('/').next().unwrap_or(model);
-    match base.char_indices().map(|(i, _)| i).nth(14) {
-        Some(end) => Cow::Owned(base[..end].to_string()),
-        None => Cow::Borrowed(base),
     }
 }
 
