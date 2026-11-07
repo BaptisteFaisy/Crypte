@@ -7,6 +7,7 @@ use anyhow::Result;
 
 use crate::agents;
 use crate::app::App;
+use crate::apparition::Omen;
 use crate::chat::Role;
 use crate::provider::Completion;
 use crate::sessions::AgentStatus;
@@ -30,8 +31,12 @@ impl App {
                 sess.history
                     .push(("assistant".to_string(), done.text.clone()));
                 sess.chat.push(Role::Assistant, done.text);
+                self.apparition.advance();
             }
-            Err(err) => sess.chat.push(Role::System, format!("erreur: {err:#}")),
+            Err(err) => {
+                sess.chat.push(Role::System, format!("erreur: {err:#}"));
+                self.apparition.omen(Omen::Error);
+            }
         }
     }
 
@@ -50,6 +55,7 @@ impl App {
             Ok(done) => done,
             Err(err) => {
                 self.fail_agent(owner, agent_id);
+                self.apparition.omen(Omen::Error);
                 if let Some(dest) = self.sessions.get_mut(deliver) {
                     dest.chat
                         .push(Role::System, format!("{tag} erreur: {err:#}"));
@@ -99,10 +105,13 @@ impl App {
                 let after = sess.history.len();
                 sess.chat
                     .push(Role::System, format!("compacté : {before}→{after}"));
+                self.apparition.omen(Omen::Compact);
             }
-            Err(err) => sess
-                .chat
-                .push(Role::System, format!("compaction échouée : {err:#}")),
+            Err(err) => {
+                sess.chat
+                    .push(Role::System, format!("compaction échouée : {err:#}"));
+                self.apparition.omen(Omen::Error);
+            }
         }
     }
 }

@@ -1,11 +1,25 @@
 # kiro-horror-tui
 
-Chat LLM dans une crypte hantée : mascotte fantôme Kiro immobile
-(s'effraie via F5),
-effets horreur (static, gouttes de sang, peur 0-100), compteur
-de tokens, écran tokens dédié. Terminal **≥ 80x24** requis.
+Chat LLM dans une crypte hantée, pensé pour **Ghostty** : bestiaire de
+33 créatures en pixel art (images réelles via le protocole graphique
+Kitty), mascotte fantôme Kiro immobile (s'effraie via F5), apparitions
+qui réagissent au chat, effets horreur (vignette à la bougie, brume,
+static, gouttes de sang, éclair, peur 0-100), compteur de tokens, écran
+grimoire dédié. Terminal **≥ 80x24** requis.
+
+![Le bestiaire de la crypte](docs/bestiaire.png)
 
 ## Lancer
+
+Dans Ghostty, habillé (thème + shader, compile la release au besoin) :
+
+```sh
+KH_API_KEY=... KH_MODEL=... ghostty/crypte
+ghostty/crypte --muse-auth
+ghostty/crypte --sans-shader --muse-auth
+```
+
+Dans le terminal courant :
 
 ```sh
 cargo build
@@ -19,11 +33,14 @@ KH_API_KEY=... KH_MODEL=... ./target/debug/kiro-horror-tui --once "<texte>"
 ./target/debug/kiro-horror-tui --muse-auth --once "<texte>"
 ```
 
-Contrôle sans réseau ni clé (rendu headless 80x24) :
+Contrôle sans réseau ni clé (rendu headless 80x24), aperçus :
 
 ```sh
 ./target/debug/kiro-horror-tui --smoke
 ./target/debug/kiro-horror-tui --help
+./target/debug/kiro-horror-tui --planche docs/bestiaire.png   # PNG du bestiaire
+./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans       # 3 écrans en ANSI
+cat /tmp/crypte.ans                                           # à lire dans Ghostty
 ```
 
 ## Muse Code
@@ -68,10 +85,54 @@ model = "muse-spark-1.3-contributor"
 | --- | ---- |
 | Entrée | envoyer le message |
 | Échap / `q` (saisie vide) | quitter |
-| F2 | basculer écran chat / tokens |
+| F2 | basculer chat / grimoire (tokens + âmes par chat) |
 | F3 / F4 | chat précédent / suivant |
 | Ctrl+N | nouveau chat |
-| F5 | spook (fantôme effrayé 2 s, peur +) |
+| F5 | effroi : Kiro a peur 2 s, jump scare, éclair, peur + |
+| F6 | basculer chat / bestiaire (flèches pour choisir) |
+
+## Ghostty
+
+Ce que la crypte utilise de Ghostty (et qui dégrade proprement ailleurs) :
+
+- **Protocole graphique Kitty** (placeholders Unicode) : le pixel art est
+  une vraie image, détectée au démarrage (`◆ kitty` dans la barre d'état).
+  Ailleurs : demi-blocs truecolor (`◆ demi-blocs`).
+- **Truecolor** partout : vignette à la bougie, brume, dégradés, éclair.
+- **Sprites internes** : séparateurs powerline arrondis, blocs, braille
+  dessinés au pixel près ; icônes Nerd Font embarquées.
+- **OSC 11** (fond de fenêtre, padding compris), **OSC 2** (titre, pile
+  restaurée en sortie), **OSC 9;4** (barre de progression native pendant
+  qu'une réponse mijote, Ghostty seulement), **mode 2026** (rendu
+  synchronisé, animations sans déchirure).
+- `ghostty/crypte.conf` (palette, padding étendu, 120x36) +
+  `ghostty/crypte.glsl` (vignette, flamme, grain — aucun flou : chaque
+  pixel est lu à sa place).
+
+Aucun son : ni cloche, ni notification.
+
+## Bestiaire (pixel art)
+
+33 créatures d'après le shot Dribbble « Halloween icons and
+illustrations » (Getillustrations), **redessinées** en pixel art 32×32
+(aucune image d'origine dans le dépôt), + Kiro effrayé. Une grille texte
+par créature dans `assets/pixel/<slug>.txt` : 32 lignes de 32 lettres,
+`.` = transparent, sinon une couleur de `src/theme.rs` :
+
+| lettre | couleur | lettre | couleur |
+| --- | --- | --- | --- |
+| `W` | os | `S` | sable |
+| `U` | terre | `K` | encre |
+| `O` / `o` | citrouille / ombre | `R` / `r` | sang / séché |
+| `G` / `g` | ectoplasme / ombre | `P` / `p` | spectre / ombre |
+| `Y` / `y` | bougie / ombre | `N` | toile de jute |
+
+Rendu net garanti : agrandissement **entier** au plus proche voisin, sur
+un canevas de la taille pixel exacte de la zone (1 pixel image = 1 pixel
+écran en Kitty, = 1 demi-cellule en demi-blocs). Le panneau droit montre
+Kiro et une apparition : chaudron pendant une réponse, araignée pendant
+les sous-agents, main de la tombe sur erreur, cercueil après `/compact`,
+rotation lente sinon.
 
 ## Modèle
 
@@ -138,4 +199,9 @@ préfixé aux appels `/agent`. Exclu de `/compact` (résumé méta) et de
 `sessions.rs` (chats multiples + sous-agents + sidebar),
 `commands.rs` (parse des commandes `/…` + aide + usage),
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell` `/compact`),
-`agents.rs` (chargement agents.md + compaction pure testée).
+`agents.rs` (chargement agents.md + compaction pure testée),
+`app/ui.rs` (mise en page : en-tête, panneaux, barre powerline),
+`theme.rs` (palette unique), `bestiary.rs` (sprites + mise à l'échelle
+entière), `gfx.rs` (images Kitty / demi-blocs), `apparition.rs`
+(créature du panneau droit), `galerie.rs` (écran bestiaire F6),
+`ghostty.rs` (OSC, progression, rendu synchronisé).

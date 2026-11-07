@@ -1,23 +1,27 @@
 //! État global + boucle TUI (crossterm + tokio, tick 100 ms).
+//! Le rendu vit dans `app/ui.rs` (mise en page de la crypte).
+
+mod ui;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::widgets::Paragraph;
-use ratatui::{DefaultTerminal, Frame};
+use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 
 use crate::agents;
+use crate::apparition::Apparition;
 use crate::chat::Role;
 use crate::commands;
 use crate::fx::Fx;
+use crate::galerie::Galerie;
+use crate::gfx::ImageBank;
+use crate::ghostty;
 use crate::mascot::{Mascot, MascotState};
 use crate::provider::{Completion, Provider, ProviderConfig};
 use crate::sessions::Sessions;
-use crate::tokens::fmt_tps;
 
 /// Écran affiché dans la zone principale.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -25,13 +29,16 @@ pub enum Screen {
     #[default]
     Chat,
     Tokens,
+    Bestiary,
 }
 
 impl Screen {
-    fn toggle(self) -> Self {
-        match self {
-            Screen::Chat => Screen::Tokens,
-            Screen::Tokens => Screen::Chat,
+    /// `target` si on n'y est pas déjà, sinon retour au chat (F2, F6).
+    fn toggle(self, target: Screen) -> Self {
+        if self == target {
+            Screen::Chat
+        } else {
+            target
         }
     }
 }
@@ -49,10 +56,15 @@ pub(crate) enum Incoming {
 pub struct App {
     mascot: Mascot,
     fx: Fx,
+    bank: ImageBank,
+    pub(crate) apparition: Apparition,
+    galerie: Galerie,
+    tick: u64,
+    busy: bool,
     pub(crate) sessions: Sessions,
     pub(crate) provider: Arc<Provider>,
     pub(crate) agents_md: Option<String>,
-    screen: Screen,
+    pub(crate) screen: Screen,
     pub(crate) thinking: Option<String>,
     pub(crate) tx: mpsc::UnboundedSender<Incoming>,
     rx: mpsc::UnboundedReceiver<Incoming>,
@@ -93,6 +105,11 @@ impl App {
         let mut app = Self {
             mascot: Mascot::new(),
             fx: Fx::new(),
+            bank: ImageBank::headless(),
+            apparition: Apparition::new(),
+            galerie: Galerie::new(),
+            tick: 0,
+            busy: false,
             sessions: Sessions::new(),
             provider: Arc::new(provider),
             agents_md,
@@ -127,11 +144,29 @@ impl App {
         self.pin_current();
     }
 
+    /// App hors ligne (`--smoke`, `--apercu`) : aucune clé, aucun appel.
+    pub fn offline() -> Result<Self> {
+        Self::from_config(ProviderConfig {
+            base_url: String::from("http://127.0.0.1:9"),
+            api_key: String::new(),
+            model: String::from("crypte-hors-ligne"),
+        })
+    }
+
+    /// Branche le vrai terminal (après `ratatui::init`) : protocole
+    /// d'images (Kitty dans Ghostty) + habillage de la fenêtre.
+    pub fn attach_terminal(&mut self) -> Result<()> {
+        self.bank = ImageBank::detect();
+        ghostty::enter()?;
+        Ok(())
+    }
+
     /// Boucle principale : rend à chaque tour, tick 100 ms même sans entrée.
     pub async fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         loop {
-            terminal.draw(|frame| self.draw(frame))?;
+            ghostty::draw_synced(terminal, |frame| self.draw(frame))?;
             self.drain_replies();
+            self.sync_progress()?;
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
                     if key.kind == KeyEventKind::Press && !self.on_key(key) {
@@ -144,10 +179,23 @@ impl App {
         Ok(())
     }
 
+    /// Barre de progression Ghostty : suit l'attente du chat courant.
+    fn sync_progress(&mut self) -> Result<()> {
+        let busy = self.sessions.current().sending;
+        if busy != self.busy {
+            self.busy = busy;
+            ghostty::progress(busy)?;
+        }
+        Ok(())
+    }
+
     /// Traite une touche ; renvoie false pour quitter.
     fn on_key(&mut self, key: KeyEvent) -> bool {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let empty = self.sessions.current().chat.input.is_empty();
+        if self.screen == Screen::Bestiary {
+            return self.on_bestiary_key(key.code);
+        }
         match key.code {
             KeyCode::Esc => false,
             KeyCode::Char('q') if !ctrl && empty => false,
@@ -155,12 +203,34 @@ impl App {
             KeyCode::Char(c) if !ctrl => self.cmd(|s| s.sessions.current_mut().chat.input_push(c)),
             KeyCode::Backspace => self.cmd(|s| s.sessions.current_mut().chat.input_pop()),
             KeyCode::Enter => self.cmd(|s| s.send()),
-            KeyCode::F(2) => self.cmd(|s| s.screen = s.screen.toggle()),
+            KeyCode::F(2) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Tokens)),
             KeyCode::F(3) => self.cmd(|s| s.sessions.prev()),
             KeyCode::F(4) => self.cmd(|s| s.sessions.next()),
-            KeyCode::F(5) => self.cmd(|s| s.mascot.spook()),
+            KeyCode::F(5) => self.cmd(|s| s.spook()),
+            KeyCode::F(6) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Bestiary)),
             _ => true,
         }
+    }
+
+    /// Touches de l'écran bestiaire : flèches, F6/F2 (sortie), Échap/q.
+    fn on_bestiary_key(&mut self, code: KeyCode) -> bool {
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => false,
+            KeyCode::Left => self.cmd(|s| s.galerie.step(-1, 0)),
+            KeyCode::Right => self.cmd(|s| s.galerie.step(1, 0)),
+            KeyCode::Up => self.cmd(|s| s.galerie.step(0, -1)),
+            KeyCode::Down => self.cmd(|s| s.galerie.step(0, 1)),
+            KeyCode::F(2) => self.cmd(|s| s.screen = Screen::Tokens),
+            KeyCode::F(5) => self.cmd(|s| s.spook()),
+            KeyCode::F(6) => self.cmd(|s| s.screen = Screen::Chat),
+            _ => true,
+        }
+    }
+
+    /// F5 : Kiro s'effraie et une créature surgit (jump scare + éclair).
+    pub(crate) fn spook(&mut self) {
+        self.mascot.spook();
+        self.apparition.scare();
     }
 
     /// Exécute `f` puis rend true (touche gérée, ne quitte pas).
@@ -246,65 +316,12 @@ impl App {
         self.sessions.current_mut().chat.push(Role::System, msg);
     }
 
-    /// Fait avancer les animations (mascotte + effets).
-    fn tick(&mut self) {
+    /// Fait avancer les animations (mascotte, apparitions, effets).
+    pub(crate) fn tick(&mut self) {
+        self.tick = self.tick.wrapping_add(1);
         self.mascot.tick();
+        self.apparition.tick();
         self.fx.tick(self.mascot.state() == MascotState::Spook);
-    }
-
-    /// Dessine tout l'écran selon l'écran actif.
-    fn draw(&mut self, frame: &mut Frame) {
-        let area = frame.area();
-        if area.width < 80 || area.height < 24 {
-            let msg = "Terminal trop petit : 80x24 requis (Echap pour quitter)";
-            frame.render_widget(Paragraph::new(msg), area);
-            return;
-        }
-        // Saisie rendue par `chat.draw` (anti double saisie : pas de rangée ici).
-        let rows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Min(10),
-                Constraint::Length(1),
-            ])
-            .split(area);
-        let title = "CRYPT-CHAT  (q:quit F2:tokens F3/F4:chat Ctrl+N:new F5:spook)";
-        frame.render_widget(Paragraph::new(title), rows[0]);
-        match self.screen {
-            Screen::Chat => self.draw_chat(frame, rows[1]),
-            Screen::Tokens => self.sessions.current().ledger.draw(frame, rows[1]),
-        }
-        frame.render_widget(Paragraph::new(self.status_text()), rows[2]);
-        self.fx.draw(frame.area(), frame.buffer_mut());
-    }
-
-    /// Corps chat : sidebar + (discussion avec saisie + mascotte).
-    fn draw_chat(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(20), Constraint::Min(10)])
-            .split(area);
-        self.sessions.draw_sidebar(frame, cols[0]);
-        let rest = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-            .split(cols[1]);
-        self.sessions.current().chat.draw(frame, rest[0]);
-        self.mascot.draw(frame, rest[1]);
-    }
-
-    /// Barre de statut : `chat i/n • modèle • X tok • Y` (`—` si tps nul).
-    fn status_text(&self) -> String {
-        let sess = self.sessions.current();
-        format!(
-            "chat {}/{} • {} • {} tok • {}",
-            self.sessions.index() + 1,
-            self.sessions.count(),
-            short_model(&self.effective_model()),
-            sess.ledger.total(),
-            fmt_tps(sess.ledger.last_tps())
-        )
     }
 }
 

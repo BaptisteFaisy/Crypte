@@ -1,91 +1,53 @@
-//! Mascotte Kiro fantôme : figée dans sa zone, s'effraie sur demande.
+//! Mascotte Kiro, le fantôme gardien : immobile, centrée dans son panneau,
+//! s'effraie sur demande (F5).
 //!
-//! Contrat : `Mascot::new` → `draw` (mémorise la zone d'affichage) → `tick`
-//! (gère le retour de `Spook`) → `spook` (`Spook` pendant 2 s, via F5).
+//! Contrat : `Mascot::new` → `tick` (gère le retour de `Spook`) → `spook`
+//! (`Spook` pendant 2 s) ; `draw` rend l'illustration (Kitty dans Ghostty,
+//! demi-blocs ailleurs) et sa légende, toujours au même endroit.
 
 use std::time::{Duration, Instant};
 
 use ratatui::{
-    layout::Rect,
-    style::{Color, Modifier, Style},
+    layout::{Alignment, Rect},
+    style::{Modifier, Style},
     text::Line,
     widgets::Paragraph,
     Frame,
 };
 
+use crate::bestiary::{self, Creature, KIRO_SPOOKED};
+use crate::gfx::ImageBank;
+use crate::theme;
+
 /// Durée de l'état `Spook` après [`Mascot::spook`].
 const SPOOK_DURATION: Duration = Duration::from_secs(2);
-/// Encombrement max des frames (le spook fait 12x8).
-const W: u16 = 12;
-const H: u16 = 8;
-
-/// Haut du fantôme, commun aux deux frames de marche (zéro duplication).
-const HEAD: [&str; 6] = [
-    "    ____    ",
-    "   /    \\   ",
-    "  | o  o |  ",
-    "  |  __  |  ",
-    "  | |  | |  ",
-    "  | |  | |  ",
-];
-/// Frange basse du fantôme immobile.
-const FRINGE: &str = "   \\/\\/\\/   ";
-/// Frame effrayée : yeux creux, bouche zigzag, bras levés, ectoplasme.
-const SPOOK: [&str; 8] = [
-    " \\  __  //  ",
-    "  \\/O  O\\/  ",
-    "  | O  O |  ",
-    "  |  __  |  ",
-    "  | /\\/\\ |  ",
-    "  | |  | |  ",
-    "  |/ .  .|  ",
-    "  ~  .  ~   ",
-];
-
-const ECTO_FG: Color = Color::Rgb(0x8A, 0xFF, 0x80);
-const HALO_FG: Color = Color::Rgb(0xB3, 0x88, 0xFF);
 
 /// État de la mascotte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MascotState {
-    /// Immobile (frame unique, teint halo).
+    /// Veille (fantôme spectral).
     #[default]
     Idle,
-    /// Effrayée pendant [`SPOOK_DURATION`], frame spook.
+    /// Effrayée pendant [`SPOOK_DURATION`] (ectoplasme, bras levés).
     Spook,
 }
 
-/// Fantôme Kiro : position bornée à la zone reçue dans [`Mascot::draw`].
-#[derive(Debug)]
+/// Fantôme Kiro.
+#[derive(Debug, Default)]
 pub struct Mascot {
     state: MascotState,
-    x: u16,
-    y: u16,
-    bounds: Rect,
     spooked_at: Option<Instant>,
 }
 
 impl Mascot {
-    /// Nouvelle mascotte immobile, en haut à gauche de sa future zone.
+    /// Nouvelle mascotte en veille.
     pub fn new() -> Self {
-        Self {
-            state: MascotState::Idle,
-            x: 0,
-            y: 0,
-            bounds: Rect::default(),
-            spooked_at: None,
-        }
+        Self::default()
     }
 
     /// État courant (pour `app.rs` : overlay, statut…).
     pub fn state(&self) -> MascotState {
         self.state
-    }
-
-    /// Position absolue du coin haut-gauche du fantôme.
-    #[allow(dead_code)]
-    pub fn pos(&self) -> (u16, u16) {
-        (self.x, self.y)
     }
 
     /// Déclenche l'état `Spook` pour 2 s (retour en `Idle` au `tick`).
@@ -96,71 +58,47 @@ impl Mascot {
 
     /// Gère le retour de `Spook` vers `Idle` ; sinon ne fait rien.
     pub fn tick(&mut self) {
-        if self.state == MascotState::Spook && self.spook_expired() {
+        let expired = self
+            .spooked_at
+            .map(|t| t.elapsed() >= SPOOK_DURATION)
+            .unwrap_or(true);
+        if self.state == MascotState::Spook && expired {
             self.state = MascotState::Idle;
             self.spooked_at = None;
         }
     }
 
-    /// Mémorise `area` comme zone d'affichage puis dessine le fantôme dedans.
-    pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
-        self.bounds = area;
-        self.clamp();
-        let (lines, style) = self.current_frame();
-        let h = (lines.len() as u16).min(area.height);
-        let rect = area.intersection(Rect::new(self.x, self.y, W.min(area.width), h));
-        if rect.is_empty() {
-            return;
+    /// Illustration de l'état courant.
+    pub fn creature(&self) -> &'static Creature {
+        match self.state {
+            MascotState::Idle => bestiary::get("fantome"),
+            MascotState::Spook => &KIRO_SPOOKED,
         }
-        frame.render_widget(Paragraph::new(lines).style(style), rect);
     }
 
-    fn spook_expired(&self) -> bool {
-        self.spooked_at
-            .map(|t| t.elapsed() >= SPOOK_DURATION)
-            .unwrap_or(true)
-    }
-
-    /// Re-borne la position pour que le fantôme tienne dans `bounds`.
-    fn clamp(&mut self) {
-        let max_x = self
-            .bounds
-            .x
-            .saturating_add(self.bounds.width.saturating_sub(W));
-        let max_y = self
-            .bounds
-            .y
-            .saturating_add(self.bounds.height.saturating_sub(H));
-        self.x = self.x.clamp(self.bounds.x, max_x);
-        self.y = self.y.clamp(self.bounds.y, max_y);
-    }
-
-    /// Lignes + style de la frame courante selon l'état.
-    fn current_frame(&self) -> (Vec<Line<'static>>, Style) {
-        let lines: Vec<Line> = match self.state {
-            MascotState::Spook => SPOOK.iter().map(|s| Line::from(*s)).collect(),
-            MascotState::Idle => idle_lines(),
+    /// Kiro centré dans `area`, légende sur la dernière ligne.
+    pub fn draw(&self, frame: &mut Frame, area: Rect, bank: &mut ImageBank) {
+        let (art, caption) = ghost_rects(area);
+        bank.draw(frame, art, self.creature());
+        let (text, colour) = match self.state {
+            MascotState::Idle => ("Kiro veille", theme::SPECTRE),
+            MascotState::Spook => ("Kiro a peur !", theme::ECTO),
         };
-        let style = match self.state {
-            MascotState::Spook => Style::new().fg(ECTO_FG).add_modifier(Modifier::BOLD),
-            MascotState::Idle => Style::new().fg(HALO_FG),
-        };
-        (lines, style)
+        let style = Style::new().fg(colour).add_modifier(Modifier::BOLD);
+        let line = Paragraph::new(Line::styled(text, style)).alignment(Alignment::Center);
+        frame.render_widget(line, caption);
     }
 }
 
-impl Default for Mascot {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Tête commune + frange : la frame unique du fantôme immobile.
-fn idle_lines() -> Vec<Line<'static>> {
-    HEAD.iter()
-        .map(|s| Line::from(*s))
-        .chain(std::iter::once(Line::from(FRINGE)))
-        .collect()
+/// Zones fixes (indépendantes de l'état) : image au-dessus, légende dessous.
+fn ghost_rects(area: Rect) -> (Rect, Rect) {
+    let art_h = area.height.saturating_sub(1);
+    let art = Rect {
+        height: art_h,
+        ..area
+    };
+    let caption = Rect::new(area.x, area.y + art_h, area.width, area.height.min(1));
+    (art, caption)
 }
 
 #[cfg(test)]
@@ -169,26 +107,22 @@ mod tests {
     use ratatui::{backend::TestBackend, Terminal};
 
     #[test]
-    fn mascot_stays_bounded() {
-        let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    fn spook_switches_art_but_never_moves() {
         let mut ghost = Mascot::new();
-        let area = Rect::new(4, 2, 40, 12);
-        term.draw(|f| ghost.draw(f, area)).unwrap();
-        let start = ghost.pos();
+        let mut bank = ImageBank::headless();
+        let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let area = Rect::new(4, 2, 30, 12);
+        let calm = ghost_rects(area);
+        assert_eq!(ghost.creature().slug, "fantome");
         ghost.spook();
-        for _ in 0..1000 {
+        assert_eq!(ghost.state(), MascotState::Spook);
+        assert_eq!(ghost.creature().slug, "kiro-effroi");
+        for _ in 0..50 {
             ghost.tick();
-            term.draw(|f| ghost.draw(f, area)).unwrap();
-            let (x, y) = ghost.pos();
-            assert!(
-                x >= area.x && x + W <= area.x + area.width,
-                "x={x} hors zone"
-            );
-            assert!(
-                y >= area.y && y + H <= area.y + area.height,
-                "y={y} hors zone"
-            );
+            term.draw(|f| ghost.draw(f, area, &mut bank)).unwrap();
+            assert_eq!(ghost_rects(area), calm, "le fantome doit rester immobile");
         }
-        assert_eq!(ghost.pos(), start, "le fantome doit rester immobile");
+        let (art, caption) = calm;
+        assert!(area.contains(art.as_position()) && caption.bottom() <= area.bottom());
     }
 }

@@ -189,7 +189,7 @@ pub fn help_text() -> &'static str {
      /tell <n> <texte> — parler au chat n\n\
      /compact — compacter l'historique du chat courant\n\
      /help — cette aide\n\
-     Touches : F2 · F3 · F4 · F5 · Ctrl+N\n\
+     Touches : F2 grimoire · F3/F4 chats · F5 effroi · F6 bestiaire · Ctrl+N\n\
      Contexte : ./AGENTS.md chargé au démarrage (restart pour recharger)"
 }
 

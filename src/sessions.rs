@@ -2,19 +2,20 @@
 //!
 //! `Sessions` garde les chats ouverts et le courant ; `draw_sidebar` rend
 //! la liste des chats (nom + tokens + `…` si envoi en cours + ` A{n}` si
-//! sous-agents actifs) dans la colonne gauche, chat courant en vidéo inverse.
+//! sous-agents actifs) dans la colonne gauche, chat courant mis en relief.
 
 use std::time::Instant;
 
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
-    text::Line,
-    widgets::{Block, Borders, Paragraph},
+    text::{Line, Span},
+    widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
 
 use crate::chat::ChatState;
+use crate::theme;
 use crate::tokens::TokenLedger;
 
 /// Un chat : affichage, historique provider, usage tokens, envoi en cours.
@@ -254,6 +255,11 @@ impl Sessions {
         self.current
     }
 
+    /// Chats ouverts, dans l'ordre de la sidebar.
+    pub fn iter(&self) -> impl Iterator<Item = &ChatSession> {
+        self.chats.iter()
+    }
+
     /// Nombre de chats ouverts.
     pub fn count(&self) -> usize {
         self.chats.len()
@@ -265,11 +271,16 @@ impl Sessions {
         TokenLedger::total_of(&ledgers)
     }
 
-    /// Sidebar : une ligne par chat (nom + tokens + `…` si envoi + ` A{n}`).
+    /// Sidebar « cercueils » : une ligne par chat (nom + tokens + `…` si
+    /// envoi + ` A{n}`), le chat courant marqué d'une barre citrouille.
     pub fn draw_sidebar(&self, frame: &mut Frame, area: Rect) {
-        let block = Block::default().borders(Borders::ALL).title("CHATS");
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::new().fg(theme::UMBER))
+            .title(theme::title("cercueils", theme::SAND, theme::BONE));
         let inner_w = area.width.saturating_sub(2) as usize;
-        if inner_w == 0 {
+        if inner_w < 3 {
             frame.render_widget(block, area);
             return;
         }
@@ -298,8 +309,8 @@ impl Default for Sessions {
     }
 }
 
-/// Une ligne de sidebar : nom tronqué + `123t` + `…` si envoi + ` A{n}`.
-/// Le chat courant est en vidéo inverse ; le nom rétrécit pour faire place.
+/// Une ligne de sidebar : `▍` + nom tronqué + `123t` + `…` si envoi +
+/// ` A{n}`. Le chat courant : barre citrouille, nom os gras, fond braise.
 fn sidebar_line(
     current: bool,
     name: &str,
@@ -308,21 +319,35 @@ fn sidebar_line(
     agents: usize,
     width: usize,
 ) -> Line<'static> {
-    let mut right = format!(" {total}t");
-    if agents > 0 {
-        right.push_str(&format!(" A{agents}"));
-    }
-    let suffix = if sending { "…" } else { "" };
-    let name_w = width.saturating_sub(right.chars().count() + suffix.chars().count());
-    let name: String = name.chars().take(name_w).collect();
-    let pad = name_w.saturating_sub(name.chars().count());
-    let text = format!("{name}{:pad$}{right}{suffix}", "", pad = pad);
-    let style = if current {
-        Style::new().add_modifier(Modifier::REVERSED)
+    let tokens = format!(" {total}t");
+    let agents = if agents > 0 {
+        format!(" A{agents}")
     } else {
-        Style::new()
+        String::new()
     };
-    Line::styled(text, style)
+    let suffix = if sending { "…" } else { "" };
+    let used = 2 + tokens.chars().count() + agents.chars().count() + suffix.chars().count();
+    let name_w = width.saturating_sub(used);
+    let name: String = name.chars().take(name_w).collect();
+    let pad = " ".repeat(name_w.saturating_sub(name.chars().count()));
+    let (bar, name_style) = if current {
+        let bold = Style::new().fg(theme::BONE).add_modifier(Modifier::BOLD);
+        (Style::new().fg(theme::PUMPKIN), bold)
+    } else {
+        (Style::new().fg(theme::UMBER), Style::new().fg(theme::SAND))
+    };
+    let line = Line::from(vec![
+        Span::styled("▍ ", bar),
+        Span::styled(format!("{name}{pad}"), name_style),
+        Span::styled(tokens, Style::new().fg(theme::ASH)),
+        Span::styled(agents, Style::new().fg(theme::ECTO)),
+        Span::styled(suffix, Style::new().fg(theme::CANDLE)),
+    ]);
+    if current {
+        line.style(Style::new().bg(theme::lerp(theme::VOID, theme::DRIED, 0.55)))
+    } else {
+        line
+    }
 }
 
 #[cfg(test)]
