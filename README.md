@@ -127,6 +127,7 @@ exempt, stays the remedy).
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
 | F5 | scare: Kiro scared 2s, jump scare, lightning flash |
 | F6 | toggle chat / bestiary (arrows to pick) |
+| F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
 
 ## Ghostty
 
@@ -147,6 +148,30 @@ What the crypt uses from Ghostty (and degrades cleanly elsewhere):
   pixel is read at its own place).
 
 No sound: no bell, no notification.
+
+## Spirit hub (F7)
+
+Every agent lives in a crypt drawn in **isometric** pixel art:
+
+- **white ghost** = an agent (a chat); it wanders, meets the others and
+  chats (bubbles "…", heart); while waiting for the LLM it hovers in place;
+- **small black ghost** = a sub-agent (`/agent`); at work it orbits its
+  agent on an ectoplasm thread; done, it sleeps at its feet ("z");
+  failed, it sinks with red eyes;
+- **orbs**: every real message flies from sender to receiver — `/tell`,
+  `/msg`, `/ask`, auto links, a sub-agent's delivery; the receiver jumps ("!");
+- F5: everybody flees.
+
+Right panel: each agent, its sub-agents and their state. Arrows select
+(pumpkin ring on the floor), Enter opens that chat.
+
+In Ghostty the scene is a Kitty image re-sent every frame under the same
+id (PNG, ×2–×6 nearest neighbour, crisp); elsewhere, half-blocks.
+Offline demo, no key needed:
+
+```sh
+./target/debug/kiro-horror-tui --demo
+```
 
 ## Bestiary (pixel art)
 
@@ -252,4 +277,8 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
 (right-panel creature), `galerie.rs` (F6 bestiary screen),
 `ghostty.rs` (OSC, progress, synced rendering),
-`history.rs` (send window + chat naming).
+`history.rs` (send window + chat naming),
+`hub.rs` + `hub/` (F7 spirit hub: tile-based simulation, `iso.rs`
+isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
+`font.rs` 3×5 pixel font, `social.rs` orbs and chatter),
+`app/esprits.rs` (hub screen + keys), `app/keys.rs` (bestiary keys).

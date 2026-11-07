@@ -50,13 +50,20 @@ pub fn progress(busy: bool) -> io::Result<()> {
 }
 
 /// `terminal.draw` encadré par le mode 2026 : la frame s'affiche d'un bloc.
+/// `render` peut rendre une séquence brute (image Kitty animée du hub),
+/// écrite après les cellules, dans le même bloc synchronisé.
 pub fn draw_synced(
     terminal: &mut DefaultTerminal,
-    render: impl FnOnce(&mut Frame),
+    render: impl FnOnce(&mut Frame) -> Option<String>,
 ) -> io::Result<()> {
     io::stdout().queue(BeginSynchronizedUpdate)?;
-    terminal.draw(render)?;
-    io::stdout().queue(EndSynchronizedUpdate)?.flush()
+    let mut extra = None;
+    terminal.draw(|frame| extra = render(frame))?;
+    let mut out = io::stdout().lock();
+    if let Some(seq) = extra {
+        out.write_all(seq.as_bytes())?;
+    }
+    out.queue(EndSynchronizedUpdate)?.flush()
 }
 
 fn write_raw(seqs: &[&str]) -> io::Result<()> {

@@ -34,7 +34,11 @@ saisie + prompt custom masquable), `provider.rs` (client OpenAI-compatible, time
 chargement, pin, compaction pure), `mascot.rs` (fantôme), `fx.rs`
 (overlay horreur), `app/ui.rs` (mise en page), `theme.rs` (palette
 unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
-(panneau droit), `galerie.rs` (écran F6), `ghostty.rs` (OSC + mode 2026).
+(panneau droit), `galerie.rs` (écran F6), `ghostty.rs` (OSC + mode 2026),
+`hub.rs` + `hub/` (hub des esprits F7 : simulation en dalles, `iso.rs`
+crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
+`font.rs` police 3×5, `social.rs` orbes et bavardages), `app/esprits.rs`
+(écran + touches du hub). Sprites du hub : `assets/hub/*.txt`.
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async) → `drain_replies`

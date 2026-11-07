@@ -10,6 +10,7 @@ use crate::chat::Role;
 use crate::commands::{self, Command, MsgTarget};
 use crate::connect::NOT_CONNECTED;
 use crate::history::send_window;
+use crate::hub::Signal;
 use crate::provider::{provider_label, ProviderConfig};
 use crate::sessions::AskError;
 
@@ -260,6 +261,10 @@ impl App {
             self.push_system(format!("chat {target} not found"));
             return;
         }
+        self.hub.signal(Signal::Tell {
+            from: here,
+            to: idx,
+        });
         let envelope = format!("[from Chat {}] {text}", here + 1);
         if self.deliver_tell(idx, envelope, 0) {
             self.push_system(format!("Chat {target} busy — queued"));
@@ -309,6 +314,10 @@ impl App {
         }
         let mut queued = 0usize;
         for idx in &others {
+            self.hub.signal(Signal::Tell {
+                from: here,
+                to: *idx,
+            });
             let envelope = format!("[from Chat {}] {text}", here + 1);
             if self.deliver_tell(*idx, envelope, 0) {
                 queued += 1;

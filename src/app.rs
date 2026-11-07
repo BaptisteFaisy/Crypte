@@ -1,6 +1,9 @@
 //! État global + boucle TUI (crossterm + tokio, tick 100 ms).
-//! Le rendu vit dans `app/ui.rs` (mise en page de la crypte).
+//! Le rendu vit dans `app/ui.rs` (mise en page de la crypte), le hub des
+//! esprits dans `app/esprits.rs`.
 
+mod esprits;
+mod keys;
 mod ui;
 
 pub use self::ui::Screen;
@@ -24,6 +27,7 @@ use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
 use crate::ghostty;
 use crate::history::{send_window, short_name};
+use crate::hub::Hub;
 use crate::mascot::{Mascot, MascotState};
 use crate::provider::{Completion, Provider, ProviderConfig};
 use crate::sessions::Sessions;
@@ -43,6 +47,7 @@ pub struct App {
     fx: Fx,
     bank: ImageBank,
     pub(crate) apparition: Apparition,
+    pub(crate) hub: Hub,
     galerie: Galerie,
     tick: u64,
     busy: bool,
@@ -116,6 +121,7 @@ impl App {
             fx: Fx::new(),
             bank: ImageBank::headless(),
             apparition: Apparition::new(),
+            hub: Hub::new(),
             galerie: Galerie::new(),
             tick: 0,
             busy: false,
@@ -184,7 +190,7 @@ impl App {
         let mut dirty = true;
         loop {
             if dirty {
-                ghostty::draw_synced(terminal, |frame| self.draw(frame))?;
+                ghostty::draw_synced(terminal, |frame| self.render_frame(frame))?;
                 dirty = false;
             }
             dirty |= self.drain_replies();
@@ -228,8 +234,10 @@ impl App {
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let empty = self.sessions.current().chat.input.is_empty();
-        if self.screen == Screen::Bestiary {
-            return self.on_bestiary_key(key.code);
+        match self.screen {
+            Screen::Bestiary => return self.on_bestiary_key(key.code),
+            Screen::Hub => return self.on_hub_key(key.code),
+            _ => {}
         }
         match key.code {
             KeyCode::Esc => false,
@@ -243,21 +251,7 @@ impl App {
             KeyCode::F(4) => self.cmd(|s| s.sessions.next()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Bestiary)),
-            _ => true,
-        }
-    }
-
-    /// Touches de l'écran bestiaire : flèches, F6/F2 (sortie), Échap/q.
-    fn on_bestiary_key(&mut self, code: KeyCode) -> bool {
-        match code {
-            KeyCode::Esc | KeyCode::Char('q') => false,
-            KeyCode::Left => self.cmd(|s| s.galerie.step(-1, 0)),
-            KeyCode::Right => self.cmd(|s| s.galerie.step(1, 0)),
-            KeyCode::Up => self.cmd(|s| s.galerie.step(0, -1)),
-            KeyCode::Down => self.cmd(|s| s.galerie.step(0, 1)),
-            KeyCode::F(2) => self.cmd(|s| s.screen = Screen::Tokens),
-            KeyCode::F(5) => self.cmd(|s| s.spook()),
-            KeyCode::F(6) => self.cmd(|s| s.screen = Screen::Chat),
+            KeyCode::F(7) => self.cmd(|s| s.open_hub()),
             _ => true,
         }
     }
@@ -266,6 +260,7 @@ impl App {
     pub(crate) fn spook(&mut self) {
         self.mascot.spook();
         self.apparition.scare();
+        self.hub.scare();
     }
 
     /// Exécute `f` puis rend true (touche gérée, ne quitte pas).
@@ -374,6 +369,8 @@ impl App {
         self.tick = self.tick.wrapping_add(1);
         self.mascot.tick();
         self.apparition.tick();
+        self.hub.sync(&self.sessions);
+        self.hub.step();
         self.fx.tick(self.mascot.state() == MascotState::Spook);
     }
 }
