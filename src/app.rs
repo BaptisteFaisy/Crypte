@@ -60,6 +60,10 @@ pub struct App {
     pub(crate) provider: Option<Arc<Provider>>,
     pub(crate) connect_flow: Option<ConnectFlow>,
     pub(crate) agents_md: Option<String>,
+    /// Fichier `--agents-file` (`None` = lookup cwd), lu au premier envoi.
+    pub(crate) agents_file: Option<String>,
+    /// Lecture agents.md déjà tentée (une seule lecture, jamais relue).
+    pub(crate) agents_tried: bool,
     pub(crate) screen: Screen,
     /// Rectangle du bouton [+] (mémorisé au rendu, `None` hors sidebar).
     pub(crate) plus_btn: Option<Rect>,
@@ -197,6 +201,8 @@ impl App {
         if self.sessions.current().sending {
             return;
         }
+        // Premier envoi réel : lecture unique d'agents.md (pin + annonce).
+        self.ensure_agents_loaded();
         if let Some(used) = self.context_over_limit(&text) {
             self.push_system(format!(
                 "context full ({}), send refused: /compact to continue",
