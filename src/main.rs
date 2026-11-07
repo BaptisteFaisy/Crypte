@@ -30,6 +30,7 @@ mod sessions;
 mod sidebar;
 mod theme;
 mod tokens;
+mod web;
 
 use std::io;
 
@@ -64,6 +65,7 @@ CONFIG (environment, wins over --config):
     KH_API_KEY    API key (never logged; --once requires it)
     KH_MODEL      Model (--once requires it)
     KH_CONTEXT_WINDOW  Context window override (tokens, integer > 0)
+    BRAVE_API_KEY / TAVILY_API_KEY  Optional premium /web backends (else free)
     With no key, no --config and no --muse-auth, the TUI still starts,
     disconnected — /connect openai|muse to connect from inside.
 
@@ -96,6 +98,7 @@ COMMANDS (in chat):
     /msg <n|@n|#id|all> <text>  talk to a chat, an agent, all
     /link <a> <b>  replies from a go to b (auto)    /links  list
     /unlink <a> <b>  remove a link
+    /web <query>  web search + cited summary (raw results if offline)
     /compact  compact history (summary + last 4)
     /connect [openai|muse]  interactive connect (masked key,
         Esc cancels); no arg: connection status

@@ -33,14 +33,16 @@ use crate::mascot::{Mascot, MascotState};
 use crate::permissions::Mode;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
+use crate::web::WebAnswer;
 
 /// Message async d'une tâche provider : chat (`idx`), agent
 /// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
-/// [`crate::agents::compacted_history`]).
+/// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]).
 pub(crate) enum Incoming {
     Chat(usize, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
     Compact(usize, Result<Completion>),
+    Web(usize, Result<WebAnswer>),
 }
 
 /// État global de l'application.
@@ -233,6 +235,7 @@ impl App {
                     self.drain_agent(owner, agent_id, deliver, reply);
                 }
                 Incoming::Compact(id, reply) => self.drain_compact(id, reply),
+                Incoming::Web(id, reply) => self.drain_web(id, reply),
             }
         }
         routed

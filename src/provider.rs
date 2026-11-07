@@ -373,8 +373,8 @@ impl Completion {
     }
 }
 
-/// Tronque sans couper un caractère UTF-8.
-fn truncate(s: &str, max_chars: usize) -> String {
+/// Tronque sans couper un caractère UTF-8 (budgets `web` inclus).
+pub(crate) fn truncate(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
         s.to_string()
     } else {

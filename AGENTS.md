@@ -41,10 +41,12 @@ unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
 crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 `font.rs` police 3×5, `social.rs` orbes et bavardages), `app/esprits.rs`
 (écran + touches du hub). Sprites du hub : `assets/hub/*.txt`.
+`web/` (`/web` : backends → fetch → cache → synthèse, parsing pur dans
+`web/parse.rs`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async) → `drain_replies`
-(`Incoming::Chat|Agent|Compact`) → ledger + historique + affichage.
+(`Incoming::Chat|Agent|Compact|Web`) → ledger + historique + affichage.
 Bus : `/tell`/`/msg` déposent (affiché aussitôt, déclenché si libre,
 enfilé sinon, pompé en groupe à la tombée) ; `/agent @<n>` livre ailleurs
 (`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id from Chat k]`,
@@ -56,6 +58,10 @@ d'origine user (commande ou lien) : pas de boucles infinies.
 `/compact` résume via le provider puis remplace l'historique par
 `[agents.md pinné?]` + `[résumé]` + 4 derniers (voir
 `agents::compacted_history`, pure et testée).
+`/web` cherche (Tavily → Brave → DuckDuckGo → Wikipedia FR+EN) +
+fetch top-3 parallèle, synthèse LLM avec sources `[n]`
+(`Incoming::Web`, tag `[web:backend]`, brut si déconnecté,
+historique inchangé).
 
 ## Conventions
 
