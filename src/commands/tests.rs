@@ -20,13 +20,20 @@ fn parse_tools_marche_arret_optionnels() {
         parse("/tools off"),
         Some(Command::Tools(Some(String::from("off"))))
     );
-    assert!(help_text().contains("/tools [on|off]"));
+    assert!(crate::texts::help_text().contains("/tools [on|off]"));
 }
 
 #[test]
 fn parse_kiro_sans_argument() {
     assert_eq!(parse("/kiro"), Some(Command::Kiro));
-    assert!(help_text().contains("/kiro"));
+    assert!(crate::texts::help_text().contains("/kiro"));
+}
+
+#[test]
+fn parse_bestiary_sans_argument() {
+    assert_eq!(parse("/bestiary"), Some(Command::Bestiary));
+    assert_eq!(parse("  /bestiary x  "), Some(Command::Bestiary));
+    assert!(crate::texts::help_text().contains("/bestiary"));
 }
 
 #[test]
@@ -98,7 +105,7 @@ fn parse_web_ok_et_aide() {
     );
     assert_eq!(parse("/web"), Some(Command::Hint(WEB_USAGE)));
     assert_eq!(parse("/web   "), Some(Command::Hint(WEB_USAGE)));
-    assert!(help_text().contains("/web <query>"));
+    assert!(crate::texts::help_text().contains("/web <query>"));
 }
 
 #[test]

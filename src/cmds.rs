@@ -12,8 +12,8 @@ use crate::connect::NOT_CONNECTED;
 use crate::events::Event;
 use crate::history::window_estimate;
 use crate::hub::Signal;
-use crate::provider::{provider_label, ProviderConfig};
 use crate::sessions::AskError;
+use crate::texts;
 
 /// Historique minimal (messages) pour lancer un compactage.
 const COMPACT_MIN: usize = 6;
@@ -26,7 +26,8 @@ impl App {
         match commands::parse(text) {
             Some(Command::Usage) => self.cmd_usage(),
             Some(Command::New) => self.add_chat(),
-            Some(Command::Help) => self.push_system(commands::help_text().to_string()),
+            Some(Command::Bestiary) => self.cmd_bestiary(),
+            Some(Command::Help) => self.push_system(texts::help_text().to_string()),
             Some(Command::Model(arg)) => self.cmd_model(arg),
             Some(Command::Thinking(arg)) => self.cmd_thinking(arg),
             Some(Command::Agent { target, prompt }) => self.cmd_agent(target, prompt),
@@ -49,6 +50,13 @@ impl App {
             }
             None => self.push_system(String::from("unknown command — /help for help")),
         }
+    }
+
+    /// `/bestiary` : une créature au hasard dans le panneau droit
+    /// (quelques secondes) + son nom et sa légende dans le chat.
+    fn cmd_bestiary(&mut self) {
+        let creature = self.apparition.show_random();
+        self.push_system(format!("{} — {}", creature.name, creature.lore));
     }
 
     /// `/usage` : tokens du chat courant + total session (+ modèle/thinking/agents.md,
@@ -404,43 +412,6 @@ impl App {
                 .await;
             let _ = tx.send(Incoming::Compact(id, reply)).await;
         });
-    }
-
-    /// `/connect [openai|muse]` : statut (sans arg), store Muse ou flow clavier.
-    /// Inconnu → erreur + valeurs (validation dans `start_connect_flow`).
-    fn cmd_connect(&mut self, arg: Option<String>) {
-        match arg {
-            None => self.cmd_connect_status(),
-            Some(name) if name == "muse" => self.cmd_connect_muse(),
-            Some(name) => self.start_connect_flow(&name),
-        }
-    }
-
-    /// `/connect` sans arg : provider + modèle, ou non connecté + usage.
-    fn cmd_connect_status(&mut self) {
-        match self.provider.as_ref() {
-            Some(provider) => {
-                let cfg = provider.config();
-                self.push_system(format!(
-                    "connected to {} ({})\nusage: /connect openai|muse",
-                    provider_label(&cfg.base_url),
-                    cfg.model
-                ));
-            }
-            None => self.push_system(String::from(NOT_CONNECTED)),
-        }
-    }
-
-    /// `/connect muse` : store Muse si lisible, sinon saisie manuelle.
-    fn cmd_connect_muse(&mut self) {
-        let from_store = ProviderConfig::muse_auth_path().and_then(ProviderConfig::from_muse_auth);
-        match from_store {
-            Ok(cfg) => self.apply_connected(cfg, "muse"),
-            Err(_) => {
-                self.push_system(String::from("Muse store unreadable, manual input"));
-                self.start_connect_flow("muse");
-            }
-        }
     }
 }
 #[cfg(test)]

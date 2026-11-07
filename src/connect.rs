@@ -1,8 +1,8 @@
 //! Flow de connexion interactive (`/connect openai|muse`).
 //!
-//! `impl App` déporté hors `app.rs` (limite 500 lignes) : état du flow
-//! (clé → modèle), touches dédiées (saisie vers le buffer, Entrée avance,
-//! Échap annule) et installation du provider en fin de flow.
+//! `impl App` déporté hors `app.rs` (limite 500 lignes) : handlers
+//! `/connect` (statut, store Muse, flow clavier), état du flow (clé →
+//! modèle), touches dédiées et installation du provider en fin de flow.
 //!
 //! La clé API transite uniquement en mémoire (buffer puis config) : saisie
 //! masquée en `•`, jamais affichée, logguée ni poussée dans le chat — seuls
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::App;
-use crate::provider::{connect_defaults, Provider, ProviderConfig};
+use crate::provider::{connect_defaults, provider_label, Provider, ProviderConfig};
 
 /// Message quand un envoi exige une connexion absente.
 pub(crate) const NOT_CONNECTED: &str = "not connected: /connect openai|muse";
@@ -46,6 +46,43 @@ impl ConnectFlow {
 }
 
 impl App {
+    /// `/connect [openai|muse]` : statut (sans arg), store Muse ou flow clavier.
+    /// Inconnu → erreur + valeurs (validation dans `start_connect_flow`).
+    pub(crate) fn cmd_connect(&mut self, arg: Option<String>) {
+        match arg {
+            None => self.cmd_connect_status(),
+            Some(name) if name == "muse" => self.cmd_connect_muse(),
+            Some(name) => self.start_connect_flow(&name),
+        }
+    }
+
+    /// `/connect` sans arg : provider + modèle, ou non connecté + usage.
+    fn cmd_connect_status(&mut self) {
+        match self.provider.as_ref() {
+            Some(provider) => {
+                let cfg = provider.config();
+                self.push_system(format!(
+                    "connected to {} ({})\nusage: /connect openai|muse",
+                    provider_label(&cfg.base_url),
+                    cfg.model
+                ));
+            }
+            None => self.push_system(String::from(NOT_CONNECTED)),
+        }
+    }
+
+    /// `/connect muse` : store Muse si lisible, sinon saisie manuelle.
+    fn cmd_connect_muse(&mut self) {
+        let from_store = ProviderConfig::muse_auth_path().and_then(ProviderConfig::from_muse_auth);
+        match from_store {
+            Ok(cfg) => self.apply_connected(cfg, "muse"),
+            Err(_) => {
+                self.push_system(String::from("Muse store unreadable, manual input"));
+                self.start_connect_flow("muse");
+            }
+        }
+    }
+
     /// Démarre le flow (étape clé, saisie masquée).
     /// Provider inconnu → erreur système + valeurs valides, sans flow.
     pub(crate) fn start_connect_flow(&mut self, provider: &str) {

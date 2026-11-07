@@ -1,5 +1,6 @@
-//! Commandes slash (`/usage` `/new` `/thinking` `/model` `/agent` `/agents`
-//! `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact` `/connect` `/permissions` `/web` `/tools` `/kiro` `/help`).
+//! Commandes slash (`/usage` `/new` `/bestiary` `/thinking` `/model` `/agent`
+//! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
+//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -15,6 +16,7 @@ pub fn is_command(input: &str) -> bool {
 pub enum Command {
     Usage,
     New,
+    Bestiary,
     Help,
     Thinking(Option<String>),
     Model(Option<String>),
@@ -86,6 +88,7 @@ pub fn parse(input: &str) -> Option<Command> {
     match word {
         "/usage" => Some(Command::Usage),
         "/new" => Some(Command::New),
+        "/bestiary" => Some(Command::Bestiary),
         "/help" => Some(Command::Help),
         "/thinking" => Some(Command::Thinking(opt_arg(&mut parts))),
         "/model" => Some(Command::Model(opt_arg(&mut parts))),
@@ -250,32 +253,6 @@ pub fn effort_values() -> Vec<&'static str> {
     .into_iter()
     .filter(|v| valid_effort(v))
     .collect()
-}
-
-/// Aide : les 19 commandes + rappel des touches + contexte agents.md.
-pub fn help_text() -> &'static str {
-    "Commands:\n\
-     /usage — token usage (chat + session + all-time almanac)\n\
-     /new — new chat (resets the current chat)\n\
-     /thinking [level] — reasoning level (default/low/medium/high)\n\
-     /model [name|reset] — show or change the model\n\
-     /agent [@<n>] <text> — sub-agent (reply goes to chat n if targeted)\n\
-     /agents [all] — list sub-agents (all = every chat)\n\
-     /ask #<id> <text> — follow up with an agent\n\
-     /tell <n> <text> — talk to chat n\n\
-     /msg <n|@n|#id|all> <text> — talk to a chat, an agent, all\n\
-     /link <a> <b> — replies from a go to b (auto)\n\
-     /links — list auto links\n\
-     /unlink <a> <b> — remove a link\n\
-     /compact — compact the current chat history\n\
-     /connect [openai|muse] — connect (status if no argument)\n\
-     /permissions [yolo|auto] — tools mode: ask or run free (remembered)\n\
-     /web <query> — web search + summary with cited sources\n\
-     /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
-     /kiro — kiro .kiro/ status (steering, specs, hooks, mcp)\n\
-     /help — this help\n\
-     Keys: F5 scare · F6 bestiary · F7 hub · Ctrl+N\n\
-     Context: ./AGENTS.md loaded at startup (restart to reload)"
 }
 
 #[cfg(test)]

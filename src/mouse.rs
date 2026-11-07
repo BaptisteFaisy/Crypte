@@ -59,11 +59,10 @@ impl App {
         chat.scroll.by(delta);
     }
 
-    /// Clic sur un onglet : même effet que sa touche (F6 bascule).
+    /// Clic sur un onglet : même effet que sa touche (le hub bascule).
     fn goto_tab(&mut self, tab: Screen) {
         match tab {
             Screen::Chat => self.screen = Screen::Chat,
-            Screen::Bestiary => self.screen = self.screen.toggle(Screen::Bestiary),
             Screen::Hub => self.open_hub(),
         }
     }
@@ -156,7 +155,7 @@ mod tests {
         app.on_mouse(event(MouseEventKind::ScrollUp, 95, 5));
         assert_eq!(offset(&app), 0);
         // Autre écran : ignoré même dans la colonne.
-        app.screen = Screen::Bestiary;
+        app.screen = Screen::Hub;
         app.on_mouse(event(MouseEventKind::ScrollUp, 30, 5));
         assert_eq!(offset(&app), 0);
     }
@@ -183,13 +182,8 @@ mod tests {
         let mut app = test_app();
         app.tab_hits = vec![
             (Screen::Chat, Rect::new(10, 0, 7, 1)),
-            (Screen::Bestiary, Rect::new(31, 0, 14, 1)),
             (Screen::Hub, Rect::new(45, 0, 9, 1)),
         ];
-        app.on_mouse(click(32, 0)); // bestiaire → Bestiary
-        assert_eq!(app.screen, Screen::Bestiary);
-        app.on_mouse(click(32, 0)); // re-clic → retour chat (bascule)
-        assert_eq!(app.screen, Screen::Chat);
         app.on_mouse(click(11, 0)); // onglet chat → chat
         assert_eq!(app.screen, Screen::Chat);
         app.on_mouse(click(46, 0)); // hub → Hub
@@ -210,15 +204,15 @@ mod tests {
         assert_eq!(rows.height, 2);
         app.on_mouse(click(rows.x, rows.y + 1));
         assert_eq!(app.sessions.index(), 1);
-        // Onglet mémorisé : clic bestiaire → Bestiary.
-        let bestiary = app
+        // Onglet mémorisé : clic hub → Hub.
+        let hub = app
             .tab_hits
             .iter()
-            .find(|(s, _)| *s == Screen::Bestiary)
+            .find(|(s, _)| *s == Screen::Hub)
             .unwrap()
             .1;
-        app.on_mouse(click(bestiary.x, bestiary.y));
-        assert_eq!(app.screen, Screen::Bestiary);
+        app.on_mouse(click(hub.x, hub.y));
+        assert_eq!(app.screen, Screen::Hub);
         // [+] mémorisé : clic → 3e chat.
         let plus = app.plus_btn.expect("plus mémorisé");
         app.on_mouse(click(plus.x, plus.y));
