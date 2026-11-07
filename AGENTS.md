@@ -73,12 +73,14 @@ argv purs, `exec.rs` exécution + timeout + journal, `flow.rs` boucle +
 confirmations y/n, `log.rs` JSONL tailles seules, `live.rs` tests live
 ignorés).
 `kiro/` (compat Kiro : `steering.rs`, `spec.rs` (+ T2 : noms,
-`check_task`), `hooks.rs`, `mcp.rs`, `ignore.rs`, `status.rs`,
-`glob.rs`, `cmds.rs` (`/kiro`), `spec_cmds.rs` (`/spec` : handlers
-`new`/statut/`run` + drain, tests dans `spec_cmds/tests.rs`),
-`spec_prompts.rs` (prompts purs), `spec_run.rs` (`SpecGen`/`SpecRun`,
-purs) ; steering `always` fusionné au pin agents.md, voir
-`agents::load_merged`).
+`check_task`), `hooks.rs`, `mcp.rs` (+ T4 : `cwd`/`headers`),
+`ignore.rs`, `status.rs`, `glob.rs`, `cmds.rs` (`/kiro`),
+`spec_cmds.rs` (`/spec` : handlers `new`/statut/`run` + drain, tests
+dans `spec_cmds/tests.rs`), `spec_prompts.rs` (prompts purs),
+`spec_run.rs` (`SpecGen`/`SpecRun`, purs), `mcp_client.rs`
+(protocole), `mcp_conn.rs` (stdio/HTTP), `mcp_pool.rs` (parc),
+`mcp_cmds.rs` (`/mcp`) ; steering `always` fusionné au pin
+agents.md, voir `agents::load_merged`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async, outillé si `/tools on`) →
@@ -108,8 +110,11 @@ tasks (3 appels chaînés via `Incoming::SpecNew`, fichiers écrits au
 fil de l'eau) ; `/spec <nom>` = statut ; `/spec <nom> run` exécute
 les tâches via sous-agents `/agent` (requirements + design en
 contexte), tâche cochée sur disque à chaque tombée, `y/n` entre
-tâches en `auto` (voir `spec_waiting`), direct en `yolo`. T3+ :
-hooks, client MCP.
+tâches en `auto` (voir `spec_waiting`), direct en `yolo`. T4 :
+client MCP tools (`enabled` connectés au premier besoin,
+`mcp_<serveur>_<outil>`, `autoApprove` sans confirmation, `/mcp` +
+`/mcp refresh`). Reste : hooks (T3), permissions fines,
+agents/skills, checkpoints, mémoire (T5).
 `/web` cherche (Tavily → Brave → DuckDuckGo → Wikipedia FR+EN) +
 fetch top-3 parallèle, synthèse LLM avec sources `[n]`
 (`Incoming::Web`, tag `[web:backend]`, brut si déconnecté,
