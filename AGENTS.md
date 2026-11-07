@@ -18,7 +18,8 @@ cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 ## Archi (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (état + boucle 100 ms),
-`cmds.rs` (handlers `/…`), `commands.rs` (parse + aide + usage),
+`drain.rs` (routage réponses async), `cmds.rs` (handlers `/…`),
+`commands.rs` (parse + aide + usage),
 `sessions.rs` (chats + sous-agents + sidebar), `chat.rs` (historique +
 saisie), `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :
@@ -27,6 +28,12 @@ chargement, pin, compaction pure), `mascot.rs` (fantôme), `fx.rs`
 
 Flux : `send` (user → provider, tâche async) → `drain_replies`
 (`Incoming::Chat|Agent|Compact`) → ledger + historique + affichage.
+Relay : `/tell` injecte `[de Chat k]` + déclenche la réponse cible
+(`send_window` partagée) ; `/agent @<n>` livre ailleurs
+(`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id de Chat k]`,
+statut sur le propriétaire, ledger sur la livraison) ; `/ask` poursuit
+l'échange agent (`Sessions::ask_agent`, refusé si en cours, 20 messages
+max). Chaque appel LLM est déclenché par le user (pas de boucles auto).
 `/compact` résume via le provider puis remplace l'historique par
 `[agents.md pinné?]` + `[résumé]` + 4 derniers (voir
 `agents::compacted_history`, pure et testée).

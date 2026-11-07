@@ -91,11 +91,24 @@ le champ est omis du JSON). `/thinking` affiche le niveau,
 
 ## Sous-agents
 
-`/agent <texte>` lance une requête annexe (sans historique mais avec
-agents.md préfixé si chargé, modèle et thinking courants) ; la réponse
-arrive en async préfixée `[agent#id]` et le statut est visible dans la
-sidebar (`A{n}`) puis via `/agents` (`en cours` / `terminé`
-/ `échoué`, tokens consommés).
+`/agent [@<n>] <texte>` lance une requête annexe (sans historique mais
+avec agents.md préfixé si chargé, modèle et thinking courants) ; la
+réponse arrive en async préfixée `[agent#id]` (ou `[agent#id de Chat k]`
+si livrée ailleurs via `@<n>`) et le statut est visible dans la sidebar
+(`A{n}`) puis via `/agents` (`en cours` / `terminé` / `échoué`, tokens
+consommés). `/ask #<id> <texte>` poursuit la conversation avec un agent
+(échange gardé, 20 messages max, tête `system` conservée) ; refusé si
+l'agent est en cours. Chaque appel LLM reste déclenché par le user :
+pas de boucles automatiques entre agents.
+
+## Dialogues entre chats
+
+`/tell <n> <texte>` injecte le texte dans le chat n (préfixé `[de Chat k]`)
+et déclenche sa réponse (modèle du chat cible, thinking global) ; refusé
+si le chat cible est en cours d'envoi, inexistant, ou si c'est le chat
+courant. Combiné à `/agent @<n>`, ça fait se parler chats et sous-agents :
+délégation (chat 1 → agent → réponse livrée au chat 2), relance (`/ask`),
+concertation (`/tell` + réponse du chat cible).
 
 ## Compact
 
@@ -118,10 +131,11 @@ préfixé aux appels `/agent`. Exclu de `/compact` (résumé méta) et de
 ## Modules (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (état + boucle 100 ms),
+`drain.rs` (routage des réponses async vers les chats),
 `chat.rs` (historique + saisie), `mascot.rs` (fantôme),
 `fx.rs` (overlay horreur), `tokens.rs` (compteur tiktoken),
 `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `sessions.rs` (chats multiples + sous-agents + sidebar),
 `commands.rs` (parse des commandes `/…` + aide + usage),
-`cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/compact`),
+`cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell` `/compact`),
 `agents.rs` (chargement agents.md + compaction pure testée).
