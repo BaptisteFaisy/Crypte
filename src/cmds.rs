@@ -9,7 +9,7 @@ use crate::bus::{LinkEnd, LinkError, QueuedAsk, QueuedTell, Target};
 use crate::chat::Role;
 use crate::commands::{self, Command, MsgTarget};
 use crate::connect::NOT_CONNECTED;
-use crate::history::send_window;
+use crate::history::window_estimate;
 use crate::hub::Signal;
 use crate::provider::{provider_label, ProviderConfig};
 use crate::sessions::AskError;
@@ -57,12 +57,8 @@ impl App {
             commands::usage_text(&self.sessions.current().ledger, &total, &model, &thinking);
         msg.push('\n');
         msg.push_str(&agents::usage_line(self.agents_md.as_deref()));
-        let used = {
-            let sess = self.sessions.current();
-            let window = sess.history.clone();
-            let window = send_window(&window, sess.pinned_system);
-            crate::tokens::context_estimate(&window)
-        };
+        let sess = self.sessions.current();
+        let used = window_estimate(&sess.history, sess.pinned_system, None);
         msg.push('\n');
         msg.push_str(&format!(
             "context: {}",
@@ -381,24 +377,19 @@ impl App {
         crate::tokens::context_window(&self.effective_model()).min(crate::tokens::CONTEXT_LIMIT)
     }
 
-    /// Contexte estimé du chat courant : fenêtre d'envoi + saisie en cours.
+    /// Contexte estimé du chat courant : fenêtre d'envoi + saisie en
+    /// cours, sans copie (même somme que la fenêtre réellement envoyée).
     pub(crate) fn context_used(&self) -> u64 {
         let sess = self.sessions.current();
-        let mut window = sess.history.clone();
-        if !sess.chat.input.trim().is_empty() {
-            window.push(("user".to_string(), sess.chat.input.clone()));
-        }
-        let window = send_window(&window, sess.pinned_system);
-        crate::tokens::context_estimate(&window)
+        let input = sess.chat.input.trim();
+        let pending = if input.is_empty() { None } else { Some(input) };
+        window_estimate(&sess.history, sess.pinned_system, pending)
     }
 
     /// Fenêtre à envoyer si elle dépasse la limite (tokens estimés), sinon `None`.
     pub(crate) fn context_over_limit(&self, text: &str) -> Option<u64> {
         let sess = self.sessions.current();
-        let mut window = sess.history.clone();
-        window.push(("user".to_string(), text.to_string()));
-        let window = send_window(&window, sess.pinned_system);
-        let used = crate::tokens::context_estimate(&window);
+        let used = window_estimate(&sess.history, sess.pinned_system, Some(text));
         (used > self.context_limit()).then_some(used)
     }
 
@@ -413,8 +404,7 @@ impl App {
         let id = self.sessions.index();
         let sess = self.sessions.current();
         let pinned = sess.pinned_system;
-        let history = sess.history.clone();
-        if history.len() < COMPACT_MIN {
+        if sess.history.len() < COMPACT_MIN {
             self.push_system(String::from("nothing to compact"));
             return;
         }
@@ -422,7 +412,11 @@ impl App {
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
         let mut messages = vec![(String::from("system"), String::from(COMPACT_INSTRUCTION))];
-        messages.extend(agents::without_pinned(&history, pinned).iter().cloned());
+        messages.extend(
+            agents::without_pinned(&sess.history, pinned)
+                .iter()
+                .cloned(),
+        );
         tokio::spawn(async move {
             let reply = provider
                 .complete_full(&messages, &model, effort.as_deref())
