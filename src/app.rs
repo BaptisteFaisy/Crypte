@@ -15,12 +15,14 @@ use crate::agents;
 use crate::apparition::Apparition;
 use crate::chat::Role;
 use crate::commands;
+use crate::connect::{ConnectFlow, NOT_CONNECTED};
 use crate::fx::Fx;
 use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
 use crate::ghostty;
 use crate::mascot::{Mascot, MascotState};
 use crate::provider::{Completion, Provider, ProviderConfig};
+use crate::history::{send_window, short_name};
 use crate::sessions::Sessions;
 
 /// Écran affiché dans la zone principale.
@@ -62,7 +64,8 @@ pub struct App {
     tick: u64,
     busy: bool,
     pub(crate) sessions: Sessions,
-    pub(crate) provider: Arc<Provider>,
+    pub(crate) provider: Option<Arc<Provider>>,
+    pub(crate) connect_flow: Option<ConnectFlow>,
     pub(crate) agents_md: Option<String>,
     pub(crate) screen: Screen,
     pub(crate) thinking: Option<String>,
@@ -70,10 +73,6 @@ pub struct App {
     rx: mpsc::UnboundedReceiver<Incoming>,
 }
 
-/// Tours de conversation max envoyés au provider (borne le prompt).
-const MAX_HISTORY: usize = 40;
-/// Caractères du premier message repris comme nom du chat.
-const NAME_LEN: usize = 18;
 impl App {
     /// Construit l'app (lit la config provider depuis l'environnement).
     #[allow(dead_code)]
@@ -101,6 +100,30 @@ impl App {
     /// avec un message système d'annonce (lignes + ~tokens).
     pub fn from_config_with_agents(cfg: ProviderConfig, agents_md: Option<String>) -> Result<Self> {
         let provider = Provider::new(cfg)?;
+        Ok(Self::with_provider(
+            Some(Arc::new(provider)),
+            agents_md,
+            false,
+        ))
+    }
+
+    /// Construit l'app sans provider (`/connect` ensuite pour se connecter).
+    #[allow(dead_code)]
+    pub fn disconnected() -> Self {
+        Self::disconnected_with_agents(None)
+    }
+
+    /// Construit l'app déconnectée + pin agents.md (si chargé).
+    pub fn disconnected_with_agents(agents_md: Option<String>) -> Self {
+        Self::with_provider(None, agents_md, true)
+    }
+
+    /// Base commune : état + pin agents.md (+ hint `/connect` si déconnecté).
+    fn with_provider(
+        provider: Option<Arc<Provider>>,
+        agents_md: Option<String>,
+        hint_connect: bool,
+    ) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let mut app = Self {
             mascot: Mascot::new(),
@@ -111,7 +134,8 @@ impl App {
             tick: 0,
             busy: false,
             sessions: Sessions::new(),
-            provider: Arc::new(provider),
+            provider,
+            connect_flow: None,
             agents_md,
             screen: Screen::Chat,
             thinking: None,
@@ -120,7 +144,10 @@ impl App {
         };
         app.pin_current();
         app.announce_agents_md();
-        Ok(app)
+        if hint_connect {
+            app.push_system(String::from(NOT_CONNECTED));
+        }
+        app
     }
 
     /// Épingle agents.md en tête du chat courant (si chargé).
@@ -190,7 +217,11 @@ impl App {
     }
 
     /// Traite une touche ; renvoie false pour quitter.
+    /// Flow `/connect` actif : touches dédiées (pas de quit direct).
     fn on_key(&mut self, key: KeyEvent) -> bool {
+        if self.connect_flow.is_some() {
+            return self.on_flow_key(key);
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let empty = self.sessions.current().chat.input.is_empty();
         if self.screen == Screen::Bestiary {
@@ -234,7 +265,7 @@ impl App {
     }
 
     /// Exécute `f` puis rend true (touche gérée, ne quitte pas).
-    fn cmd(&mut self, f: impl FnOnce(&mut Self)) -> bool {
+    pub(crate) fn cmd(&mut self, f: impl FnOnce(&mut Self)) -> bool {
         f(self);
         true
     }
@@ -253,12 +284,22 @@ impl App {
             self.run_command(&text);
             return;
         }
+        let Some(provider) = self.provider.clone() else {
+            self.push_system(String::from(NOT_CONNECTED));
+            return;
+        };
         if self.sessions.current().sending {
+            return;
+        }
+        if let Some(used) = self.context_over_limit(&text) {
+            self.push_system(format!(
+                "contexte saturé ({}), envoi refusé : /compact pour continuer",
+                crate::tokens::fmt_context(used)
+            ));
             return;
         }
         let model = self.effective_model();
         let effort = self.thinking.clone();
-        let provider = Arc::clone(&self.provider);
         let tx = self.tx.clone();
         let sess = self.sessions.current_mut();
         sess.chat.take_input();
@@ -298,10 +339,13 @@ impl App {
 
     /// Modèle effectif du chat `idx` (le sien, sinon le défaut provider).
     pub(crate) fn effective_model_for(&self, idx: usize) -> String {
-        self.sessions
-            .get(idx)
-            .and_then(|c| c.model.clone())
-            .unwrap_or_else(|| self.provider.config().model.clone())
+        if let Some(model) = self.sessions.get(idx).and_then(|c| c.model.clone()) {
+            return model;
+        }
+        self.provider
+            .as_ref()
+            .map(|p| p.config().model.clone())
+            .unwrap_or_else(|| String::from("—"))
     }
 
     /// Thinking affiché (`None` → "default").
@@ -323,30 +367,6 @@ impl App {
         self.apparition.tick();
         self.fx.tick(self.mascot.state() == MascotState::Spook);
     }
-}
-
-/// Fenêtre d'historique envoyée au provider : 40 derniers, tête
-/// `system` pinnée gardée (partagée par `send` et `/tell`).
-pub(crate) fn send_window(history: &[(String, String)], pinned: bool) -> Vec<(String, String)> {
-    let mut window = history.to_vec();
-    if window.len() > MAX_HISTORY {
-        let drop = window.len() - MAX_HISTORY;
-        if pinned && !window.is_empty() {
-            window.drain(1..1 + drop);
-        } else {
-            window.drain(..drop);
-        }
-    }
-    window
-}
-
-/// Nom de chat depuis le premier message : 18 premiers caractères trimmés.
-fn short_name(text: &str) -> String {
-    text.chars()
-        .take(NAME_LEN)
-        .collect::<String>()
-        .trim()
-        .to_string()
 }
 
 /// Nom court de modèle : après le dernier '/', max 14 caractères.
@@ -461,4 +481,5 @@ mod tests {
         );
         assert_eq!(last_text(&app, 0), "[agent#1] erreur: boom");
     }
+
 }

@@ -3,13 +3,15 @@
 //! `impl App` déporté hors `app.rs` (limite 500 lignes) : chaque handler
 //! lit/écrit l'état via les accès `pub(crate)` de [`App`].
 
-use std::sync::Arc;
 use std::time::Instant;
 
 use crate::agents;
 use crate::app::{App, Incoming};
 use crate::chat::Role;
 use crate::commands::{self, Command};
+use crate::connect::NOT_CONNECTED;
+use crate::provider::{provider_label, ProviderConfig};
+use crate::history::send_window;
 use crate::sessions::AskError;
 
 /// Historique minimal (messages) pour lancer un compactage.
@@ -32,6 +34,7 @@ impl App {
             Some(Command::Tell { target, text }) => self.cmd_tell(target, text),
             Some(Command::Compact) => self.cmd_compact(),
             Some(Command::Hint(msg)) => self.push_system(msg.to_string()),
+            Some(Command::Connect(arg)) => self.cmd_connect(arg),
             Some(Command::Unknown(word)) => {
                 self.push_system(format!("commande inconnue : {word} — /help pour l'aide"));
             }
@@ -48,6 +51,17 @@ impl App {
             commands::usage_text(&self.sessions.current().ledger, &total, &model, &thinking);
         msg.push('\n');
         msg.push_str(&agents::usage_line(self.agents_md.as_deref()));
+        let used = {
+            let sess = self.sessions.current();
+            let window = sess.history.clone();
+            let window = send_window(&window, sess.pinned_system);
+            crate::tokens::context_estimate(&window)
+        };
+        msg.push('\n');
+        msg.push_str(&format!(
+            "contexte : {}",
+            crate::tokens::fmt_context(used)
+        ));
         self.push_system(msg);
     }
 
@@ -91,7 +105,12 @@ impl App {
 
     /// `/agent [@<n>] <texte>` : sous-agent (agents.md préfixé si chargé,
     /// sans historique) ; réponse livrée au chat n si ciblé, sinon ici.
+    /// Déconnecté → hint `/connect`, sans créer d'agent.
     fn cmd_agent(&mut self, target: Option<usize>, prompt: String) {
+        let Some(provider) = self.provider.clone() else {
+            self.push_system(String::from(NOT_CONNECTED));
+            return;
+        };
         let id = self.sessions.index();
         let deliver = match target {
             None => id,
@@ -106,6 +125,14 @@ impl App {
             messages.push((String::from("system"), content.clone()));
         }
         messages.push(("user".to_string(), prompt.clone()));
+        let used = crate::tokens::context_estimate(&messages);
+        if used > crate::tokens::CONTEXT_LIMIT {
+            self.push_system(format!(
+                "contexte agent saturé ({}), agent non lancé",
+                crate::tokens::fmt_context(used)
+            ));
+            return;
+        }
         let Some(agent_id) = self.sessions.add_agent(id, &prompt, messages.clone()) else {
             return;
         };
@@ -116,7 +143,6 @@ impl App {
         }
         let model = self.effective_model();
         let effort = self.thinking.clone();
-        let provider = Arc::clone(&self.provider);
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let reply = provider
@@ -153,6 +179,10 @@ impl App {
     /// `/ask #<id> <texte>` : suite de conversation avec l'agent (cherché
     /// dans tous les chats, réponse livrée ici) ; refusé s'il est en cours.
     fn cmd_ask(&mut self, agent_id: usize, text: String) {
+        let Some(provider) = self.provider.clone() else {
+            self.push_system(String::from(NOT_CONNECTED));
+            return;
+        };
         let here = self.sessions.index();
         let (owner, history) = match self.sessions.ask_agent(agent_id, text) {
             Err(AskError::Unknown) => {
@@ -167,7 +197,6 @@ impl App {
         };
         let model = self.effective_model();
         let effort = self.thinking.clone();
-        let provider = Arc::clone(&self.provider);
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let reply = provider
@@ -180,6 +209,10 @@ impl App {
     /// `/tell <n> <texte>` : injecte le texte dans le chat n (préfixé
     /// `[de Chat k]`) et déclenche sa réponse ; refusé s'il est occupé.
     fn cmd_tell(&mut self, target: usize, text: String) {
+        let Some(provider) = self.provider.clone() else {
+            self.push_system(String::from(NOT_CONNECTED));
+            return;
+        };
         let here = self.sessions.index();
         let idx = target - 1;
         if idx == here {
@@ -199,7 +232,6 @@ impl App {
         }
         let model = self.effective_model_for(idx);
         let effort = self.thinking.clone();
-        let provider = Arc::clone(&self.provider);
         let tx = self.tx.clone();
         let envelope = format!("[de Chat {}] {text}", here + 1);
         let history = {
@@ -208,7 +240,7 @@ impl App {
             dest.history.push((String::from("user"), envelope));
             dest.sending = true;
             dest.sending_since = Some(Instant::now());
-            crate::app::send_window(&dest.history, dest.pinned_system)
+            send_window(&dest.history, dest.pinned_system)
         };
         tokio::spawn(async move {
             let reply = provider
@@ -219,9 +251,24 @@ impl App {
         self.push_system(format!("envoyé au Chat {target}"));
     }
 
+    /// Fenêtre à envoyer si elle dépasse 1M (tokens estimés), sinon `None`.
+    pub(crate) fn context_over_limit(&self, text: &str) -> Option<u64> {
+        let sess = self.sessions.current();
+        let mut window = sess.history.clone();
+        window.push(("user".to_string(), text.to_string()));
+        let window = send_window(&window, sess.pinned_system);
+        let used = crate::tokens::context_estimate(&window);
+        (used > crate::tokens::CONTEXT_LIMIT).then_some(used)
+    }
+
     /// `/compact` : résume l'historique (agents.md exclu du résumé méta,
     /// mais conservé en tête après compaction — gardé : pinné? + résumé + 4).
+    /// Déconnecté → hint `/connect`.
     fn cmd_compact(&mut self) {
+        let Some(provider) = self.provider.clone() else {
+            self.push_system(String::from(NOT_CONNECTED));
+            return;
+        };
         let id = self.sessions.index();
         let sess = self.sessions.current();
         let pinned = sess.pinned_system;
@@ -232,7 +279,6 @@ impl App {
         }
         let model = self.effective_model();
         let effort = self.thinking.clone();
-        let provider = Arc::clone(&self.provider);
         let tx = self.tx.clone();
         let mut messages = vec![(String::from("system"), String::from(COMPACT_INSTRUCTION))];
         messages.extend(agents::without_pinned(&history, pinned).iter().cloned());
@@ -242,6 +288,43 @@ impl App {
                 .await;
             let _ = tx.send(Incoming::Compact(id, reply));
         });
+    }
+
+    /// `/connect [openai|muse]` : statut (sans arg), store Muse ou flow clavier.
+    /// Inconnu → erreur + valeurs (validation dans `start_connect_flow`).
+    fn cmd_connect(&mut self, arg: Option<String>) {
+        match arg {
+            None => self.cmd_connect_status(),
+            Some(name) if name == "muse" => self.cmd_connect_muse(),
+            Some(name) => self.start_connect_flow(&name),
+        }
+    }
+
+    /// `/connect` sans arg : provider + modèle, ou non connecté + usage.
+    fn cmd_connect_status(&mut self) {
+        match self.provider.as_ref() {
+            Some(provider) => {
+                let cfg = provider.config();
+                self.push_system(format!(
+                    "connecté à {} ({})\nusage : /connect openai|muse",
+                    provider_label(&cfg.base_url),
+                    cfg.model
+                ));
+            }
+            None => self.push_system(String::from(NOT_CONNECTED)),
+        }
+    }
+
+    /// `/connect muse` : store Muse si lisible, sinon saisie manuelle.
+    fn cmd_connect_muse(&mut self) {
+        let from_store = ProviderConfig::muse_auth_path().and_then(ProviderConfig::from_muse_auth);
+        match from_store {
+            Ok(cfg) => self.apply_connected(cfg, "muse"),
+            Err(_) => {
+                self.push_system(String::from("store Muse illisible, saisie manuelle"));
+                self.start_connect_flow("muse");
+            }
+        }
     }
 }
 

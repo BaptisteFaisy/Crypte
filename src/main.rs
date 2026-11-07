@@ -13,11 +13,13 @@ mod bestiary;
 mod chat;
 mod cmds;
 mod commands;
+mod connect;
 mod drain;
 mod fx;
 mod galerie;
 mod gfx;
 mod ghostty;
+mod history;
 mod mascot;
 mod provider;
 mod sessions;
@@ -50,8 +52,10 @@ OPTIONS:
 
 CONFIG (environnement, prioritaire sur --config) :
     KH_BASE_URL   Base OpenAI-compatible (defaut https://api.openai.com/v1)
-    KH_API_KEY    Cle API (obligatoire, jamais logguee)
-    KH_MODEL      Modele (obligatoire)
+    KH_API_KEY    Cle API (jamais logguee ; --once l'exige)
+    KH_MODEL      Modele (--once l'exige)
+    Sans cle ni --config ni --muse-auth : le TUI demarre quand meme,
+    deconnecte — /connect openai|muse pour se connecter dedans.
 
 MUSE (--muse-auth) :
     Store : ~/.config/muse/auth.json (cle : /providers/meta/api_key)
@@ -79,6 +83,9 @@ COMMANDES (dans le chat) :
     /agents  liste agents    /ask #<id> <texte>  reparler a un agent
     /tell <n> <texte>  parler au chat n
     /compact  compacter l'historique (resume + 4 derniers)
+    /connect [openai|muse]  connexion interactive (cle masquee,
+        Echap annule) ; sans arg : statut de connexion
+    limite contexte : 1M tokens estimes (voir /usage, /compact)
 ";
 
 /// Options CLI parsees (sans dependance externe).
@@ -186,12 +193,15 @@ async fn main() -> Result<()> {
     if let Some(path) = args.apercu.as_deref() {
         return apercu(path);
     }
-    let cfg = resolve_config(&args)?;
     if let Some(prompt) = args.once.as_deref() {
+        let cfg = resolve_config(&args)?;
         return run_once(&cfg, prompt).await;
     }
     let agents_md = crate::agents::load(args.agents_file.as_deref());
-    let mut app = App::from_config_with_agents(cfg, agents_md)?;
+    let mut app = match resolve_config(&args) {
+        Ok(cfg) => App::from_config_with_agents(cfg, agents_md)?,
+        Err(_) => App::disconnected_with_agents(agents_md),
+    };
     let mut terminal = ratatui::init();
     let result = match app.attach_terminal() {
         Ok(()) => app.run(&mut terminal).await,

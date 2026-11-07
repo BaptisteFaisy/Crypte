@@ -37,6 +37,23 @@ pub fn estimate(text: &str) -> usize {
     }
 }
 
+/// Fenêtre de contexte max (tokens estimés) par envoi vers le provider.
+pub const CONTEXT_LIMIT: u64 = 1_000_000;
+
+/// Estime le contexte d'une liste de messages (somme des contenus).
+pub fn context_estimate(messages: &[(String, String)]) -> u64 {
+    messages
+        .iter()
+        .map(|(_, content)| estimate(content) as u64)
+        .sum()
+}
+
+/// Texte de remplissage : `~X / 1M (Y%)`.
+pub fn fmt_context(used: u64) -> String {
+    let pct = used as f64 / CONTEXT_LIMIT as f64 * 100.0;
+    format!("~{used} / 1M ({pct:.1}%)")
+}
+
 /// Registre d'usage tokens sur la session.
 #[derive(Debug, Clone)]
 pub struct TokenLedger {
@@ -277,5 +294,23 @@ mod tests {
         assert_eq!(total.last(), (0, 0));
         assert_eq!(total.cost(), 0.0);
         assert_eq!(total.avg_tps(), 75.0);
+    }
+
+    #[test]
+    fn context_estimate_sums_all_messages() {
+        let msgs = vec![
+            (String::from("system"), String::from("abc")),
+            (String::from("user"), String::from("Hello, world!")),
+        ];
+        let used = context_estimate(&msgs);
+        assert!(used > 0);
+        assert_eq!(used, (estimate("abc") + estimate("Hello, world!")) as u64);
+        assert!(used < CONTEXT_LIMIT);
+    }
+
+    #[test]
+    fn fmt_context_shows_limit_and_percent() {
+        assert_eq!(fmt_context(500_000), "~500000 / 1M (50.0%)");
+        assert_eq!(fmt_context(0), "~0 / 1M (0.0%)");
     }
 }

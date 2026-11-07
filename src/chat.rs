@@ -44,11 +44,14 @@ pub struct ChatView<'a> {
     pub sending: bool,
 }
 
-/// Historique + brouillon de saisie.
+/// Historique + brouillon de saisie (+ prompt custom éventuel).
 #[derive(Debug, Default)]
 pub struct ChatState {
     messages: Vec<Message>,
     pub input: String,
+    prompt_label: Option<String>,
+    mask_input: bool,
+    input_preview: Option<String>,
 }
 
 impl ChatState {
@@ -88,6 +91,19 @@ impl ChatState {
     /// Prend le brouillon (le vide) pour l'envoyer.
     pub fn take_input(&mut self) -> String {
         std::mem::take(&mut self.input)
+    }
+
+    /// Change le label de saisie (`None` = défaut) + masquage (`•`).
+    /// Sert au flow `/connect` (clé masquée, modèle explicite).
+    pub fn set_prompt(&mut self, label: Option<String>, mask: bool) {
+        self.prompt_label = label;
+        self.mask_input = mask;
+    }
+
+    /// Texte affiché à la place du brouillon (`None` = brouillon).
+    /// Le flow `/connect` y montre son buffer (brouillon préservé).
+    pub fn set_input_preview(&mut self, preview: Option<String>) {
+        self.input_preview = preview;
     }
 
     /// Rend historique + saisie dans `area`.
@@ -136,22 +152,29 @@ impl ChatState {
         frame.render_widget(Paragraph::new(visible), inner);
     }
 
-    /// Saisie : brouillon cadré sur la fin + curseur bougie clignotant.
+    /// Saisie : brouillon (ou aperçu) cadré sur la fin + curseur bougie.
+    /// Le label custom et le masquage (`•`) servent au flow `/connect`.
     fn draw_input(&self, frame: &mut Frame, area: Rect, tick: u64) {
+        let title = match &self.prompt_label {
+            Some(label) => Line::from(label.clone()),
+            None => Line::styled(" ✒ parler ", Style::new().fg(CANDLE)),
+        };
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(CANDLE))
-            .title(Line::styled(" ✒ parler ", Style::new().fg(CANDLE)))
+            .title(title)
             .title_bottom(Line::styled(" Entrée ", Style::new().fg(ASH)).right_aligned());
         let inner_w = area.width.saturating_sub(3) as usize;
         let cursor = if (tick / 5) % 2 == 0 { "▌" } else { " " };
         let cursor = Span::styled(cursor, Style::new().fg(CANDLE));
-        let line = if self.input.is_empty() {
+        let raw = self.input_preview.as_ref().unwrap_or(&self.input);
+        let line = if raw.is_empty() {
             let hint = Style::new().fg(ASH).add_modifier(Modifier::ITALIC);
             Line::from(vec![cursor, Span::styled("murmure à la crypte…", hint)])
         } else {
-            let text = tail_chars(&self.input, inner_w.max(1));
+            let shown = mask_text(raw, self.mask_input);
+            let text = tail_chars(&shown, inner_w.max(1));
             Line::from(vec![Span::styled(text, Style::new().fg(BONE)), cursor])
         };
         frame.render_widget(Paragraph::new(line).block(block), area);
@@ -267,6 +290,15 @@ fn epitaph(height: u16) -> Paragraph<'static> {
     Paragraph::new(lines).alignment(Alignment::Center)
 }
 
+/// Masque `s` (un `•` par caractère) si `mask`, sinon copie.
+fn mask_text(s: &str, mask: bool) -> String {
+    if mask {
+        s.chars().map(|_| '•').collect()
+    } else {
+        s.to_string()
+    }
+}
+
 /// Garde les `n` derniers caractères (cadrage saisie longue sur la fin).
 fn tail_chars(s: &str, n: usize) -> String {
     if n == 0 {
@@ -303,5 +335,26 @@ mod tests {
         chat.push(Role::Assistant, "bienvenue dans la crypte");
         let lines = history_lines(chat.messages(), 40);
         assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn prompt_masked_hides_key_length_only() {
+        let mut chat = ChatState::new();
+        chat.input.push_str("brouillon");
+        chat.set_prompt(Some(String::from("clé API muse (masquée)")), true);
+        chat.set_input_preview(Some(String::from("sk-secret")));
+        assert_eq!(chat.prompt_label.as_deref(), Some("clé API muse (masquée)"));
+        assert!(chat.mask_input);
+        let shown = mask_text(
+            chat.input_preview.as_ref().unwrap_or(&chat.input),
+            chat.mask_input,
+        );
+        assert_eq!(shown, "•••••••••");
+        assert!(!shown.contains("sk-secret"));
+        assert_eq!(chat.input, "brouillon");
+        chat.set_prompt(None, false);
+        chat.set_input_preview(None);
+        assert_eq!(chat.prompt_label, None);
+        assert!(!chat.mask_input);
     }
 }
