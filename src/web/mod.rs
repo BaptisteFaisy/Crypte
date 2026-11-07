@@ -1,10 +1,12 @@
 //! Web search for `/web`: backends, page fetch, cache, synthesis input.
 //!
 //! Chain (first non-empty wins): Tavily → Brave → DuckDuckGo → Wikipedia
-//! (FR+EN). 8 s per backend, top-3 pages in parallel, char budgets,
-//! 10 min cache. Keys never logged. Pure parsing lives in [`parse`].
+//! (FR+EN). 8 s per backend, 20 s global deadline, fetch skipped when
+//! snippets are rich, 10 min cache. Keys never logged. Pure parsing in
+//! [`parse`], relevance shaping in [`rank`].
 
 mod parse;
+mod rank;
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -16,26 +18,31 @@ use tokio::time::timeout;
 
 use crate::provider::Provider;
 
-use self::parse::{parse_ddg_html, parse_json_results, parse_wikipedia, strip_html, wiki_hits};
+use self::parse::{parse_ddg_html, parse_json_results, parse_wiki_generator, strip_html};
+use self::rank::{build_context, dedup_results, fr_first, need_fetch, pick_passages};
 
 /// Timeout per backend call and per page fetch.
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(8);
 /// Results kept per search (also the numbered `[n]` source count).
 pub(super) const MAX_RESULTS: usize = 5;
 /// Pages fetched in parallel to enrich the context.
-const MAX_FETCHES: usize = 3;
+pub(super) const MAX_FETCHES: usize = 3;
 /// Chars kept per snippet.
 pub(super) const MAX_SNIPPET: usize = 500;
-/// Chars kept per fetched page (after HTML strip).
-const MAX_PAGE_CHARS: usize = 2000;
-/// Total chars of the LLM context block.
-const MAX_CONTEXT_CHARS: usize = 8000;
-/// Bytes read per page before stripping (HTML head is enough).
+/// Chars kept per fetched page (best query passages, not the head).
+const MAX_PAGE_CHARS: usize = 1200;
+/// Total chars of the LLM context block (fair share per source).
+pub(super) const MAX_CONTEXT_CHARS: usize = 6000;
+/// Bytes read per page before stripping (stream cut, never over-read).
 const MAX_BODY_BYTES: usize = 64 * 1024;
 /// Search cache TTL (query → full research, pages included).
 const CACHE_TTL: Duration = Duration::from_secs(600);
 /// Search cache capacity (cleared when full).
 const CACHE_CAP: usize = 50;
+/// DuckDuckGo skip window after an anti-bot challenge page.
+const DDG_COOLDOWN: Duration = Duration::from_secs(600);
+/// Global research deadline (search + fetch, synthesis excluded).
+const RESEARCH_DEADLINE: Duration = Duration::from_secs(20);
 /// DuckDuckGo HTML endpoint (free, no key, sometimes bot-blocked).
 const DDG_ENDPOINT: &str = "https://html.duckduckgo.com/html/";
 /// Browser user-agent, default on every request (Wikipedia 403s without
@@ -90,13 +97,16 @@ impl WebClient {
                 .map(|v| v.trim().to_string())
                 .filter(|v| !v.is_empty())
         };
-        let client = reqwest::Client::builder()
-            .timeout(SEARCH_TIMEOUT)
-            .user_agent(BROWSER_UA)
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
-            client,
+            client: HTTP_CLIENT
+                .get_or_init(|| {
+                    reqwest::Client::builder()
+                        .timeout(SEARCH_TIMEOUT)
+                        .user_agent(BROWSER_UA)
+                        .build()
+                        .unwrap_or_else(|_| reqwest::Client::new())
+                })
+                .clone(),
             brave_key: key("BRAVE_API_KEY"),
             tavily_key: key("TAVILY_API_KEY"),
         }
@@ -137,9 +147,11 @@ impl WebClient {
                 }
             }
         }
-        if let Ok(found) = self.search_ddg(query).await {
-            if !found.is_empty() {
-                return Ok(("duckduckgo", found));
+        if !ddg_cooling() {
+            if let Ok(found) = self.search_ddg(query).await {
+                if !found.is_empty() {
+                    return Ok(("duckduckgo", found));
+                }
             }
         }
         let found = self.search_wikipedia(query).await?;
@@ -188,8 +200,8 @@ impl WebClient {
         Ok(parse_json_results(&items, "description"))
     }
 
-    /// DuckDuckGo HTML (free; an anti-bot challenge page parses to
-    /// zero results, which falls through to Wikipedia).
+    /// DuckDuckGo HTML (free; a challenge page parses to zero results
+    /// and arms the cooldown, falling through to Wikipedia).
     async fn search_ddg(&self, query: &str) -> Result<Vec<SearchResult>> {
         let url =
             reqwest::Url::parse_with_params(DDG_ENDPOINT, [("q", query)]).context("ddg url")?;
@@ -202,84 +214,67 @@ impl WebClient {
             .await
             .context("ddg timeout")?
             .context("ddg body")?;
+        if html.contains("anomaly") {
+            note_ddg_challenge();
+        }
         Ok(parse_ddg_html(&html))
     }
 
-    /// Wikipedia FR + EN in parallel (free, never bot-blocked).
+    /// Wikipedia FR + EN in parallel (free, never bot-blocked), ordered
+    /// by query language (French → FR first, else EN first).
     async fn search_wikipedia(&self, query: &str) -> Result<Vec<SearchResult>> {
         let (fr, en) = tokio::join!(self.wiki_lang("fr", query), self.wiki_lang("en", query));
-        let mut out = fr.unwrap_or_default();
-        out.extend(en.unwrap_or_default());
+        let (mut out, rest) = if fr_first(query) {
+            (fr.unwrap_or_default(), en.unwrap_or_default())
+        } else {
+            (en.unwrap_or_default(), fr.unwrap_or_default())
+        };
+        out.extend(rest);
         Ok(out)
     }
 
-    /// One Wikipedia language: full-text search (titles + URLs) then a
-    /// single `extracts` call for all intros (plain text, 400 chars each).
+    /// One Wikipedia language: `generator=search` returns titles + intros
+    /// in a single call (plain text, 400 chars each, ranked by `index`).
     async fn wiki_lang(&self, lang: &str, query: &str) -> Result<Vec<SearchResult>> {
         let api = format!("https://{lang}.wikipedia.org/w/api.php");
-        let s_url = reqwest::Url::parse_with_params(
+        let url = reqwest::Url::parse_with_params(
             &api,
             [
                 ("action", "query"),
-                ("list", "search"),
-                ("srsearch", query),
-                ("srlimit", &MAX_RESULTS.to_string()),
-                ("format", "json"),
-            ],
-        )
-        .context("wikipedia url")?;
-        let found = self.fetch_json("wikipedia", self.client.get(s_url)).await?;
-        let (titles, os) = wiki_hits(&found, lang);
-        if titles.is_empty() {
-            return Ok(Vec::new());
-        }
-        let ex_url = reqwest::Url::parse_with_params(
-            &api,
-            [
-                ("action", "query"),
+                ("generator", "search"),
+                ("gsrsearch", query),
+                ("gsrlimit", &MAX_RESULTS.to_string()),
                 ("prop", "extracts"),
                 ("exintro", "1"),
                 ("explaintext", "1"),
                 ("exchars", "400"),
-                ("titles", &titles.join("|")),
                 ("format", "json"),
             ],
         )
         .context("wikipedia url")?;
-        let ex = self
-            .fetch_json("wikipedia", self.client.get(ex_url))
-            .await?;
-        Ok(parse_wikipedia(&os, &ex))
+        let json = self.fetch_json("wikipedia", self.client.get(url)).await?;
+        Ok(parse_wiki_generator(&json, lang))
     }
 
-    /// Full pipeline: cache → search → parallel top-3 fetch → context.
-    /// Stores the research in the cache (expired entries swept, cap: clear).
+    /// Full pipeline: cache → search → fetch (skipped when snippets
+    /// are rich) → context. Query case preserved (only the cache key is
+    /// normalized). Stores the research in the cache (swept, cap: clear).
     async fn research(&self, query: &str) -> Result<Research> {
-        let key = query.trim().to_lowercase();
-        if key.is_empty() {
+        let asked = query.trim();
+        if asked.is_empty() {
             anyhow::bail!("empty query");
         }
+        let key = asked.to_lowercase();
         if let Some(hit) = cached_search(&key) {
             return Ok(hit);
         }
-        let (backend, found) = self.search(&key).await?;
+        let (backend, found) = self.search(asked).await?;
         let results: Vec<SearchResult> =
             dedup_results(found).into_iter().take(MAX_RESULTS).collect();
         if results.is_empty() {
             anyhow::bail!("no web results");
         }
-        let mut set = JoinSet::new();
-        for (i, result) in results.iter().take(MAX_FETCHES).enumerate() {
-            let client = self.client.clone();
-            let url = result.url.clone();
-            set.spawn(async move { (i, fetch_text(&client, &url).await.unwrap_or_default()) });
-        }
-        let mut indexed = Vec::new();
-        while let Some(done) = set.join_next().await {
-            indexed.push(done.unwrap_or((usize::MAX, String::new())));
-        }
-        indexed.sort_by_key(|(i, _)| *i);
-        let excerpts: Vec<String> = indexed.into_iter().map(|(_, text)| text).collect();
+        let excerpts = self.fetch_excerpts(&results, asked).await;
         let context = build_context(&results, &excerpts);
         let found = Research {
             results,
@@ -298,12 +293,36 @@ impl WebClient {
         }
         Ok(found)
     }
+
+    /// Top pages in parallel → best query passages each (order kept).
+    /// Skipped (empty) when snippets are already rich. Fetch failures
+    /// yield empty excerpts (snippets still ground the synthesis).
+    async fn fetch_excerpts(&self, results: &[SearchResult], query: &str) -> Vec<String> {
+        if !need_fetch(results) {
+            return Vec::new();
+        }
+        let mut set = JoinSet::new();
+        for (i, result) in results.iter().take(MAX_FETCHES).enumerate() {
+            let client = self.client.clone();
+            let url = result.url.clone();
+            set.spawn(async move { (i, fetch_text(&client, &url).await.unwrap_or_default()) });
+        }
+        let mut indexed = Vec::new();
+        while let Some(done) = set.join_next().await {
+            indexed.push(done.unwrap_or((usize::MAX, String::new())));
+        }
+        indexed.sort_by_key(|(i, _)| *i);
+        indexed
+            .into_iter()
+            .map(|(_, text)| pick_passages(&text, query, MAX_PAGE_CHARS))
+            .collect()
+    }
 }
 
-/// Fetches a page as plain text (HTML/text only, stripped, budgeted).
-/// Any failure is an `Err` (the caller falls back to the snippet).
+/// Fetches a page as plain text (chunks cut at the cap, HTML/text only,
+/// empty content-type accepted). Any failure is an `Err` (fallback).
 async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String> {
-    let resp = timeout(SEARCH_TIMEOUT, client.get(url).send())
+    let mut resp = timeout(SEARCH_TIMEOUT, client.get(url).send())
         .await
         .context("fetch timeout")?
         .context("fetch")?;
@@ -316,49 +335,29 @@ async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String> {
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default()
         .to_lowercase();
-    if !(ctype.contains("text") || ctype.contains("html") || ctype.contains("xml")) {
+    let is_text = ["text", "html", "xml"].iter().any(|k| ctype.contains(k));
+    if !ctype.is_empty() && !is_text {
         anyhow::bail!("fetch skip {ctype}");
     }
-    let bytes = timeout(SEARCH_TIMEOUT, resp.bytes())
-        .await
-        .context("fetch body timeout")?
-        .context("fetch body")?;
-    let capped = &bytes[..bytes.len().min(MAX_BODY_BYTES)];
-    let text = strip_html(&String::from_utf8_lossy(capped));
+    let mut body = Vec::new();
+    while body.len() < MAX_BODY_BYTES {
+        let chunk = timeout(SEARCH_TIMEOUT, resp.chunk())
+            .await
+            .context("fetch body timeout")?
+            .context("fetch body")?;
+        let Some(chunk) = chunk else { break };
+        let room = MAX_BODY_BYTES - body.len();
+        body.extend_from_slice(&chunk[..chunk.len().min(room)]);
+    }
+    let text = strip_html(&String::from_utf8_lossy(&body));
     Ok(crate::provider::truncate(&text, MAX_PAGE_CHARS))
 }
 
-/// Drops results with an empty/duplicate URL (first occurrence wins).
-fn dedup_results(results: Vec<SearchResult>) -> Vec<SearchResult> {
-    let mut seen = std::collections::HashSet::new();
-    results
-        .into_iter()
-        .filter(|r| !r.url.is_empty() && seen.insert(r.url.clone()))
-        .collect()
-}
-
-/// Numbered LLM context: `[n] title — url`, snippet, page excerpt.
-fn build_context(results: &[SearchResult], excerpts: &[String]) -> String {
-    let mut ctx = String::new();
-    for (i, result) in results.iter().enumerate() {
-        ctx.push_str(&format!("[{}] {} — {}\n", i + 1, result.title, result.url));
-        if !result.snippet.is_empty() {
-            ctx.push_str(&format!("{}\n", result.snippet));
-        }
-        if let Some(excerpt) = excerpts.get(i) {
-            if !excerpt.is_empty() {
-                ctx.push_str(&format!("{excerpt}\n"));
-            }
-        }
-    }
-    crate::provider::truncate(&ctx, MAX_CONTEXT_CHARS)
-}
-
-/// Synthesis prompt: same language as the query, factual, cited `[n]`.
+/// Synthesis prompt: grounded, cited, contradiction-aware.
 fn synthesis_messages(query: &str, context: &str) -> Vec<(String, String)> {
     let system = "You are a web research assistant. Answer in the same language as the query. \
-        Be factual and concise (10 lines max). Cite sources as [n]. \
-        If the results are insufficient, say so plainly.";
+        Use ONLY the provided results, never outside knowledge. Every factual claim ends \
+        with its [n] citation. If sources contradict each other, say so. Stay concise.";
     vec![
         (String::from("system"), system.to_string()),
         (
@@ -380,6 +379,23 @@ fn raw_text(head: &str, results: &[SearchResult]) -> String {
     text
 }
 
+/// Vrai si un challenge DDG récent impose de sauter ce backend.
+fn ddg_cooling() -> bool {
+    DDG_BLOCKED
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|guard| *guard)
+        .is_some_and(|at| at.elapsed() < DDG_COOLDOWN)
+}
+
+/// Mémorise un challenge anti-bot (prochains `/web` sautent DDG).
+fn note_ddg_challenge() {
+    if let Ok(mut guard) = DDG_BLOCKED.get_or_init(|| Mutex::new(None)).lock() {
+        *guard = Some(Instant::now());
+    }
+}
+
 /// Cache hit (normalized query → full research), `None` if absent/expired.
 fn cached_search(key: &str) -> Option<Research> {
     let cache = SEARCH_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
@@ -397,7 +413,9 @@ pub async fn answer(
     effort: Option<&str>,
 ) -> Result<WebAnswer> {
     let client = WebClient::from_env();
-    let found = client.research(&query).await?;
+    let found = timeout(RESEARCH_DEADLINE, client.research(&query))
+        .await
+        .context("research deadline")??;
     let mut sources = String::from("\n\nSources:");
     for (i, result) in found.results.iter().enumerate() {
         sources.push_str(&format!("\n[{}] {} — {}", i + 1, result.title, result.url));
@@ -434,33 +452,21 @@ pub async fn answer(
 /// Query cache: normalized query → (insertion time, full research).
 static SEARCH_CACHE: OnceLock<Mutex<HashMap<String, (Instant, Research)>>> = OnceLock::new();
 
+/// Shared HTTP client: one pool (TLS + connections reused across `/web`).
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+/// Last DuckDuckGo anti-bot challenge (skip DDG while cooling down).
+static DDG_BLOCKED: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn result(title: &str, url: &str, snippet: &str) -> SearchResult {
-        SearchResult {
-            title: title.to_string(),
-            url: url.to_string(),
-            snippet: snippet.to_string(),
-        }
-    }
-
     #[test]
-    fn context_dedups_numbers_and_truncates() {
-        let results = vec![
-            result("One", "https://a.example/", "first"),
-            result("One dup", "https://a.example/", "dropped"),
-            result("Empty", "", "dropped too"),
-            result("Two", "https://b.example/", "second"),
-        ];
-        let deduped = dedup_results(results);
-        assert_eq!(deduped.len(), 2);
-        let ctx = build_context(&deduped, &[String::from("excerpt one"), String::new()]);
-        assert!(ctx.starts_with("[1] One — https://a.example/"));
-        assert!(ctx.contains("excerpt one"));
-        assert!(ctx.contains("[2] Two — https://b.example/"));
-        assert!(ctx.chars().count() <= MAX_CONTEXT_CHARS);
+    fn ddg_cooldown_arms_and_covers() {
+        assert!(!ddg_cooling());
+        note_ddg_challenge();
+        assert!(ddg_cooling());
     }
 
     #[test]
@@ -469,6 +475,7 @@ mod tests {
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].0, "system");
         assert!(msgs[0].1.contains("[n]"));
+        assert!(msgs[0].1.contains("ONLY"));
         assert_eq!(msgs[1].0, "user");
         assert!(msgs[1].1.contains("rust async?"));
         assert!(msgs[1].1.contains("https://tokio.rs/"));
