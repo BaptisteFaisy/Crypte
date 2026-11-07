@@ -44,7 +44,7 @@ crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 `font.rs` police 3×5, `social.rs` orbes et bavardages), `app/esprits.rs`
 (écran + touches du hub). Sprites du hub : `assets/hub/*.txt`.
 `web/` (`/web` : backends → fetch → cache → synthèse, parsing pur dans
-`web/parse.rs`).
+`web/parse.rs`, pertinence dans `web/rank.rs`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async) → `drain_replies`
