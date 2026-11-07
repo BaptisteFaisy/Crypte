@@ -25,6 +25,7 @@ use crate::bus::Bus;
 use crate::chat::Role;
 use crate::commands;
 use crate::connect::{ConnectFlow, NOT_CONNECTED};
+use crate::events::EventLog;
 use crate::fx::Fx;
 use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
@@ -89,6 +90,8 @@ pub struct App {
     pub(crate) permissions_path: Option<PathBuf>,
     /// Fichier de persistance des chats (`None` = off : tests, smoke, demo).
     pub(crate) chats_path: Option<PathBuf>,
+    /// Journal d'événements temps réel (`--events-log`, désactivé sinon).
+    pub(crate) events: EventLog,
     pub(crate) tx: mpsc::Sender<Incoming>,
     rx: mpsc::Receiver<Incoming>,
     /// Pool borné d'appels LLM (plafond `CRYPTE_MAX_FLIGHT`, défaut 4).
@@ -96,12 +99,6 @@ pub struct App {
 }
 
 impl App {
-    /// Nouveau chat + pin agents.md si chargé (Ctrl+N, `/new`).
-    pub(crate) fn add_chat(&mut self) {
-        self.sessions.add();
-        self.pin_current();
-    }
-
     /// Branche le vrai terminal (après `ratatui::init`) : protocole
     /// d'images (Kitty dans Ghostty) + habillage de la fenêtre.
     pub fn attach_terminal(&mut self) -> Result<()> {
@@ -237,6 +234,7 @@ impl App {
             sess.name = short_name(&text);
         }
         sess.chat.push(Role::User, text.clone());
+        self.events.emit(&crate::events::Event::user_msg(id, &text));
         sess.push_history("user", text);
         let history = send_window(&sess.history, sess.pinned_system);
         sess.sending = true;

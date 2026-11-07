@@ -50,6 +50,8 @@ cat /tmp/crypte.ans                                         # read it in Ghostty
 With no key or config, the TUI still starts, disconnected
 (see `/connect` below).
 
+On a VPS, with a live event stream: see [docs/VPS.md](docs/VPS.md).
+
 ## Muse Code
 
 Prerequisite: logged-in `muse` CLI. One-command setup:

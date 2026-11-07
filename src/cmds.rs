@@ -9,6 +9,7 @@ use crate::bus::{LinkEnd, LinkError, QueuedAsk, QueuedTell, Target};
 use crate::chat::Role;
 use crate::commands::{self, Command, MsgTarget};
 use crate::connect::NOT_CONNECTED;
+use crate::events::Event;
 use crate::history::window_estimate;
 use crate::hub::Signal;
 use crate::provider::{provider_label, ProviderConfig};
@@ -154,6 +155,8 @@ impl App {
         };
         self.sessions
             .attach_workspace(agent_id, crate::workspace::base().as_deref());
+        self.events
+            .emit(&Event::agent_spawned(agent_id, id, deliver, &prompt));
         if deliver == id {
             self.push_system(format!("agent#{agent_id} started"));
         } else {
@@ -286,6 +289,7 @@ impl App {
         self.ensure_agents_loaded();
         let dest = self.sessions.get_mut(idx).expect("chat validé ci-dessus");
         dest.chat.push(Role::User, envelope.clone());
+        self.events.emit(&Event::user_msg(idx, &envelope));
         if dest.sending {
             dest.inbox.push_back(QueuedTell {
                 envelope,
@@ -470,22 +474,6 @@ impl App {
                 self.start_connect_flow("muse");
             }
         }
-    }
-
-    /// `/web <query>` : web search + LLM synthesis with cited sources.
-    /// Async (`Incoming::Web`) ; works disconnected too (raw results).
-    fn cmd_web(&mut self, query: String) {
-        let id = self.sessions.index();
-        let provider = self.provider.clone();
-        let model = self.effective_model();
-        let effort = self.thinking.clone();
-        let tx = self.tx.clone();
-        self.push_system(format!("web search: {query}…"));
-        self.pool.spawn(async move {
-            let reply =
-                crate::web::answer(query, provider.as_deref(), &model, effort.as_deref()).await;
-            let _ = tx.send(Incoming::Web(id, reply)).await;
-        });
     }
 }
 

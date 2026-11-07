@@ -14,6 +14,7 @@ use crate::app::{App, Incoming};
 use crate::apparition::Omen;
 use crate::bus::{LinkEnd, QueuedAsk, QueuedTell, MAX_AUTO_HOPS};
 use crate::chat::Role;
+use crate::events::Event;
 use crate::history::send_window;
 use crate::hub::Signal;
 use crate::provider::Completion;
@@ -58,13 +59,16 @@ impl App {
                     .record(done.prompt_tokens, done.completion_tokens, elapsed);
                 sess.push_history("assistant", done.text.clone());
                 sess.chat.push(Role::Assistant, done.text.clone());
+                self.events.emit(&Event::assistant_msg(id, &done));
                 self.hub.signal(Signal::Reply { chat: id });
                 self.apparition.advance();
                 self.pump_chat_inbox(id);
                 self.fire_chat_links(id, &done.text);
             }
             Err(err) => {
-                sess.chat.push(Role::System, format!("error: {err:#}"));
+                let error = format!("{err:#}");
+                sess.chat.push(Role::System, format!("error: {error}"));
+                self.events.emit(&Event::assistant_error(id, &error));
                 self.apparition.omen(Omen::Error);
                 self.pump_chat_inbox(id);
             }
@@ -88,9 +92,12 @@ impl App {
             Err(err) => {
                 self.fail_agent(owner, agent_id);
                 self.apparition.omen(Omen::Error);
+                let error = format!("{err:#}");
+                self.events
+                    .emit(&Event::agent_failed(owner, agent_id, deliver, &error));
                 if let Some(dest) = self.sessions.get_mut(deliver) {
                     dest.chat
-                        .push(Role::System, format!("{tag} error: {err:#}"));
+                        .push(Role::System, format!("{tag} error: {error}"));
                 }
                 self.pump_agent_inbox(agent_id);
                 return;
@@ -104,6 +111,8 @@ impl App {
                 agent.push_assistant(done.text.clone());
             }
         }
+        self.events
+            .emit(&Event::agent_done(owner, agent_id, deliver, &done));
         if let Some(dest) = self.sessions.get_mut(deliver) {
             dest.ledger
                 .record(done.prompt_tokens, done.completion_tokens, 0.0);
@@ -153,6 +162,7 @@ impl App {
                 let after = sess.history.len();
                 sess.chat
                     .push(Role::System, format!("compacted: {before}→{after}"));
+                self.events.emit(&Event::compacted(id, before, after));
                 self.apparition.omen(Omen::Compact);
             }
             Err(err) => {
@@ -206,6 +216,8 @@ impl App {
         if let Some(md) = &self.agents_md {
             history.insert(0, (String::from("system"), md.clone()));
         }
+        self.events
+            .emit(&Event::agent_ask(owner, agent_id, deliver, &history));
         self.hub.signal(Signal::Ask {
             from: deliver,
             agent: agent_id,
@@ -393,6 +405,8 @@ impl App {
                     Role::Assistant,
                     format!("[web:{}] {}", done.backend, done.text),
                 );
+                self.events
+                    .emit(&Event::web_answer(id, done.backend, &done.text));
                 self.apparition.advance();
             }
             Err(err) => {
@@ -401,6 +415,36 @@ impl App {
                 self.apparition.omen(Omen::Error);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::events::EventLog;
+
+    /// `drain_chat` OK append une ligne `assistant_msg` au journal.
+    #[test]
+    fn drain_chat_ok_emits_assistant_msg() {
+        let path =
+            std::env::temp_dir().join(format!("crypte-drain-test-{}.jsonl", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut app = App::offline().unwrap();
+        app.events = EventLog::new(Some(path.clone()));
+        let done = Completion {
+            text: String::from("boo"),
+            prompt_tokens: 3,
+            completion_tokens: 5,
+        };
+        app.drain_chat(0, Ok(done));
+        let content = std::fs::read_to_string(&path).unwrap();
+        let line = content.lines().next().unwrap();
+        let v: serde_json::Value = serde_json::from_str(line).unwrap();
+        assert_eq!(v["type"], "assistant_msg");
+        assert_eq!(v["chat"], 1);
+        assert_eq!(v["text"], "boo");
+        assert_eq!(v["completion_tokens"], 5);
+        let _ = std::fs::remove_file(&path);
     }
 }
 

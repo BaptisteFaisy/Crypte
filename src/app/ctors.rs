@@ -13,6 +13,7 @@ use crate::apparition::Apparition;
 use crate::bus::Bus;
 use crate::chat::Role;
 use crate::connect::NOT_CONNECTED;
+use crate::events::EventLog;
 use crate::fx::Fx;
 use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
@@ -126,6 +127,7 @@ impl App {
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
             chats_path: None,
+            events: EventLog::disabled(),
             tx,
             rx,
             pool: SpawnPool::new(),
@@ -152,6 +154,16 @@ impl App {
         self.agents_md = Some(content);
         self.pin_all_empty();
         self.announce_agents_md();
+    }
+
+    /// Nouveau chat + pin agents.md si chargé (Ctrl+N, `/new`).
+    pub(crate) fn add_chat(&mut self) {
+        self.sessions.add();
+        self.pin_current();
+        let at = self.sessions.index();
+        let name = self.sessions.current().name.clone();
+        self.events
+            .emit(&crate::events::Event::chat_created(at, &name));
     }
 
     /// Épingle agents.md en tête du chat courant (si chargé).
