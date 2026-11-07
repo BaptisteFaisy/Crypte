@@ -25,6 +25,7 @@ mod gfx;
 mod ghostty;
 mod history;
 mod hub;
+mod kiro;
 mod mascot;
 mod mouse;
 mod permissions;

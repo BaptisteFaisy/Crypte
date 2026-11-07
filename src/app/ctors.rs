@@ -145,19 +145,23 @@ impl App {
         app
     }
 
-    /// Lit agents.md au premier envoi (une seule tentative), épingle les
-    /// chats vides et annonce dans le chat courant. Absent = silencieux.
+    /// Lit agents.md + steering Kiro au premier envoi (une seule tentative),
+    /// épingle les chats vides et annonce dans le chat courant. Absent = silencieux.
     pub(crate) fn ensure_agents_loaded(&mut self) {
         if self.agents_tried {
             return;
         }
         self.agents_tried = true;
-        let Some(content) = agents::load(self.agents_file.as_deref()) else {
+        let merged = agents::load_merged(self.agents_file.as_deref());
+        if merged.text.is_none() {
             return;
-        };
-        self.agents_md = Some(content);
+        }
+        let msg = agents::merged_message(&merged);
+        self.agents_md = merged.text;
         self.pin_all_empty();
-        self.announce_agents_md();
+        if let Some(msg) = msg {
+            self.sessions.current_mut().chat.push(Role::System, msg);
+        }
     }
 
     /// Nouveau chat + pin agents.md si chargé (Ctrl+N, `/new`).
@@ -249,6 +253,13 @@ mod tests {
 
     #[test]
     fn lazy_charge_epingle_et_annonce_une_seule_fois() {
+        // Neutralise le steering Kiro réel (déterministe, voir KH_KIRO_*).
+        let saved_project = std::env::var("KH_KIRO_PROJECT").ok();
+        let saved_global = std::env::var("KH_KIRO_GLOBAL").ok();
+        let empty = std::env::temp_dir().join(format!("kh-lazy-{}-empty", std::process::id()));
+        std::fs::create_dir_all(&empty).unwrap();
+        std::env::set_var("KH_KIRO_PROJECT", &empty);
+        std::env::set_var("KH_KIRO_GLOBAL", &empty);
         let path = tmp_file("unique", "contexte v1");
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         app.ensure_agents_loaded();
@@ -263,6 +274,15 @@ mod tests {
         app.add_chat();
         assert!(app.sessions.current().pinned_system);
         std::fs::remove_file(&path).ok();
+        match saved_project {
+            Some(v) => std::env::set_var("KH_KIRO_PROJECT", v),
+            None => std::env::remove_var("KH_KIRO_PROJECT"),
+        }
+        match saved_global {
+            Some(v) => std::env::set_var("KH_KIRO_GLOBAL", v),
+            None => std::env::remove_var("KH_KIRO_GLOBAL"),
+        }
+        std::fs::remove_dir_all(&empty).ok();
     }
 
     #[test]
