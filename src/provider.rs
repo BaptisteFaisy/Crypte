@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::tools::{ToolCall, ToolDef, WireMsg};
+
 /// Base OpenAI (défaut global, format OpenAI-compatible).
 pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 /// Modèle OpenAI par défaut (flow `/connect openai`).
@@ -256,14 +258,38 @@ impl Provider {
 
     /// Appel généralisé : modèle et effort de réflexion explicites.
     /// `effort` à `None` → champ `reasoning_effort` omis du JSON.
+    /// Sans outils : JSON identique à l'ancien format (zéro régression).
     pub async fn complete_full(
         &self,
         messages: &[(String, String)],
         model: &str,
         effort: Option<&str>,
     ) -> Result<Completion> {
+        let wire: Vec<WireMsg> = messages
+            .iter()
+            .map(|(role, content)| WireMsg::text(role.clone(), content.clone()))
+            .collect();
+        self.complete_with_tools(&wire, &[], model, effort).await
+    }
+
+    /// Appel outillé : messages filaires + schémas (`tools` omis si vide,
+    /// `tool_choice: auto` sinon). Parse aussi les `tool_calls` reçus.
+    pub async fn complete_with_tools(
+        &self,
+        messages: &[WireMsg],
+        tools: &[ToolDef],
+        model: &str,
+        effort: Option<&str>,
+    ) -> Result<Completion> {
         let url = self.endpoint();
-        let body = ChatRequest::new(model, messages, effort);
+        let body = ToolsRequest {
+            model,
+            messages,
+            stream: false,
+            reasoning_effort: effort,
+            tools,
+            tool_choice: (!tools.is_empty()).then_some("auto"),
+        };
         let resp = self
             .client
             .post(&url)
@@ -288,35 +314,18 @@ impl Provider {
     }
 }
 
+/// Requête outillée (`tools`/`tool_choice` omis quand aucun outil).
 #[derive(Debug, Serialize)]
-struct ChatRequest<'a> {
+struct ToolsRequest<'a> {
     model: &'a str,
-    messages: Vec<ChatMessage<'a>>,
+    messages: &'a [WireMsg],
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<&'a str>,
-}
-
-#[derive(Debug, Serialize)]
-struct ChatMessage<'a> {
-    role: &'a str,
-    content: &'a str,
-}
-
-impl<'a> ChatRequest<'a> {
-    fn new(model: &'a str, messages: &'a [(String, String)], effort: Option<&'a str>) -> Self {
-        let mut refs = Vec::with_capacity(messages.len());
-        refs.extend(messages.iter().map(|(role, content)| ChatMessage {
-            role: role.as_str(),
-            content: content.as_str(),
-        }));
-        Self {
-            model,
-            messages: refs,
-            stream: false,
-            reasoning_effort: effort,
-        }
-    }
+    #[serde(skip_serializing_if = "<[ToolDef]>::is_empty")]
+    tools: &'a [ToolDef],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<&'a str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -337,6 +346,26 @@ struct Choice {
 struct ResponseMessage {
     #[serde(default)]
     content: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<ToolCallIn>>,
+}
+
+/// Appel reçu (forme OpenAI : `id` + `function`, `type` ignoré).
+#[derive(Debug, Deserialize)]
+struct ToolCallIn {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    function: ToolFnIn,
+}
+
+/// Fonction reçue : nom + arguments JSON bruts.
+#[derive(Debug, Default, Deserialize)]
+struct ToolFnIn {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    arguments: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -347,30 +376,41 @@ struct Usage {
     completion_tokens: u64,
 }
 
-/// Réponse textuelle + usage réel facturé par l'API.
+/// Réponse textuelle + appels d'outils + usage réel facturé par l'API.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Completion {
     pub text: String,
+    pub tool_calls: Vec<ToolCall>,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
 }
 
 impl Completion {
-    /// Mappe la réponse API (choix 0 + usage) vers le contrat local.
+    /// Mappe la réponse API (choix 0 + `tool_calls` + usage) vers le local.
     fn from_response(resp: ChatResponse) -> Self {
-        let text = resp
-            .choices
-            .into_iter()
-            .next()
-            .and_then(|c| c.message)
-            .and_then(|m| m.content)
-            .unwrap_or_default();
+        let msg = resp.choices.into_iter().next().and_then(|c| c.message);
+        let (text, tool_calls) = match msg {
+            Some(m) => (
+                m.content.unwrap_or_default(),
+                m.tool_calls
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|c| ToolCall {
+                        id: c.id,
+                        name: c.function.name,
+                        args: c.function.arguments,
+                    })
+                    .collect(),
+            ),
+            None => (String::new(), Vec::new()),
+        };
         let (prompt_tokens, completion_tokens) = resp
             .usage
             .map(|u| (u.prompt_tokens, u.completion_tokens))
             .unwrap_or_default();
         Self {
             text,
+            tool_calls,
             prompt_tokens,
             completion_tokens,
         }
@@ -434,5 +474,18 @@ mod tests {
         assert_eq!(cfg.base_url, MUSE_BASE_URL);
         assert_eq!(cfg.api_key, "kh-test-key");
         assert_eq!(cfg.model, MUSE_DEFAULT_MODEL);
+    }
+
+    #[test]
+    fn reponse_outils_parsee_vers_completion() {
+        let raw = r#"{"choices":[{"message":{"content":null,"tool_calls":[
+            {"id":"c1","type":"function","function":{"name":"shell_run","arguments":"{}"}}
+            ]}}],"usage":{"prompt_tokens":7,"completion_tokens":3}}"#;
+        let resp: ChatResponse = serde_json::from_str(raw).unwrap();
+        let done = Completion::from_response(resp);
+        assert_eq!(done.text, "");
+        assert_eq!(done.tool_calls.len(), 1);
+        assert_eq!(done.tool_calls[0].name, "shell_run");
+        assert_eq!((done.prompt_tokens, done.completion_tokens), (7, 3));
     }
 }
