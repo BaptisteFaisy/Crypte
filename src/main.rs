@@ -14,6 +14,7 @@ mod bestiary;
 mod bus;
 mod chat;
 mod cmds;
+mod cmds_link;
 mod cmds_web;
 mod commands;
 mod connect;
@@ -68,7 +69,7 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 4 screens (120x36 + 70x17, offline) as ANSI
+        --preview <file>  Write the 3 screens (120x36 + 70x17, offline) as ANSI
         --demo            Offline demo crypt, opened on the spirit hub (F7)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
 
@@ -95,9 +96,8 @@ AGENTS.MD (system context, read once at first send):
 KEYS (terminal >= 70x17):
     Enter  send    q  quit    F5  scare
     Ctrl+N or click [+]  new chat    F6  bestiary    F7  hub
-    F8  almanac (tokens per day, kept across sessions)
 
-ALMANAC (tokens per day, local date):
+ALMANAC (tokens per day, local date, shown by /usage):
     File: $XDG_DATA_HOME/kiro-horror-tui/almanac.json
           (else ~/.local/share/kiro-horror-tui/almanac.json)
     Every billed call counts (chats, agents, /compact, /web, --once)
@@ -108,7 +108,7 @@ GHOSTTY:
     ghostty/
 
 COMMANDS (in chat):
-    /usage  tokens (chat + total)    /new  new chat    /help  help
+    /usage  tokens (chat + session + all-time)    /new  new chat    /help  help
     /thinking [level]  reasoning (default/low/medium/high)
     /model [name|reset]  chat model (reset = default)
     /agent [@<n>] <text>  sub-agent (reply goes to chat n if targeted)
@@ -294,10 +294,9 @@ async fn async_main() -> Result<()> {
 }
 
 /// App hors ligne garnie pour `--smoke` / `--apercu` : deux messages,
-/// almanach de démo (mémoire), Kiro effrayé, quelques ticks d'effets.
+/// Kiro effrayé, quelques ticks d'effets.
 fn demo_app() -> Result<App> {
     let mut app = App::offline()?;
-    app.almanac = Almanac::demo(crate::almanac::today());
     let chat = &mut app.sessions.current_mut().chat;
     chat.push(Role::User, "smoke: who haunts this crypt?");
     chat.push(Role::Assistant, "smoke: the CI ghost, and it bleeds.");
@@ -328,11 +327,7 @@ fn smoke() -> Result<()> {
     let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
     anyhow::ensure!(filled > 100, "check frame almost empty ({filled} cells)");
     println!("smoke OK: 80x24 frame, {filled} cells filled");
-    let buf = render(&mut app, Screen::Almanac, 80, 24)?;
-    let bars = buf.content.iter().filter(|c| c.symbol() == "█").count();
-    anyhow::ensure!(bars > 0, "almanac frame has no bars");
-    println!("smoke OK: almanac 80x24, {bars} bar cells");
-    for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
+    for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub] {
         let buf = render(&mut app, screen, 70, 17)?;
         let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
         anyhow::ensure!(
@@ -345,7 +340,7 @@ fn smoke() -> Result<()> {
             "header missing at 70x17 ({screen:?})"
         );
     }
-    println!("smoke OK: 70x17 frames, 4 screens");
+    println!("smoke OK: 70x17 frames, 3 screens");
     println!(
         "smoke OK: tokens estimate('hello')={}",
         crate::tokens::estimate("hello")
@@ -353,7 +348,7 @@ fn smoke() -> Result<()> {
     Ok(())
 }
 
-/// Écrit les 8 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
+/// Écrit les 6 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
 /// `cat <fichier>` dans Ghostty montre l'UI sans clé ni réseau.
 fn apercu(path: &str) -> Result<()> {
     let mut app = demo_app()?;
@@ -362,18 +357,16 @@ fn apercu(path: &str) -> Result<()> {
         (Screen::Chat, 120, 36),
         (Screen::Bestiary, 120, 36),
         (Screen::Hub, 120, 36),
-        (Screen::Almanac, 120, 36),
         (Screen::Chat, 70, 17),
         (Screen::Bestiary, 70, 17),
         (Screen::Hub, 70, 17),
-        (Screen::Almanac, 70, 17),
     ] {
         out.push_str(&format!("=== {screen:?} {w}x{h} ===\n"));
         out.push_str(&to_ansi(&render(&mut app, screen, w, h)?));
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (120x36 + 70x17, 4 screens)");
+    println!("preview: {path} (120x36 + 70x17, 3 screens)");
     Ok(())
 }
 
@@ -413,6 +406,13 @@ mod tests {
         for help in [HELP, crate::commands::help_text()] {
             assert!(!help.contains("grimoire"));
             assert!(!help.contains("F2"));
+        }
+    }
+
+    #[test]
+    fn helps_ne_mentionnent_plus_l_almanach_f8() {
+        for help in [HELP, crate::commands::help_text()] {
+            assert!(!help.contains("F8"));
         }
     }
 }

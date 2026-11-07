@@ -69,7 +69,8 @@ pub struct App {
     ctx_used: u64,
     ctx_limit: u64,
     pub(crate) sessions: Sessions,
-    /// Tokens par jour (F8) ; mémoire seule tant que `main` n'ouvre pas le fichier.
+    /// Tokens par jour (affichés par `/usage`) ; mémoire seule tant que
+    /// `main` n'ouvre pas le fichier.
     pub(crate) almanac: Almanac,
     pub(crate) bus: Bus,
     pub(crate) provider: Option<Arc<Provider>>,
@@ -88,7 +89,7 @@ pub struct App {
     /// ligne par chat, `None` hors écran chat) : clic = choisir le chat.
     pub(crate) side_rows: Option<Rect>,
     /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
-    /// clic = aller à l'écran (chat, bestiaire, hub, almanach).
+    /// clic = aller à l'écran (chat, bestiaire, hub).
     pub(crate) tab_hits: Vec<(Screen, Rect)>,
     pub(crate) thinking: Option<String>,
     pub(crate) permissions: Mode,

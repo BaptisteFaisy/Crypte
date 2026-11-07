@@ -2,7 +2,7 @@
 
 Chat LLM dans une crypte hantée (TUI ratatui) pensé pour Ghostty :
 multi-chats, mascotte fantôme Kiro (F5), bestiaire pixel art (F6, images
-Kitty), effets horreur, compteur tokens, almanach tokens/jour (F8), sous-agents `/agent`,
+Kitty), effets horreur, compteur tokens, almanach tokens/jour (`/usage`), sous-agents `/agent`,
 compaction `/compact`. UI et messages **en anglais**.
 
 ## Commandes
@@ -13,7 +13,7 @@ cargo test                       # tous les tests doivent être verts
 cargo fmt --check                # formatage propre exigé
 ./target/debug/kiro-horror-tui --smoke   # headless 80x24, sans réseau ni clé
 ./target/debug/kiro-horror-tui --planche docs/bestiaire.png  # après retouche d'un sprite
-./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 5 écrans en ANSI
+./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 3 écrans × 2 tailles en ANSI
 ./target/debug/kiro-horror-tui --muse-auth --once "Reply with exactly: OK"
 cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
@@ -31,6 +31,7 @@ chat, lignes sidebar = choisir, onglets = écrans),
 `events.rs` (flux JSONL temps réel `--events-log`/`KH_EVENTS_LOG` :
 chats + sous-agents, silencieux si désactivé),
 `cmds.rs` (handlers `/…`), `cmds_web.rs` (handler `/web`),
+`cmds_link.rs` (handlers `/link`+`/unlink`),
 `commands.rs` (parse + aide + usage),
 `permissions.rs` (mode yolo/auto + persistance fichier + handler),
 `persist.rs` (chats : autosave JSON ~5 s + sortie, restauration silencieuse,
@@ -50,9 +51,9 @@ unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
 crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 `font.rs` police 3×5, `social.rs` orbes et bavardages), `app/esprits.rs`
 (écran + touches du hub). Sprites du hub : `assets/hub/*.txt`.
-`almanac.rs` (tokens par jour) + `almanac/disk.rs` (JSON
-`~/.local/share/kiro-horror-tui/`, relu avant chaque écriture, jamais
-réécrit s'il est illisible) + `almanac/view.rs` (écran F8).
+`almanac.rs` (tokens par jour, bloc `/usage`) + `almanac/disk.rs`
+(JSON `~/.local/share/kiro-horror-tui/`, relu avant chaque écriture,
+jamais réécrit s'il est illisible).
 `web/` (`/web` : backends → fetch → cache → synthèse, parsing pur dans
 `web/parse.rs`, pertinence dans `web/rank.rs`).
 `tools/` (outils agent : `wire.rs` types OpenAI, `browser.rs`/`desktop.rs`

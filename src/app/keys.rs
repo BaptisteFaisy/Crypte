@@ -1,5 +1,5 @@
-//! Clavier : dispatch général (`on_key`, chat + almanach) et touches
-//! propres aux écrans plein cadre (bestiaire F6, almanach F8) ;
+//! Clavier : dispatch général (`on_key`) et touches propres à l'écran
+//! plein cadre bestiaire (F6) ;
 //! celles du hub vivent avec son écran (`app/esprits.rs`).
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -39,14 +39,13 @@ impl App {
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Bestiary)),
             KeyCode::F(7) => self.cmd(|s| s.open_hub()),
-            KeyCode::F(8) => self.cmd(|s| s.show_almanac()),
             KeyCode::Left if ctrl => self.cmd(|s| s.resize_right(2)),
             KeyCode::Right if ctrl => self.cmd(|s| s.resize_right(-2)),
             _ => true,
         }
     }
 
-    /// Touches de l'écran bestiaire : flèches, F6/F7/F8 (sortie), q.
+    /// Touches de l'écran bestiaire : flèches, F6/F7 (sortie), q.
     pub(super) fn on_bestiary_key(&mut self, code: KeyCode) -> bool {
         match code {
             KeyCode::Char('q') => false,
@@ -57,17 +56,7 @@ impl App {
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = Screen::Chat),
             KeyCode::F(7) => self.cmd(|s| s.open_hub()),
-            KeyCode::F(8) => self.cmd(|s| s.show_almanac()),
             _ => true,
-        }
-    }
-
-    /// F8 : almanach (relu à l'ouverture : d'autres cryptes ont pu
-    /// écrire), ou retour au chat s'il est déjà affiché.
-    pub(crate) fn show_almanac(&mut self) {
-        self.screen = self.screen.toggle(Screen::Almanac);
-        if self.screen == Screen::Almanac {
-            self.almanac.refresh();
         }
     }
 

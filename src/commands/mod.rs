@@ -255,7 +255,7 @@ pub fn effort_values() -> Vec<&'static str> {
 /// Aide : les 19 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
-     /usage — token usage (current chat + session total)\n\
+     /usage — token usage (chat + session + all-time almanac)\n\
      /new — new chat (resets the current chat)\n\
      /thinking [level] — reasoning level (default/low/medium/high)\n\
      /model [name|reset] — show or change the model\n\
@@ -274,7 +274,7 @@ pub fn help_text() -> &'static str {
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
      /kiro — kiro .kiro/ status (steering, specs, hooks, mcp)\n\
      /help — this help\n\
-     Keys: F5 scare · F6 bestiary · F7 hub · F8 almanac · Ctrl+N\n\
+     Keys: F5 scare · F6 bestiary · F7 hub · Ctrl+N\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
 }
 

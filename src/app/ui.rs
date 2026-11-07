@@ -14,7 +14,7 @@ use ratatui::{
 };
 
 use super::{short_model, App};
-use crate::bestiary::{self, Creature};
+use crate::bestiary::Creature;
 use crate::chat::ChatView;
 use crate::gfx::ImageBank;
 use crate::mascot::MascotState;
@@ -28,11 +28,10 @@ pub enum Screen {
     Chat,
     Bestiary,
     Hub,
-    Almanac,
 }
 
 impl Screen {
-    /// `target` si on n'y est pas déjà, sinon retour au chat (F6, F8).
+    /// `target` si on n'y est pas déjà, sinon retour au chat (F6).
     pub(crate) fn toggle(self, target: Screen) -> Self {
         if self == target {
             Screen::Chat
@@ -52,11 +51,10 @@ pub(crate) const MIN_H: u16 = 17;
 /// Seuil compact : sous 80 colonnes, sidebar réduite, panneau droit masqué.
 const COMPACT_W: u16 = 80;
 /// Onglets de l'en-tête : écran, libellé, touche.
-const TABS: [(Screen, &str, &str); 4] = [
+const TABS: [(Screen, &str, &str); 3] = [
     (Screen::Chat, "chat", ""),
     (Screen::Bestiary, "bestiary", "F6"),
     (Screen::Hub, "hub", "F7"),
-    (Screen::Almanac, "almanac", "F8"),
 ];
 /// Coiffes powerline arrondies (sprites internes de Ghostty).
 const CAP_L: &str = "\u{e0b6}";
@@ -88,7 +86,6 @@ impl App {
             Screen::Chat => self.draw_chat(frame, body),
             Screen::Bestiary => self.galerie.draw(frame, body, &mut self.bank),
             Screen::Hub => self.draw_hub(frame, body),
-            Screen::Almanac => self.draw_almanac(frame, body),
         }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
@@ -209,18 +206,6 @@ impl App {
             spans.extend(t);
         }
         spans
-    }
-
-    /// Écran almanach : tokens par nuit + la faucheuse qui tient le compte.
-    fn draw_almanac(&mut self, frame: &mut Frame, area: Rect) {
-        let [book, card] = Layout::horizontal([
-            Constraint::Min(40),
-            Constraint::Length(right_width(area.width, 40, self.right_delta)),
-        ])
-        .areas(area);
-        self.almanac.draw(frame, book, crate::almanac::today());
-        let reaper = bestiary::get("faucheuse");
-        draw_card(frame, card, reaper, BLOOD, &mut self.bank);
     }
 
     /// Barre d'état : pastilles powerline à gauche, raccourcis à droite.
@@ -429,20 +414,21 @@ mod tests {
     }
 
     #[test]
-    fn header_fits_four_tabs_and_gauge_at_80_columns() {
+    fn header_fits_three_tabs_and_gauge_at_80_columns() {
         let mut app = App::offline().unwrap();
         for w in [70, 80, 120] {
             let mut term = Terminal::new(TestBackend::new(w, 24)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();
             let buf = term.backend().buffer();
             let head: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
-            for word in ["chat", "bestiary", "hub", "almanac", "fear"] {
+            for word in ["chat", "bestiary", "hub", "fear"] {
                 assert!(head.contains(word), "{w} cols: {word} missing in {head:?}");
             }
             assert!(!head.contains("grimoire"), "{w} cols: {head:?}");
-            // 4 onglets : les touches (F6/F7/F8) tiennent dès 80 colonnes.
+            assert!(!head.contains("almanac"), "{w} cols: {head:?}");
+            // 3 onglets : les touches (F6/F7) tiennent dès 80 colonnes.
             if w >= 80 {
-                assert!(head.contains("F8"), "{w} cols: {head:?}");
+                assert!(head.contains("F7"), "{w} cols: {head:?}");
             }
         }
     }
@@ -450,14 +436,13 @@ mod tests {
     #[test]
     fn every_screen_renders_at_common_sizes() {
         let mut app = App::offline().unwrap();
-        app.almanac = crate::almanac::Almanac::demo(crate::almanac::today());
         app.sessions
             .current_mut()
             .chat
             .push(Role::Assistant, "les os craquent sous la lune");
         for (w, h) in [(70, 17), (80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
+            for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub] {
                 app.screen = screen;
                 app.spook();
                 app.tick();
@@ -469,8 +454,7 @@ mod tests {
     #[test]
     fn minimum_70x17_shows_ui_not_too_small() {
         let mut app = App::offline().unwrap();
-        app.almanac = crate::almanac::Almanac::demo(crate::almanac::today());
-        for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
+        for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub] {
             app.screen = screen;
             let mut term = Terminal::new(TestBackend::new(70, 17)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();
