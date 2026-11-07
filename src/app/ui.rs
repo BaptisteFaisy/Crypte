@@ -55,6 +55,8 @@ impl App {
     pub(crate) fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         self.plus_btn = None;
+        self.side_rows = None;
+        self.tabs = [(Screen::Chat, Rect::default()); 4];
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
         if area.width < 80 || area.height < 24 {
@@ -89,7 +91,9 @@ impl App {
             Constraint::Length(right_width(area.width)),
         ])
         .areas(area);
-        self.plus_btn = self.sessions.draw_sidebar(frame, side);
+        let hits = self.sessions.draw_sidebar(frame, side);
+        self.side_rows = hits.chats;
+        self.plus_btn = hits.plus;
         let sess = self.sessions.current();
         let view = ChatView {
             title: &sess.name,
@@ -216,8 +220,9 @@ impl App {
         ])
     }
 
-    /// En-tête : titre en dégradé, onglets, jauge de contexte à droite.
-    fn draw_header(&self, frame: &mut Frame, area: Rect) {
+    /// En-tête : titre en dégradé, onglets (cliquables, voir `mouse`),
+    /// jauge de contexte à droite.
+    fn draw_header(&mut self, frame: &mut Frame, area: Rect) {
         let mut spans = vec![Span::raw(" ")];
         spans.extend(theme::gradient(
             "\u{f068c} CRYPT",
@@ -226,13 +231,21 @@ impl App {
             Modifier::BOLD,
         ));
         spans.push(Span::styled("  ", Style::new()));
-        for (screen, label, key) in [
+        let mut x = area.x + spans_width(&spans);
+        for (i, (screen, label, key)) in [
             (Screen::Chat, "chat", ""),
             (Screen::Tokens, "grimoire", "F2"),
             (Screen::Bestiary, "bestiary", "F6"),
             (Screen::Hub, "hub", "F7"),
-        ] {
-            spans.extend(tab(label, key, self.screen == screen));
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let tab_spans = tab(label, key, self.screen == screen);
+            let w = spans_width(&tab_spans);
+            self.tabs[i] = (screen, Rect::new(x, area.y, w, 1));
+            x += w;
+            spans.extend(tab_spans);
         }
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
         let gauge = Paragraph::new(Line::from(ctx_gauge(
@@ -305,6 +318,11 @@ fn draw_card(
         .alignment(Alignment::Center)
         .wrap(ratatui::widgets::Wrap { trim: true });
     frame.render_widget(text, lore);
+}
+
+/// Largeur affichée d'une suite de spans (curseur des onglets).
+fn spans_width(spans: &[Span]) -> u16 {
+    spans.iter().map(|s| s.width()).sum::<usize>() as u16
 }
 
 /// Onglet : pastille citrouille si actif, texte sable sinon (+ touche).
