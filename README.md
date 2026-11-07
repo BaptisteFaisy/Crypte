@@ -339,8 +339,13 @@ global `~/.kiro/`), so a project moves back and forth between both:
 
 - **Steering** (`.kiro/steering/*.md`, 4 inclusion modes) : `always`
   files join the pinned AGENTS.md context at first send.
-- **Specs** (`.kiro/specs/<name>/`) : requirements, design and tasks
-  checklists are read (execution comes next).
+- **Specs** (`.kiro/specs/<name>/`) : `/spec new <name> <idea>` drafts
+  requirements, design and tasks in 3 chained LLM calls (progress shown,
+  existing specs never overwritten); `/spec <name>` shows status (docs,
+  tasks x/y, next task); `/spec <name> run` executes open tasks one by
+  one via sub-agents (requirements + design in context), checking each
+  off in `tasks.md` (`y/n` between tasks in `auto` mode, chained in
+  `yolo`; a failed task stops the run, nothing is re-tried).
 - **Hooks** (`.kiro/hooks/*.json`, v1) and **MCP**
 (`.kiro/settings/mcp.json`, stdio + remote) : parsed, engines next.
 - **Ignore** (`.kiroignore`) : loaded, enforced with hooks.
