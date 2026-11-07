@@ -41,7 +41,6 @@ impl App {
                 s.screen = Screen::Chat;
             }),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
-            KeyCode::F(6) => self.cmd(|s| s.screen = Screen::Bestiary),
             KeyCode::F(7) => self.cmd(|s| s.screen = Screen::Chat),
             _ => true,
         }

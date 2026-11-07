@@ -1,5 +1,4 @@
-//! Clavier : dispatch général (`on_key`) et touches propres à l'écran
-//! plein cadre bestiaire (F6) ;
+//! Clavier : dispatch général (`on_key`), défilement, colonne ;
 //! celles du hub vivent avec son écran (`app/esprits.rs`).
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -21,7 +20,6 @@ impl App {
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let empty = self.sessions.current().chat.input.is_empty();
         match self.screen {
-            Screen::Bestiary => return self.on_bestiary_key(key.code),
             Screen::Hub => return self.on_hub_key(key.code),
             _ => {}
         }
@@ -37,25 +35,9 @@ impl App {
             KeyCode::Down if shift => self.cmd(|s| s.scroll_chat(1)),
             KeyCode::End => self.cmd(|s| s.sessions.current().chat.scroll.to_bottom()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
-            KeyCode::F(6) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Bestiary)),
             KeyCode::F(7) => self.cmd(|s| s.open_hub()),
             KeyCode::Left if ctrl => self.cmd(|s| s.resize_right(2)),
             KeyCode::Right if ctrl => self.cmd(|s| s.resize_right(-2)),
-            _ => true,
-        }
-    }
-
-    /// Touches de l'écran bestiaire : flèches, F6/F7 (sortie), q.
-    pub(super) fn on_bestiary_key(&mut self, code: KeyCode) -> bool {
-        match code {
-            KeyCode::Char('q') => false,
-            KeyCode::Left => self.cmd(|s| s.galerie.step(-1, 0)),
-            KeyCode::Right => self.cmd(|s| s.galerie.step(1, 0)),
-            KeyCode::Up => self.cmd(|s| s.galerie.step(0, -1)),
-            KeyCode::Down => self.cmd(|s| s.galerie.step(0, 1)),
-            KeyCode::F(5) => self.cmd(|s| s.spook()),
-            KeyCode::F(6) => self.cmd(|s| s.screen = Screen::Chat),
-            KeyCode::F(7) => self.cmd(|s| s.open_hub()),
             _ => true,
         }
     }

@@ -15,7 +15,6 @@ use crate::chat::Role;
 use crate::connect::NOT_CONNECTED;
 use crate::events::EventLog;
 use crate::fx::Fx;
-use crate::galerie::Galerie;
 use crate::gfx::ImageBank;
 use crate::hub::Hub;
 use crate::mascot::Mascot;
@@ -106,7 +105,6 @@ impl App {
             bank: ImageBank::headless(),
             apparition: Apparition::new(),
             hub: Hub::new(),
-            galerie: Galerie::new(),
             tick: 0,
             busy: false,
             ctx_used: 0,

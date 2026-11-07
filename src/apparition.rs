@@ -81,6 +81,15 @@ impl Apparition {
         self.omen = Some((bestiary::get(slug), Instant::now(), OMEN));
     }
 
+    /// `/bestiary` : une créature au hasard (jamais Kiro, jamais la
+    /// rotation en cours) affichée quelques secondes ; la rend pour
+    /// l'annoncer dans le chat.
+    pub fn show_random(&mut self) -> &'static Creature {
+        let creature = &BESTIARY[random_index(self.index)];
+        self.omen = Some((creature, Instant::now(), OMEN));
+        creature
+    }
+
     /// Jump scare (F5) : une créature effrayante pendant 2 s.
     pub fn scare(&mut self) {
         let pick = SCARY[rand::random_range(0..SCARY.len())];
@@ -142,6 +151,14 @@ mod tests {
         ap.scare();
         assert!(ap.scaring());
         assert!(SCARY.contains(&ap.current(true, 0).slug));
+    }
+
+    #[test]
+    fn show_random_reveals_a_creature_for_a_few_seconds() {
+        let mut ap = Apparition::new();
+        let shown = ap.show_random();
+        assert_ne!(shown.slug, "fantome");
+        assert_eq!(ap.current(false, 0), shown);
     }
 
     #[test]

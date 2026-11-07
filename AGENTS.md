@@ -1,8 +1,9 @@
 # kiro-horror-tui — contexte agents
 
 Chat LLM dans une crypte hantée (TUI ratatui) pensé pour Ghostty :
-multi-chats, mascotte fantôme Kiro (F5), bestiaire pixel art (F6, images
-Kitty), effets horreur, compteur tokens, almanach tokens/jour (`/usage`), sous-agents `/agent`,
+multi-chats, mascotte fantôme Kiro (F5), bestiaire pixel art (panneau
+latéral + `/bestiary`, images Kitty), effets horreur, compteur tokens,
+almanach tokens/jour (`/usage`), sous-agents `/agent`,
 compaction `/compact`. UI et messages **en anglais**.
 
 ## Commandes
@@ -13,7 +14,7 @@ cargo test                       # tous les tests doivent être verts
 cargo fmt --check                # formatage propre exigé
 ./target/debug/kiro-horror-tui --smoke   # headless 80x24, sans réseau ni clé
 ./target/debug/kiro-horror-tui --planche docs/bestiaire.png  # après retouche d'un sprite
-./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 3 écrans × 2 tailles en ANSI
+./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 2 écrans × 2 tailles en ANSI
 ./target/debug/kiro-horror-tui --muse-auth --once "Reply with exactly: OK"
 cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
@@ -22,7 +23,7 @@ ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
 ## Archi (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (état + boucle 10 ms, tick 100 ms),
-`app/ctors.rs` (constructeurs),
+`app/ctors.rs` (constructeurs), `app/model.rs` (modèle effectif + thinking),
 `bus.rs` (adressage, files, liens auto, plafond 8 relais),
 `mouse.rs` (molette = défilement de l'historique ; clics : [+] = nouveau
 chat, lignes sidebar = choisir, onglets = écrans),
@@ -32,11 +33,11 @@ chat, lignes sidebar = choisir, onglets = écrans),
 chats + sous-agents, silencieux si désactivé),
 `cmds.rs` (handlers `/…`), `cmds_web.rs` (handler `/web`),
 `cmds_link.rs` (handlers `/link`+`/unlink`),
-`commands.rs` (parse + aide + usage),
+`commands.rs` (parse), `texts.rs` (aide),
 `permissions.rs` (mode yolo/auto + persistance fichier + handler),
 `persist.rs` (chats : autosave JSON ~5 s + sortie, restauration silencieuse,
 fichier illisible préservé en `.corrupt`),
-`connect.rs` (flow `/connect` : clé masquée → modèle → provider),
+`connect.rs` (handlers + flow `/connect` : statut, store Muse, clé masquée → modèle),
 `history.rs` (fenêtre d'envoi + nommage des chats),
 `sessions.rs` + `sessions/` (chats `chat.rs` + sous-agents `subagents.rs`),
 `workspace.rs` (workspaces `<session>/agent`, zéro token),
@@ -46,7 +47,7 @@ saisie + prompt custom masquable), `provider.rs` (client OpenAI-compatible, time
 chargement, pin, compaction pure), `mascot.rs` (fantôme), `fx.rs`
 (overlay horreur), `app/ui.rs` (mise en page), `theme.rs` (palette
 unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
-(panneau droit), `galerie.rs` (écran F6), `ghostty.rs` (OSC + mode 2026),
+(panneau droit, `/bestiary`), `ghostty.rs` (OSC + mode 2026),
 `hub.rs` + `hub/` (hub des esprits F7 : simulation en dalles, `iso.rs`
 crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 `font.rs` police 3×5, `social.rs` orbes et bavardages), `app/esprits.rs`

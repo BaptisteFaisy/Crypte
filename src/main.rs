@@ -21,7 +21,6 @@ mod connect;
 mod drain;
 mod events;
 mod fx;
-mod galerie;
 mod gfx;
 mod ghostty;
 mod history;
@@ -36,6 +35,7 @@ mod provider;
 mod scroll;
 mod sessions;
 mod sidebar;
+mod texts;
 mod theme;
 mod tokens;
 mod tools;
@@ -69,7 +69,7 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 3 screens (120x36 + 70x17, offline) as ANSI
+        --preview <file>  Write the 2 screens (120x36 + 70x17, offline) as ANSI
         --demo            Offline demo crypt, opened on the spirit hub (F7)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
 
@@ -95,7 +95,7 @@ AGENTS.MD (system context, read once at first send):
 
 KEYS (terminal >= 70x17):
     Enter  send    q  quit    F5  scare
-    Ctrl+N or click [+]  new chat    F6  bestiary    F7  hub
+    Ctrl+N or click [+]  new chat    F7  hub
 
 ALMANAC (tokens per day, local date, shown by /usage):
     File: $XDG_DATA_HOME/kiro-horror-tui/almanac.json
@@ -118,6 +118,7 @@ COMMANDS (in chat):
     /link <a> <b>  replies from a go to b (auto)    /links  list
     /unlink <a> <b>  remove a link
     /web <query>  web search + cited summary (raw results if offline)
+    /bestiary  show a random creature in the side panel
     /compact  compact history (summary + last 4)
     /connect [openai|muse]  interactive connect (masked key,
         Esc cancels); no arg: connection status
@@ -319,15 +320,15 @@ fn render(app: &mut App, screen: Screen, w: u16, h: u16) -> Result<Buffer> {
     Ok(term.backend().buffer().clone())
 }
 
-/// Controle headless : frames 80x24 (chat + almanach) + 70x17
-/// (minimum, 4 écrans), sans reseau ni cle API. Echec = `Err`.
+/// Controle headless : frame 80x24 (chat) + 70x17
+/// (minimum, 2 écrans), sans reseau ni cle API. Echec = `Err`.
 fn smoke() -> Result<()> {
     let mut app = demo_app()?;
     let buf = render(&mut app, Screen::Chat, 80, 24)?;
     let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
     anyhow::ensure!(filled > 100, "check frame almost empty ({filled} cells)");
     println!("smoke OK: 80x24 frame, {filled} cells filled");
-    for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub] {
+    for screen in [Screen::Chat, Screen::Hub] {
         let buf = render(&mut app, screen, 70, 17)?;
         let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
         anyhow::ensure!(
@@ -340,7 +341,7 @@ fn smoke() -> Result<()> {
             "header missing at 70x17 ({screen:?})"
         );
     }
-    println!("smoke OK: 70x17 frames, 3 screens");
+    println!("smoke OK: 70x17 frames, 2 screens");
     println!(
         "smoke OK: tokens estimate('hello')={}",
         crate::tokens::estimate("hello")
@@ -348,17 +349,15 @@ fn smoke() -> Result<()> {
     Ok(())
 }
 
-/// Écrit les 6 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
+/// Écrit les 4 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
 /// `cat <fichier>` dans Ghostty montre l'UI sans clé ni réseau.
 fn apercu(path: &str) -> Result<()> {
     let mut app = demo_app()?;
     let mut out = String::new();
     for (screen, w, h) in [
         (Screen::Chat, 120, 36),
-        (Screen::Bestiary, 120, 36),
         (Screen::Hub, 120, 36),
         (Screen::Chat, 70, 17),
-        (Screen::Bestiary, 70, 17),
         (Screen::Hub, 70, 17),
     ] {
         out.push_str(&format!("=== {screen:?} {w}x{h} ===\n"));
@@ -366,7 +365,7 @@ fn apercu(path: &str) -> Result<()> {
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (120x36 + 70x17, 3 screens)");
+    println!("preview: {path} (120x36 + 70x17, 2 screens)");
     Ok(())
 }
 
@@ -402,16 +401,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn helps_ne_mentionnent_plus_le_grimoire() {
-        for help in [HELP, crate::commands::help_text()] {
+    fn helps_ne_mentionnent_plus_les_ecrans_supprimes() {
+        for help in [HELP, crate::texts::help_text()] {
             assert!(!help.contains("grimoire"));
             assert!(!help.contains("F2"));
-        }
-    }
-
-    #[test]
-    fn helps_ne_mentionnent_plus_l_almanach_f8() {
-        for help in [HELP, crate::commands::help_text()] {
+            assert!(!help.contains("F6"));
             assert!(!help.contains("F8"));
         }
     }

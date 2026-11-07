@@ -136,7 +136,6 @@ exempt, stays the remedy).
 | Ctrl+N | new chat |
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
 | F5 | scare: Kiro scared 2s, jump scare, lightning flash |
-| F6 | toggle chat / bestiary (arrows to pick) |
 | F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
 | Wheel (over the chat) | scroll the history, 3 lines per notch |
@@ -149,8 +148,8 @@ marks the bottom border while you are away from the end. Sending a
 message (or `End`) snaps the view back down, and each chat keeps its
 own scroll position.
 
-On narrow terminals the header tabs drop their key hints (F5 F6…) so
-the `ctx` gauge always fits.
+On narrow terminals the header tabs drop their key hint (F7) so
+the `fear` gauge always fits.
 
 ## Ghostty
 
@@ -233,7 +232,8 @@ a canvas of the exact pixel size of the area (1 image pixel = 1
 screen pixel in Kitty, = 1 half-cell in halfblocks). The right panel
 shows Kiro and an apparition: cauldron during a reply, spider during
 sub-agents, grave hand on error, coffin after `/compact`, slow
-rotation otherwise.
+rotation otherwise. `/bestiary` reveals a random creature there
+(announced in the chat with its name and lore).
 
 ## Model
 
@@ -383,9 +383,9 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 `provider.rs` (OpenAI-compatible client, 60s timeout),
 `sessions.rs` (multi-chats + sub-agents),
 `sidebar.rs` (coffins column + [+] new-chat button),
-`commands.rs` (parsing `/…` commands + help + usage),
+`commands.rs` (parsing `/…` commands), `texts.rs` (help + usage texts),
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
-`/compact` `/connect` `/web`), `connect.rs` (`/connect` flow: masked key → model),
+`/compact` `/connect` `/web`), `connect.rs` (`/connect` handlers + flow: masked key → model),
 `web/` (`/web`: backends → fetch → cache → synthesis),
 `tools/` (agent tools: `wire.rs` OpenAI types, `browser.rs`/`desktop.rs`
 argv, `exec.rs` runner, `flow.rs` loop + y/n confirms, `log.rs` JSONL),
@@ -393,12 +393,12 @@ argv, `exec.rs` runner, `flow.rs` loop + y/n confirms, `log.rs` JSONL),
 `app/ui.rs` (layout: header, panels, powerline bar),
 `theme.rs` (single palette), `bestiary.rs` (sprites + integer
 scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
-(right-panel creature), `galerie.rs` (F6 bestiary screen),
+(right-panel creature, `/bestiary` reveals),
 `ghostty.rs` (OSC, progress, synced rendering),
 `history.rs` (send window + chat naming),
 `hub.rs` + `hub/` (F7 spirit hub: tile-based simulation, `iso.rs`
 isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
 `font.rs` 3×5 pixel font, `social.rs` orbs and chatter),
-`app/esprits.rs` (hub screen + keys), `app/keys.rs` (bestiary keys),
+`app/esprits.rs` (hub screen + keys), `app/keys.rs` (dispatch + scroll + resize),
 `almanac.rs` (tokens per day, `/usage` block) + `almanac/disk.rs`
 (JSON file).
