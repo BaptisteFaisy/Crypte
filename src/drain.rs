@@ -37,8 +37,7 @@ impl App {
             Ok(done) => {
                 sess.ledger
                     .record(done.prompt_tokens, done.completion_tokens, elapsed);
-                sess.history
-                    .push(("assistant".to_string(), done.text.clone()));
+                sess.push_history("assistant", done.text.clone());
                 sess.chat.push(Role::Assistant, done.text.clone());
                 self.hub.signal(Signal::Reply { chat: id });
                 self.apparition.advance();
@@ -98,7 +97,7 @@ impl App {
                     trigger: false,
                 });
             } else {
-                dest.history.push((String::from("user"), tagged));
+                dest.push_history("user", tagged);
             }
             self.hub.signal(Signal::Deliver {
                 agent: agent_id,
@@ -219,7 +218,7 @@ impl App {
                 trigger = true;
                 hops = hops.max(queued.hops);
             }
-            sess.history.push((String::from("user"), queued.envelope));
+            sess.push_history("user", queued.envelope);
         }
         if !trigger {
             return;
