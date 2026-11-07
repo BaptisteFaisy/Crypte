@@ -1,21 +1,97 @@
 #!/usr/bin/env bash
-# Open kiro-horror-tui in a dressed-up "Crypt" Ghostty window:
-# theme (crypte.conf) + post-processing (crypte.glsl).
+# Run kiro-horror-tui in the current terminal when it can host the crypt,
+# else in a dressed-up "Crypt" Ghostty window (theme + shader).
 #
-#   ghostty/crypte [--no-shader] [kiro-horror-tui options…]
+#   ghostty/crypte [--window] [--no-shader] [kiro-horror-tui options…]
 #   ghostty/crypte --muse-auth
+#
+# Compatible = interactive TTY, TERM != dumb, truecolor, at least 80x24.
+# --window forces the Ghostty window; print-only modes (--help, --smoke,
+# --once, --sheet, --preview) always run in place. Launcher flags come
+# first; the rest goes to kiro-horror-tui untouched. If your terminal
+# renders truecolor without advertising it, export COLORTERM=truecolor.
+# CRYPTE_BIN overrides the release binary path (tests).
 #
 # Builds the release version on first launch.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(dirname "$here")"
-bin="$root/target/release/kiro-horror-tui"
+bin="${CRYPTE_BIN:-$root/target/release/kiro-horror-tui}"
 if [ ! -x "$bin" ]; then
     cargo build --release --manifest-path "$root/Cargo.toml"
 fi
+
+window=0
 shader=(--custom-shader="$here/crypte.glsl")
-if [ "${1:-}" = "--no-shader" ] || [ "${1:-}" = "--sans-shader" ]; then
-    shader=()
-    shift
+while [ $# -gt 0 ]; do
+    case "${1:-}" in
+        --window | --fenetre) window=1; shift ;;
+        --no-shader | --sans-shader) shader=(); shift ;;
+        *) break ;;
+    esac
+done
+
+# Terminal advertising truecolor (or known to render it).
+has_truecolor() {
+    case "${COLORTERM:-}" in
+        *truecolor* | *24bit*) return 0 ;;
+    esac
+    case "${TERM_PROGRAM:-}" in
+        ghostty | kitty | WezTerm | vscode | iTerm.app | Hyper | rio) return 0 ;;
+    esac
+    case "${TERM:-}" in
+        *-truecolor | *-direct | xterm-ghostty | xterm-kitty | foot* | rio* | alacritty* | wezterm*) return 0 ;;
+    esac
+    return 1
+}
+
+# At least 80x24 (documented requirement).
+big_enough() {
+    local size rows cols
+    size=$(stty size 2>/dev/null) || return 1
+    rows=${size% *}
+    cols=${size#* }
+    [ "${rows:-0}" -ge 24 ] && [ "${cols:-0}" -ge 80 ]
+}
+
+# stdin+stdout on a terminal? Computed once, outside any command
+# substitution: stdout is a pipe there, so -t must not run inside one.
+tty_ok=0
+if [ -t 0 ] && [ -t 1 ]; then
+    tty_ok=1
+fi
+
+# Empty = compatible, else the reason (for the fallback note).
+incompatible_reason() {
+    if [ "$tty_ok" -ne 1 ]; then
+        echo "no interactive terminal"
+    elif [ "${TERM:-dumb}" = "dumb" ]; then
+        echo "TERM=dumb"
+    elif ! has_truecolor; then
+        echo "no truecolor"
+    elif ! big_enough; then
+        echo "smaller than 80x24"
+    fi
+}
+
+# Modes that only print (no TUI): never open a window.
+prints_only() {
+    for arg in "$@"; do
+        case "$arg" in
+            -h | --help | --smoke | --once | --sheet | --planche | --preview | --apercu) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+if prints_only "$@"; then
+    exec "$bin" "$@"
+fi
+if [ "$window" -eq 0 ]; then
+    reason=$(incompatible_reason)
+    if [ -z "$reason" ]; then
+        exec "$bin" "$@"
+    fi
+    printf 'crypte: %s, opening a Ghostty window\n' "$reason" >&2
 fi
 exec ghostty --config-file="$here/crypte.conf" "${shader[@]}" -e "$bin" "$@"
