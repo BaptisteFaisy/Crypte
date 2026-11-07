@@ -75,6 +75,11 @@ impl ImageBank {
 
     /// Zones occupées par des images dans la frame courante (les effets
     /// n'y touchent pas).
+    /// Protège `area` des effets pour cette frame (scène pixel du hub).
+    pub fn protect(&mut self, area: Rect) {
+        self.drawn.push(area);
+    }
+
     pub fn drawn(&self) -> &[Rect] {
         &self.drawn
     }
@@ -87,6 +92,11 @@ impl ImageBank {
             ProtocolType::Iterm2 => "iterm2",
             ProtocolType::Halfblocks => "halfblocks",
         }
+    }
+
+    /// Taille de cellule (pixels) si le terminal parle Kitty, sinon `None`.
+    pub fn kitty_cell(&self) -> Option<(u16, u16)> {
+        (self.picker.protocol_type() == ProtocolType::Kitty).then(|| self.picker.font_size())
     }
 
     /// Dessine `creature` centrée dans `area`, au pixel près.

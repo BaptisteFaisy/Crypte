@@ -28,6 +28,7 @@ pub enum Screen {
     Chat,
     Tokens,
     Bestiary,
+    Hub,
 }
 
 impl Screen {
@@ -73,6 +74,7 @@ impl App {
             Screen::Chat => self.draw_chat(frame, body),
             Screen::Tokens => self.draw_tokens(frame, body),
             Screen::Bestiary => self.galerie.draw(frame, body, &mut self.bank),
+            Screen::Hub => self.draw_hub(frame, body),
         }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
@@ -228,6 +230,7 @@ impl App {
             (Screen::Chat, "chat", ""),
             (Screen::Tokens, "grimoire", "F2"),
             (Screen::Bestiary, "bestiary", "F6"),
+            (Screen::Hub, "hub", "F7"),
         ] {
             spans.extend(tab(label, key, self.screen == screen));
         }

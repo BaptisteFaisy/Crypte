@@ -280,7 +280,7 @@ pub fn help_text() -> &'static str {
      /compact — compact the current chat history\n\
      /connect [openai|muse] — connect (status if no argument)\n\
      /help — this help\n\
-     Keys: F2 grimoire · F3/F4 chats · F5 scare · F6 bestiary · Ctrl+N\n\
+     Keys: F2 grimoire · F3/F4 chats · F5 scare · F6 bestiary · F7 hub · Ctrl+N\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
 }
 
