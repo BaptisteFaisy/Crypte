@@ -1,9 +1,10 @@
 //! Commandes slash du chat (`/usage`, `/new`, `/thinking`, `/model`,
-//! `/agent`, `/agents`, `/compact`, `/help`).
+//! `/agent`, `/agents`, `/ask`, `/tell`, `/compact`, `/help`).
 //!
-//! `parse` matche le premier mot ; seul `/agent` consomme le reste de la
-//! ligne, sinon le reste est ignoré. `usage_text` met en forme le registre
-//! du chat courant et le registre cumulé de la session.
+//! `parse` matche le premier mot ; `/agent`, `/ask` et `/tell` consomment
+//! le reste de la ligne (cible + texte), sinon le reste est ignoré.
+//! `usage_text` met en forme le registre du chat courant et le registre
+//! cumulé de la session.
 
 use crate::tokens::{fmt_cost, fmt_tps, TokenLedger};
 
@@ -20,16 +21,34 @@ pub enum Command {
     Help,
     Thinking(Option<String>),
     Model(Option<String>),
-    Agent(String),
+    Agent {
+        target: Option<usize>,
+        prompt: String,
+    },
     Agents,
+    Ask {
+        agent: usize,
+        text: String,
+    },
+    Tell {
+        target: usize,
+        text: String,
+    },
     Compact,
+    Hint(&'static str),
     Unknown(String),
 }
 
+/// Aides d'usage (commandes `/tell` `/ask` `/agent` mal formées).
+pub const TELL_USAGE: &str = "usage : /tell <n> <texte> — parler au chat n";
+pub const ASK_USAGE: &str = "usage : /ask #<id> <texte> — reparler à un agent";
+pub const AGENT_USAGE: &str = "usage : /agent [@<n>] <texte> — sous-agent (réponse au chat n)";
+
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
-/// Matche le premier mot ; `/agent` consomme le reste (trimmé, vide →
-/// `Unknown`), `/thinking` et `/model` prennent un argument optionnel.
+/// Matche le premier mot ; `/agent` (cible `@<n>` optionnelle), `/ask`
+/// et `/tell` (cible + texte) consomment le reste, `/thinking` et
+/// `/model` prennent un argument optionnel.
 pub fn parse(input: &str) -> Option<Command> {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
@@ -46,6 +65,8 @@ pub fn parse(input: &str) -> Option<Command> {
         "/agents" => Some(Command::Agents),
         "/compact" => Some(Command::Compact),
         "/agent" => parse_agent(trimmed, word),
+        "/ask" => parse_ask(trimmed, word),
+        "/tell" => parse_tell(trimmed, word),
         _ => Some(Command::Unknown(word.to_string())),
     }
 }
@@ -55,13 +76,68 @@ fn opt_arg(parts: &mut std::str::SplitWhitespace<'_>) -> Option<String> {
     parts.next().map(str::to_string)
 }
 
-/// `/agent <texte...>` : texte trimmé ; vide → `Unknown("/agent")`.
+/// `/agent [@<n>] <texte...>` : `@<n>` (chiffres) route la réponse vers
+/// le chat n ; `@` suivi d'autre chose fait partie du prompt. Vide ou
+/// cible sans texte → `Unknown("/agent")`, `@0` → aide d'usage.
 fn parse_agent(trimmed: &str, word: &str) -> Option<Command> {
     let rest = trimmed[word.len()..].trim();
     if rest.is_empty() {
-        Some(Command::Unknown(word.to_string()))
-    } else {
-        Some(Command::Agent(rest.to_string()))
+        return Some(Command::Unknown(word.to_string()));
+    }
+    if let Some(after) = rest.strip_prefix('@') {
+        let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() {
+            let text = after[digits.len()..].trim();
+            if text.is_empty() {
+                return Some(Command::Unknown(word.to_string()));
+            }
+            match digits.parse::<usize>().unwrap_or(0) {
+                n if n >= 1 => {
+                    return Some(Command::Agent {
+                        target: Some(n),
+                        prompt: text.to_string(),
+                    })
+                }
+                _ => return Some(Command::Hint(AGENT_USAGE)),
+            }
+        }
+    }
+    Some(Command::Agent {
+        target: None,
+        prompt: rest.to_string(),
+    })
+}
+
+/// `/ask #<id> <texte...>` (`#` optionnel) : suite de conversation avec
+/// l'agent ; mal formé → aide d'usage.
+fn parse_ask(trimmed: &str, word: &str) -> Option<Command> {
+    let rest = trimmed[word.len()..].trim();
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let token = parts.next().unwrap_or("").trim();
+    let num = token.strip_prefix('#').unwrap_or(token);
+    let text = parts.next().map(str::trim).unwrap_or("");
+    match (num.parse::<usize>().ok(), text.is_empty()) {
+        (Some(id), false) if id >= 1 => Some(Command::Ask {
+            agent: id,
+            text: text.to_string(),
+        }),
+        _ => Some(Command::Hint(ASK_USAGE)),
+    }
+}
+
+/// `/tell <n> <texte...>` : parler au chat n (1-based) ; mal formé →
+/// aide d'usage.
+fn parse_tell(trimmed: &str, word: &str) -> Option<Command> {
+    let rest = trimmed[word.len()..].trim();
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let target = parts.next().unwrap_or("").trim().parse::<usize>().ok();
+    let text = parts.next().map(str::trim).unwrap_or("");
+    match (target, text.is_empty()) {
+        (Some(n), false) if n >= 1 => Some(Command::Tell {
+            target: n,
+            text: text.to_string(),
+        }),
+        _ => Some(Command::Hint(TELL_USAGE)),
     }
 }
 
@@ -100,15 +176,17 @@ pub fn usage_text(
     )
 }
 
-/// Aide : les 8 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 10 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commandes :\n\
      /usage — usage tokens (chat courant + session totale)\n\
      /new — nouveau chat (remise à zéro du chat courant)\n\
      /thinking [niveau] — niveau de réflexion (default/low/medium/high)\n\
      /model [nom|reset] — afficher ou changer le modèle\n\
-     /agent <texte> — lancer un sous-agent avec ces instructions\n\
+     /agent [@<n>] <texte> — sous-agent (réponse au chat n si ciblé)\n\
      /agents — lister les sous-agents actifs\n\
+     /ask #<id> <texte> — reparler à un agent\n\
+     /tell <n> <texte> — parler au chat n\n\
      /compact — compacter l'historique du chat courant\n\
      /help — cette aide\n\
      Touches : F2 · F3 · F4 · F5 · Ctrl+N\n\
@@ -150,7 +228,10 @@ mod tests {
         assert_eq!(parse("/model"), Some(Command::Model(None)));
         assert_eq!(
             parse("/agent txt"),
-            Some(Command::Agent(String::from("txt")))
+            Some(Command::Agent {
+                target: None,
+                prompt: String::from("txt")
+            })
         );
         assert_eq!(
             parse("/agent   "),
@@ -164,5 +245,57 @@ mod tests {
         assert!(valid_effort("high"));
         assert!(!valid_effort("ultra"));
         assert!(!valid_effort("HIGH"));
+    }
+
+    #[test]
+    fn parse_tell_ok_et_rejets() {
+        assert_eq!(
+            parse("/tell 2 bonjour"),
+            Some(Command::Tell {
+                target: 2,
+                text: String::from("bonjour")
+            })
+        );
+        assert_eq!(parse("/tell"), Some(Command::Hint(TELL_USAGE)));
+        assert_eq!(parse("/tell 2"), Some(Command::Hint(TELL_USAGE)));
+        assert_eq!(parse("/tell x bonjour"), Some(Command::Hint(TELL_USAGE)));
+        assert_eq!(parse("/tell 0 bonjour"), Some(Command::Hint(TELL_USAGE)));
+    }
+
+    #[test]
+    fn parse_ask_diese_optionnel_et_rejets() {
+        let want = Some(Command::Ask {
+            agent: 3,
+            text: String::from("suite"),
+        });
+        assert_eq!(parse("/ask #3 suite"), want);
+        assert_eq!(parse("/ask 3 suite"), want);
+        assert_eq!(parse("/ask"), Some(Command::Hint(ASK_USAGE)));
+        assert_eq!(parse("/ask #3"), Some(Command::Hint(ASK_USAGE)));
+        assert_eq!(parse("/ask x suite"), Some(Command::Hint(ASK_USAGE)));
+    }
+
+    #[test]
+    fn parse_agent_cible_optionnelle() {
+        assert_eq!(
+            parse("/agent @2 fais ça"),
+            Some(Command::Agent {
+                target: Some(2),
+                prompt: String::from("fais ça")
+            })
+        );
+        // `@` non suivi de chiffres = début du prompt.
+        assert_eq!(
+            parse("/agent @demain fais ça"),
+            Some(Command::Agent {
+                target: None,
+                prompt: String::from("@demain fais ça")
+            })
+        );
+        assert_eq!(
+            parse("/agent @2"),
+            Some(Command::Unknown(String::from("/agent")))
+        );
+        assert_eq!(parse("/agent @0 x"), Some(Command::Hint(AGENT_USAGE)));
     }
 }

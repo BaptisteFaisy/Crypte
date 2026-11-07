@@ -4,10 +4,13 @@
 //! lit/écrit l'état via les accès `pub(crate)` de [`App`].
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::agents;
 use crate::app::{App, Incoming};
+use crate::chat::Role;
 use crate::commands::{self, Command};
+use crate::sessions::AskError;
 
 /// Historique minimal (messages) pour lancer un compactage.
 const COMPACT_MIN: usize = 6;
@@ -23,9 +26,12 @@ impl App {
             Some(Command::Help) => self.push_system(commands::help_text().to_string()),
             Some(Command::Model(arg)) => self.cmd_model(arg),
             Some(Command::Thinking(arg)) => self.cmd_thinking(arg),
-            Some(Command::Agent(prompt)) => self.cmd_agent(prompt),
+            Some(Command::Agent { target, prompt }) => self.cmd_agent(target, prompt),
             Some(Command::Agents) => self.cmd_agents(),
+            Some(Command::Ask { agent, text }) => self.cmd_ask(agent, text),
+            Some(Command::Tell { target, text }) => self.cmd_tell(target, text),
             Some(Command::Compact) => self.cmd_compact(),
+            Some(Command::Hint(msg)) => self.push_system(msg.to_string()),
             Some(Command::Unknown(word)) => {
                 self.push_system(format!("commande inconnue : {word} — /help pour l'aide"));
             }
@@ -83,27 +89,40 @@ impl App {
         }
     }
 
-    /// `/agent <texte>` : sous-agent (agents.md préfixé si chargé, sans historique).
-    fn cmd_agent(&mut self, prompt: String) {
+    /// `/agent [@<n>] <texte>` : sous-agent (agents.md préfixé si chargé,
+    /// sans historique) ; réponse livrée au chat n si ciblé, sinon ici.
+    fn cmd_agent(&mut self, target: Option<usize>, prompt: String) {
         let id = self.sessions.index();
-        let Some(agent_id) = self.sessions.add_agent(id, &prompt) else {
-            return;
+        let deliver = match target {
+            None => id,
+            Some(n) if self.sessions.get(n - 1).is_some() => n - 1,
+            Some(n) => {
+                self.push_system(format!("chat {n} inexistant"));
+                return;
+            }
         };
-        self.push_system(format!("agent#{agent_id} lancé"));
-        let model = self.effective_model();
-        let effort = self.thinking.clone();
-        let provider = Arc::clone(&self.provider);
-        let tx = self.tx.clone();
         let mut messages = Vec::with_capacity(2);
         if let Some(content) = &self.agents_md {
             messages.push((String::from("system"), content.clone()));
         }
-        messages.push(("user".to_string(), prompt));
+        messages.push(("user".to_string(), prompt.clone()));
+        let Some(agent_id) = self.sessions.add_agent(id, &prompt, messages.clone()) else {
+            return;
+        };
+        if deliver == id {
+            self.push_system(format!("agent#{agent_id} lancé"));
+        } else {
+            self.push_system(format!("agent#{agent_id} lancé → Chat {}", deliver + 1));
+        }
+        let model = self.effective_model();
+        let effort = self.thinking.clone();
+        let provider = Arc::clone(&self.provider);
+        let tx = self.tx.clone();
         tokio::spawn(async move {
             let reply = provider
                 .complete_full(&messages, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Agent(id, agent_id, reply));
+            let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply));
         });
     }
 
@@ -129,6 +148,75 @@ impl App {
                 .join("\n")
         };
         self.push_system(text);
+    }
+
+    /// `/ask #<id> <texte>` : suite de conversation avec l'agent (cherché
+    /// dans tous les chats, réponse livrée ici) ; refusé s'il est en cours.
+    fn cmd_ask(&mut self, agent_id: usize, text: String) {
+        let here = self.sessions.index();
+        let (owner, history) = match self.sessions.ask_agent(agent_id, text) {
+            Err(AskError::Unknown) => {
+                self.push_system(format!("agent#{agent_id} inconnu"));
+                return;
+            }
+            Err(AskError::Busy) => {
+                self.push_system(format!("agent#{agent_id} en cours, attends sa réponse"));
+                return;
+            }
+            Ok(ready) => ready,
+        };
+        let model = self.effective_model();
+        let effort = self.thinking.clone();
+        let provider = Arc::clone(&self.provider);
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let reply = provider
+                .complete_full(&history, &model, effort.as_deref())
+                .await;
+            let _ = tx.send(Incoming::Agent(owner, agent_id, here, reply));
+        });
+    }
+
+    /// `/tell <n> <texte>` : injecte le texte dans le chat n (préfixé
+    /// `[de Chat k]`) et déclenche sa réponse ; refusé s'il est occupé.
+    fn cmd_tell(&mut self, target: usize, text: String) {
+        let here = self.sessions.index();
+        let idx = target - 1;
+        if idx == here {
+            self.push_system(String::from("c'est ce chat-ci — écris directement"));
+            return;
+        }
+        match self.sessions.get(idx) {
+            None => {
+                self.push_system(format!("chat {target} inexistant"));
+                return;
+            }
+            Some(dest) if dest.sending => {
+                self.push_system(format!("Chat {target} occupé, réessaie"));
+                return;
+            }
+            Some(_) => {}
+        }
+        let model = self.effective_model_for(idx);
+        let effort = self.thinking.clone();
+        let provider = Arc::clone(&self.provider);
+        let tx = self.tx.clone();
+        let envelope = format!("[de Chat {}] {text}", here + 1);
+        let history = {
+            let dest = self.sessions.get_mut(idx).expect("chat validé ci-dessus");
+            dest.chat.push(Role::User, envelope.clone());
+            dest.history.push((String::from("user"), envelope));
+            dest.sending = true;
+            dest.sending_since = Some(Instant::now());
+            crate::app::send_window(&dest.history, dest.pinned_system)
+        };
+        tokio::spawn(async move {
+            let reply = provider
+                .complete_full(&history, &model, effort.as_deref())
+                .await;
+            let _ = tx.send(Incoming::Chat(idx, reply));
+        });
+        self.push_system(format!("envoyé au Chat {target}"));
     }
 
     /// `/compact` : résume l'historique (agents.md exclu du résumé méta,

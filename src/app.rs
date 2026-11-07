@@ -16,7 +16,7 @@ use crate::commands;
 use crate::fx::Fx;
 use crate::mascot::{Mascot, MascotState};
 use crate::provider::{Completion, Provider, ProviderConfig};
-use crate::sessions::{AgentStatus, Sessions};
+use crate::sessions::Sessions;
 use crate::tokens::fmt_tps;
 
 /// Écran affiché dans la zone principale.
@@ -36,11 +36,12 @@ impl Screen {
     }
 }
 
-/// Message async d'une tâche provider : chat (`idx`), agent (`idx`+id),
-/// compaction (`idx`, voir [`agents::compacted_history`]).
+/// Message async d'une tâche provider : chat (`idx`), agent
+/// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
+/// [`agents::compacted_history`]).
 pub(crate) enum Incoming {
     Chat(usize, Result<Completion>),
-    Agent(usize, usize, Result<Completion>),
+    Agent(usize, usize, usize, Result<Completion>),
     Compact(usize, Result<Completion>),
 }
 
@@ -196,18 +197,9 @@ impl App {
         }
         sess.chat.push(Role::User, text.clone());
         sess.history.push(("user".to_string(), text));
-        let mut history = sess.history.clone();
-        let pinned = sess.pinned_system;
+        let history = send_window(&sess.history, sess.pinned_system);
         sess.sending = true;
         sess.sending_since = Some(Instant::now());
-        if history.len() > MAX_HISTORY {
-            let drop = history.len() - MAX_HISTORY;
-            if pinned && !history.is_empty() {
-                history.drain(1..1 + drop);
-            } else {
-                history.drain(..drop);
-            }
-        }
         tokio::spawn(async move {
             let reply = provider
                 .complete_full(&history, &model, effort.as_deref())
@@ -221,92 +213,24 @@ impl App {
         while let Ok(msg) = self.rx.try_recv() {
             match msg {
                 Incoming::Chat(id, reply) => self.drain_chat(id, reply),
-                Incoming::Agent(id, agent_id, reply) => self.drain_agent(id, agent_id, reply),
+                Incoming::Agent(owner, agent_id, deliver, reply) => {
+                    self.drain_agent(owner, agent_id, deliver, reply);
+                }
                 Incoming::Compact(id, reply) => self.drain_compact(id, reply),
             }
         }
     }
 
-    /// Réponse chat : ledger + historique + message (ou erreur système).
-    fn drain_chat(&mut self, id: usize, reply: Result<Completion>) {
-        let Some(sess) = self.sessions.get_mut(id) else {
-            return;
-        };
-        sess.sending = false;
-        let elapsed = sess
-            .sending_since
-            .map(|t| t.elapsed().as_secs_f64())
-            .unwrap_or(0.0);
-        sess.sending_since = None;
-        match reply {
-            Ok(done) => {
-                sess.ledger
-                    .record(done.prompt_tokens, done.completion_tokens, elapsed);
-                sess.history
-                    .push(("assistant".to_string(), done.text.clone()));
-                sess.chat.push(Role::Assistant, done.text);
-            }
-            Err(err) => sess.chat.push(Role::System, format!("erreur: {err:#}")),
-        }
-    }
-
-    /// Réponse sous-agent : ledger + statut + message `[agent#id]` (ou erreur).
-    fn drain_agent(&mut self, id: usize, agent_id: usize, reply: Result<Completion>) {
-        let Some(sess) = self.sessions.get_mut(id) else {
-            return;
-        };
-        let Some(pos) = sess.agents.iter().position(|a| a.id == agent_id) else {
-            return;
-        };
-        match reply {
-            Ok(done) => {
-                let agent = &mut sess.agents[pos];
-                agent.prompt_tokens = done.prompt_tokens;
-                agent.completion_tokens = done.completion_tokens;
-                agent.status = AgentStatus::Done;
-                sess.ledger
-                    .record(done.prompt_tokens, done.completion_tokens, 0.0);
-                sess.chat
-                    .push(Role::Assistant, format!("[agent#{agent_id}] {}", done.text));
-            }
-            Err(err) => {
-                sess.agents[pos].status = AgentStatus::Failed;
-                sess.chat
-                    .push(Role::System, format!("[agent#{agent_id}] erreur: {err:#}"));
-            }
-        }
-    }
-
-    /// Résumé reçu : historique remplacé (pinné + résumé + 4 derniers).
-    /// En cas d'échec, l'historique reste intact (erreur système seule).
-    fn drain_compact(&mut self, id: usize, reply: Result<Completion>) {
-        let Some(sess) = self.sessions.get_mut(id) else {
-            return;
-        };
-        match reply {
-            Ok(done) => {
-                sess.ledger
-                    .record(done.prompt_tokens, done.completion_tokens, 0.0);
-                let before = sess.history.len();
-                let compacted =
-                    agents::compacted_history(&sess.history, &done.text, sess.pinned_system);
-                sess.history = compacted;
-                let after = sess.history.len();
-                sess.chat
-                    .push(Role::System, format!("compacté : {before}→{after}"));
-            }
-            Err(err) => sess
-                .chat
-                .push(Role::System, format!("compaction échouée : {err:#}")),
-        }
-    }
-
     /// Modèle effectif : celui du chat courant, sinon le défaut provider.
     pub(crate) fn effective_model(&self) -> String {
+        self.effective_model_for(self.sessions.index())
+    }
+
+    /// Modèle effectif du chat `idx` (le sien, sinon le défaut provider).
+    pub(crate) fn effective_model_for(&self, idx: usize) -> String {
         self.sessions
-            .current()
-            .model
-            .clone()
+            .get(idx)
+            .and_then(|c| c.model.clone())
             .unwrap_or_else(|| self.provider.config().model.clone())
     }
 
@@ -384,6 +308,21 @@ impl App {
     }
 }
 
+/// Fenêtre d'historique envoyée au provider : 40 derniers, tête
+/// `system` pinnée gardée (partagée par `send` et `/tell`).
+pub(crate) fn send_window(history: &[(String, String)], pinned: bool) -> Vec<(String, String)> {
+    let mut window = history.to_vec();
+    if window.len() > MAX_HISTORY {
+        let drop = window.len() - MAX_HISTORY;
+        if pinned && !window.is_empty() {
+            window.drain(1..1 + drop);
+        } else {
+            window.drain(..drop);
+        }
+    }
+    window
+}
+
 /// Nom de chat depuis le premier message : 18 premiers caractères trimmés.
 fn short_name(text: &str) -> String {
     text.chars()
@@ -402,4 +341,107 @@ pub fn short_model(model: &str) -> String {
         .chars()
         .take(14)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::ProviderConfig;
+    use crate::sessions::AgentStatus;
+
+    /// App de test (clé factice, aucun appel réseau dans ces tests).
+    fn test_app() -> App {
+        let cfg = ProviderConfig {
+            base_url: String::from("http://localhost:9/"),
+            api_key: String::from("factice"),
+            model: String::from("factice"),
+        };
+        App::from_config(cfg).unwrap()
+    }
+
+    /// Texte du dernier message affiché du chat `idx`.
+    fn last_text(app: &App, idx: usize) -> String {
+        app.sessions
+            .get(idx)
+            .unwrap()
+            .chat
+            .messages()
+            .last()
+            .map(|m| m.text.clone())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn tell_rejette_cible_invalide_ou_occupee() {
+        let mut app = test_app();
+        app.run_command("/tell 9 hello");
+        assert_eq!(last_text(&app, 0), "chat 9 inexistant");
+        app.run_command("/tell 1 hello");
+        assert_eq!(last_text(&app, 0), "c'est ce chat-ci — écris directement");
+        app.sessions.get_mut(0).unwrap().sending = true;
+        app.add_chat(); // courant = chat 2
+        app.run_command("/tell 1 hello");
+        assert_eq!(last_text(&app, 1), "Chat 1 occupé, réessaie");
+        // Refus = rien injecté nulle part.
+        assert!(app.sessions.get(0).unwrap().history.is_empty());
+    }
+
+    #[test]
+    fn ask_rejette_agent_inconnu() {
+        let mut app = test_app();
+        app.run_command("/ask #42 suite");
+        assert_eq!(last_text(&app, 0), "agent#42 inconnu");
+    }
+
+    #[test]
+    fn agent_rejette_livraison_inexistante_sans_creer() {
+        let mut app = test_app();
+        app.run_command("/agent @9 fais ça");
+        assert_eq!(last_text(&app, 0), "chat 9 inexistant");
+        assert!(app.sessions.current().agents.is_empty());
+    }
+
+    #[test]
+    fn hint_affiche_usage() {
+        let mut app = test_app();
+        app.run_command("/tell");
+        assert_eq!(last_text(&app, 0), commands::TELL_USAGE);
+        app.run_command("/ask #1");
+        assert_eq!(last_text(&app, 0), commands::ASK_USAGE);
+    }
+
+    #[test]
+    fn drain_agent_livre_ailleurs_statut_chez_proprietaire() {
+        let mut app = test_app();
+        app.add_chat();
+        let history = vec![(String::from("user"), String::from("u"))];
+        let id = app.sessions.add_agent(0, "prompt", history).unwrap();
+        let done = Completion {
+            text: String::from("réponse"),
+            prompt_tokens: 10,
+            completion_tokens: 5,
+        };
+        app.drain_agent(0, id, 1, Ok(done));
+        // Statut + échange chez le propriétaire, pas de tokens ici.
+        let owner = app.sessions.get(0).unwrap();
+        assert_eq!(owner.agents[0].status, AgentStatus::Done);
+        assert_eq!(owner.agents[0].history.len(), 2);
+        assert_eq!(owner.ledger.total(), 0);
+        // Ledger + message tagué sur la livraison.
+        assert_eq!(app.sessions.get(1).unwrap().ledger.total(), 15);
+        assert_eq!(last_text(&app, 1), "[agent#1 de Chat 1] réponse");
+    }
+
+    #[test]
+    fn drain_agent_erreur_marquee_chez_proprietaire() {
+        let mut app = test_app();
+        let history = vec![(String::from("user"), String::from("u"))];
+        let id = app.sessions.add_agent(0, "prompt", history).unwrap();
+        app.drain_agent(0, id, 0, Err(anyhow::anyhow!("boom")));
+        assert_eq!(
+            app.sessions.get(0).unwrap().agents[0].status,
+            AgentStatus::Failed
+        );
+        assert_eq!(last_text(&app, 0), "[agent#1] erreur: boom");
+    }
 }

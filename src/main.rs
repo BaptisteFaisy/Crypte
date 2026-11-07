@@ -10,6 +10,7 @@ mod app;
 mod chat;
 mod cmds;
 mod commands;
+mod drain;
 mod fx;
 mod mascot;
 mod provider;
@@ -61,7 +62,9 @@ COMMANDES (dans le chat) :
     /usage  tokens (chat + total)    /new  nouveau chat    /help  aide
     /thinking [niveau]  reflexion (default/low/medium/high)
     /model [nom|reset]  modele du chat (reset = defaut)
-    /agent <texte>  sous-agent    /agents  liste agents
+    /agent [@<n>] <texte>  sous-agent (reponse au chat n si cible)
+    /agents  liste agents    /ask #<id> <texte>  reparler a un agent
+    /tell <n> <texte>  parler au chat n
     /compact  compacter l'historique (resume + 4 derniers)
 ";
 
