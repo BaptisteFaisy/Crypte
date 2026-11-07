@@ -1,0 +1,25 @@
+# Crypte headless remote pilot on a VPS: plain systemd unit (no tmux,
+# --serve never touches a terminal).
+# Install: cp deploy/crypte-serve.service /etc/systemd/system/crypte-serve.service, then
+#   systemctl daemon-reload && systemctl enable --now crypte-serve
+# Needs: /opt/crypte checkout (built, see docs/VPS.md), /etc/crypte/serve.env
+# (KH_* + KH_WATCH_TOKEN, chmod 600), /var/log/crypte writable by User.
+# Watch/pilot: http://<vps>:8931/?token=<KH_WATCH_TOKEN> (see docs/VPS.md §7).
+# Do NOT run crypte.service and crypte-serve.service on the same account:
+# both persist to ~/.config/kiro-horror-tui/chats.json (pick one).
+[Unit]
+Description=Crypte headless remote pilot (--serve)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=crypte
+WorkingDirectory=/opt/crypte
+EnvironmentFile=/etc/crypte/serve.env
+ExecStart=/opt/crypte/target/release/kiro-horror-tui --serve 127.0.0.1:8931 --events-log /var/log/crypte/events.jsonl
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

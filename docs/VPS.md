@@ -110,9 +110,42 @@ The file is reopened on every event, so a plain rename works (no
 }
 ```
 
+## 7. Remote pilot without SSH (`--serve`)
+
+Headless HTTP server: drive chats (and `/agent`, `/ask`, …) and watch
+everything live from a browser, no SSH session needed:
+
+```sh
+KH_WATCH_TOKEN="$(openssl rand -hex 24)" \
+  ./target/release/kiro-horror-tui --serve 127.0.0.1:8931 \
+  --events-log /var/log/crypte/events.jsonl
+```
+
+Then open `http://<vps>:8931/?token=<token>` (single page, zero
+dependencies, token also accepted in the page field). No tmux needed:
+`--serve` never touches a terminal — see `deploy/crypte-serve.service`
+for a plain systemd unit (`Type=simple`).
+
+Routes (all require `Authorization: Bearer <token>`):
+
+| route | use |
+| --- | --- |
+| `GET /` | the watch/pilot page |
+| `GET /snapshot` | full state JSON (chats, messages, agents, tokens) |
+| `GET /live` | Server-Sent Events of the §5 JSON (`?token=` also accepted) |
+| `POST /input` | `{"chat": N, "text": "..."}` — sends (or runs `/commands`) |
+
+Security: bind loopback + `ssh -L 8931:127.0.0.1:8931 <vps>` for a
+single admin, or a Tailnet/private IP + strong token for a small team.
+Never expose `--serve` to the public internet without a TLS terminator
+in front (no HTTPS here, token in clear HTTP).
+
 ## Limits
 
-- Sessions live in RAM: tmux survives SSH drops, not VPS reboots.
-  The JSONL stream is an observe-only replay, not a state restore.
+- Chats autosave to `~/.config/kiro-horror-tui/chats.json` and are
+  restored on restart (TUI and `--serve` alike) — a reboot no longer
+  wipes them. Do not run two instances on the same account (they would
+  overwrite each other's file).
+- The JSONL stream is an observe-only replay, not a state restore.
 - The TUI needs a terminal ≥ 80x24 (`tmux attach` provides it);
-  headless modes (`--smoke`, `--once`, `--preview`) need none.
+  headless modes (`--smoke`, `--once`, `--preview`, `--serve`) need none.

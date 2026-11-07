@@ -28,6 +28,8 @@ onglets = écrans),
 `drain.rs` (routage réponses async + pompes + retransmissions),
 `events.rs` (flux JSONL temps réel `--events-log`/`KH_EVENTS_LOG` :
 chats + sous-agents, silencieux si désactivé),
+`serve.rs` (pilotage distant headless `--serve` : snapshot, SSE `/live`,
+`POST /input`, auth `KH_WATCH_TOKEN` ; client `assets/watch.html`),
 `cmds.rs` (handlers `/…`), `cmds_web.rs` (handler `/web`),
 `commands.rs` (parse + aide + usage),
 `permissions.rs` (mode yolo/auto + persistance fichier + handler),
