@@ -68,6 +68,10 @@ pub struct ChatState {
     /// Rectangle de la colonne de discussion (mémorisé au rendu) :
     /// la molette ne défile que le chat survolé.
     pub area: Cell<Rect>,
+    /// Version de `messages` (bump à chaque `push`, jamais remise à zéro).
+    wrap_version: u64,
+    /// Lignes wrappées : (version, largeur, lignes), `None` = à calculer.
+    wrap_cache: Option<(u64, usize, Vec<Line<'static>>)>,
 }
 
 impl ChatState {
@@ -86,6 +90,7 @@ impl ChatState {
         if overflow > 0 {
             self.messages.drain(..overflow);
         }
+        self.wrap_version = self.wrap_version.wrapping_add(1);
     }
 
     /// Lecture seule de l'historique (pour le provider LLM).
@@ -94,7 +99,7 @@ impl ChatState {
         &self.messages
     }
 
-    /// Octets heap estimés (messages + brouillon + prompt ; analytique).
+    /// Octets heap estimés (messages + brouillon + prompt + cache ; analytique).
     pub fn heap_bytes(&self) -> usize {
         let mut bytes = self.messages.capacity() * std::mem::size_of::<Message>()
             + self
@@ -102,6 +107,14 @@ impl ChatState {
                 .iter()
                 .map(|message| message.text.capacity())
                 .sum::<usize>();
+        if let Some((_, _, lines)) = &self.wrap_cache {
+            bytes += lines.capacity() * std::mem::size_of::<Line<'static>>();
+            bytes += lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .map(|span| span.content.len())
+                .sum::<usize>();
+        }
         bytes += self.input.capacity();
         bytes += self
             .prompt_label
@@ -144,8 +157,29 @@ impl ChatState {
         self.input_preview = preview;
     }
 
+    /// Lignes wrappées de l'historique pour `width` : recalculées
+    /// seulement si les messages ou la largeur ont changé (sinon la
+    /// frappe paierait un re-wrap complet à chaque frame).
+    fn wrapped_lines(&mut self, width: usize) -> &[Line<'static>] {
+        let fresh = self
+            .wrap_cache
+            .as_ref()
+            .is_some_and(|(v, w, _)| *v == self.wrap_version && *w == width);
+        if !fresh {
+            let lines = history_lines(&self.messages, width);
+            self.wrap_cache = Some((self.wrap_version, width, lines));
+        }
+        &self.wrap_cache.as_ref().expect("cache rempli ci-dessus").2
+    }
+
+    /// Clé du cache de wrap (`None` = vide), pour les tests.
+    #[cfg(test)]
+    pub(crate) fn wrap_cache_key(&self) -> Option<(u64, usize)> {
+        self.wrap_cache.as_ref().map(|(v, w, _)| (*v, *w))
+    }
+
     /// Rend historique + saisie dans `area`.
-    pub fn draw(&self, frame: &mut Frame, area: Rect, view: ChatView) {
+    pub fn draw(&mut self, frame: &mut Frame, area: Rect, view: ChatView) {
         self.area.set(area);
         let hist_h = area.height.saturating_sub(INPUT_HEIGHT);
         let hist = Rect {
@@ -161,9 +195,9 @@ impl ChatState {
         self.draw_input(frame, input, view.tick);
     }
 
-    /// Historique : bloc arrondi, messages cadrés sur la fin, défilables
-    /// (molette / PgUp / Shift+↑↓) avec badge des lignes remontées.
-    fn draw_history(&self, frame: &mut Frame, area: Rect, view: ChatView) {
+    /// Historique : bloc arrondi, défilable (molette / PgUp / Shift+↑↓)
+    /// avec badge des lignes remontées ; ne clone que la fenêtre visible.
+    fn draw_history(&mut self, frame: &mut Frame, area: Rect, view: ChatView) {
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -183,20 +217,25 @@ impl ChatState {
             frame.render_widget(epitaph(inner.height), inner);
             return;
         }
-        let mut lines = history_lines(&self.messages, inner.width as usize);
+        let width = inner.width as usize;
+        let extra = usize::from(view.sending) * 2;
+        let total = self.wrapped_lines(width).len().saturating_add(extra);
+        let (skip, scrolled) = self.scroll.viewport(total, inner.height as usize);
+        // Second appel = hit (calculé ci-dessus), pour libérer `scroll`.
+        let base = self.wrapped_lines(width);
+        let mut visible: Vec<Line<'static>> = base.iter().skip(skip).cloned().collect();
         if view.sending {
-            lines.push(Line::raw(""));
-            lines.push(murmur_line(view.tick));
+            let tail = [Line::raw(""), murmur_line(view.tick)];
+            let drop = skip.saturating_sub(base.len()).min(2);
+            visible.extend(tail.into_iter().skip(drop));
         }
-        let (skip, scroll) = self.scroll.viewport(lines.len(), inner.height as usize);
-        lines.drain(..skip);
-        let block = if scroll == 0 {
+        let block = if scrolled == 0 {
             block
         } else {
-            block.title_bottom(scroll_badge(scroll))
+            block.title_bottom(scroll_badge(scrolled))
         };
         frame.render_widget(block, area);
-        frame.render_widget(Paragraph::new(lines), inner);
+        frame.render_widget(Paragraph::new(visible), inner);
     }
 
     /// Saisie : brouillon (ou aperçu) cadré sur la fin + curseur bougie.
@@ -378,97 +417,4 @@ fn tail_chars(s: &str, n: usize) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wrap_breaks_on_words_and_cuts_long_ones() {
-        assert_eq!(
-            wrap_text("le chat noir dort", 8),
-            ["le chat", "noir", "dort"]
-        );
-        assert_eq!(wrap_text("abcdefghij", 4), ["abcd", "efgh", "ij"]);
-        assert_eq!(wrap_text("a\n\nb", 10), ["a", "", "b"]);
-        for w in 1..12 {
-            for row in wrap_text("les ossements craquent sous la lune rousse", w) {
-                assert!(row.chars().count() <= w, "{row:?} > {w}");
-            }
-        }
-    }
-
-    #[test]
-    fn heap_bytes_croit_avec_les_messages() {
-        let mut chat = ChatState::new();
-        let vide = chat.heap_bytes();
-        chat.push(Role::User, "bonsoir");
-        assert!(chat.heap_bytes() > vide);
-        assert!(chat.heap_bytes() >= "bonsoir".len());
-    }
-
-    #[test]
-    fn defiler_affiche_les_vieux_messages_puis_revient() {
-        use ratatui::{backend::TestBackend, Terminal};
-        let mut chat = ChatState::new();
-        for i in 0..12 {
-            chat.push(Role::User, format!("m{i:02}"));
-        }
-        let view = ChatView {
-            title: "test",
-            tick: 0,
-            sending: false,
-        };
-        let dump = |chat: &ChatState| {
-            let mut term = Terminal::new(TestBackend::new(40, 14)).unwrap();
-            term.draw(|f| chat.draw(f, f.area(), view)).unwrap();
-            let buf = term.backend().buffer().clone();
-            (0..14)
-                .map(|y| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>())
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
-        // Au bas : la fin visible, le début hors cadre, pas de badge.
-        let bottom = dump(&chat);
-        assert!(bottom.contains("m11"), "dernier message absent : {bottom}");
-        assert!(!bottom.contains("m00"), "début affiché à tort : {bottom}");
-        assert!(!bottom.contains("line"), "badge à tort : {bottom}");
-        // Remonté tout en haut : le début réapparaît + badge de défilement.
-        chat.scroll.by(-100);
-        let top = dump(&chat);
-        assert!(top.contains("m00"), "début toujours absent : {top}");
-        assert!(!top.contains("m11"), "fin encore affichée : {top}");
-        assert!(top.contains("lines"), "badge de défilement absent : {top}");
-        // Retour au bas : on retrouve exactement la vue initiale.
-        chat.scroll.to_bottom();
-        assert_eq!(dump(&chat), bottom);
-    }
-
-    #[test]
-    fn history_has_one_tag_line_per_message() {
-        let mut chat = ChatState::new();
-        chat.push(Role::User, "bonsoir");
-        chat.push(Role::Assistant, "bienvenue dans la crypte");
-        let lines = history_lines(chat.messages(), 40);
-        assert_eq!(lines.len(), 5);
-    }
-
-    #[test]
-    fn prompt_masked_hides_key_length_only() {
-        let mut chat = ChatState::new();
-        chat.input.push_str("brouillon");
-        chat.set_prompt(Some(String::from("Muse API key (masked)")), true);
-        chat.set_input_preview(Some(String::from("sk-secret")));
-        assert_eq!(chat.prompt_label.as_deref(), Some("Muse API key (masked)"));
-        assert!(chat.mask_input);
-        let shown = mask_text(
-            chat.input_preview.as_ref().unwrap_or(&chat.input),
-            chat.mask_input,
-        );
-        assert_eq!(shown, "•••••••••");
-        assert!(!shown.contains("sk-secret"));
-        assert_eq!(chat.input, "brouillon");
-        chat.set_prompt(None, false);
-        chat.set_input_preview(None);
-        assert_eq!(chat.prompt_label, None);
-        assert!(!chat.mask_input);
-    }
-}
+mod tests;

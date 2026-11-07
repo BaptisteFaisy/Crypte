@@ -13,13 +13,13 @@ use ratatui::{
     Frame,
 };
 
-use super::{short_model, App};
+use super::App;
 use crate::bestiary::Creature;
 use crate::chat::ChatView;
 use crate::gfx::ImageBank;
 use crate::mascot::MascotState;
 use crate::theme::{self, ASH, BLOOD, BONE, CANDLE, ECTO, PUMPKIN, SAND, SPECTRE, UMBER, VOID};
-use crate::tokens::fmt_tps;
+use crate::tokens::{fmt_tps, short_model};
 
 /// Écran affiché dans la zone principale.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -107,7 +107,7 @@ impl App {
         let hits = self.sessions.draw_sidebar(frame, side);
         self.side_rows = hits.chats;
         self.plus_btn = hits.plus;
-        let sess = self.sessions.current();
+        let sess = self.sessions.current_mut();
         let view = ChatView {
             title: &sess.name,
             tick: self.tick,
@@ -136,7 +136,7 @@ impl App {
         let hits = self.sessions.draw_sidebar(frame, side);
         self.side_rows = hits.chats;
         self.plus_btn = hits.plus;
-        let sess = self.sessions.current();
+        let sess = self.sessions.current_mut();
         let view = ChatView {
             title: &sess.name,
             tick: self.tick,
