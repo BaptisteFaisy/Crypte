@@ -273,12 +273,13 @@ provider history is untouched (display + ledger only, like agents).
 
 ## AGENTS.md (system context)
 
-At startup, the binary loads `./AGENTS.md` then `./AGENT.md` from
-the cwd (`--agents-file <file>` wins over both), once
-(restart to reload). Injected as a `system` message atop the
-history of every chat (new ones included, `/new` and Ctrl+N) and
-prefixed to `/agent` calls. Excluded from `/compact` (meta summary)
-and from `--once` (raw). Startup announcement (`AGENTS.md loaded,
+The binary reads `./AGENTS.md` then `./AGENT.md` from the cwd
+(`--agents-file <file>` wins over both), once, at the first send
+(never re-read; `/usage` says `missing` until then). Injected as a
+`system` message atop the history of every chat (new ones included,
+`/new` and Ctrl+N) and prefixed to `/agent` calls. Excluded from
+`/compact` (meta summary) and from `--once` (raw). First-send
+announcement (`AGENTS.md loaded,
 N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 `missing`).
 

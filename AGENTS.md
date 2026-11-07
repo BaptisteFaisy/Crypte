@@ -82,7 +82,7 @@ historique inchangé).
   (`ImageBank::drawn`). Aucun son (pas de BEL, pas de notification).
 - UI et messages en anglais ; clé API **jamais affichée ni logguée**
   (ni chat, ni log, ni test — les tests réseau lisent le store).
-- `AGENTS.md` chargé une fois au démarrage (`--agents-file` prime,
-  sinon `./AGENTS.md` puis `./AGENT.md`, restart pour recharger) ;
+- `AGENTS.md` lu une seule fois, au premier envoi (`--agents-file` prime,
+  sinon `./AGENTS.md` puis `./AGENT.md`, jamais relu ensuite) ;
   injecté en tête de chaque chat + `/agent` ; exclu de `/compact`
   (résumé méta) et de `--once` (brut).

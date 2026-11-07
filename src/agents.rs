@@ -1,6 +1,6 @@
 //! Contexte système agents.md : chargement, annonce, compaction.
 //!
-//! Chargé une seule fois au démarrage (restart pour recharger), injecté
+//! Lu une seule fois, au premier envoi (jamais relu ensuite), injecté
 //! comme message `system` en tête de l'historique de chaque chat (flag
 //! `pinned_system`) et préfixé aux appels `/agent`. Exclu du résumé
 //! `/compact` (méta) et de `--once` (brut).
@@ -41,7 +41,7 @@ pub fn stats(content: &str) -> (usize, usize) {
     (content.lines().count(), crate::tokens::estimate(content))
 }
 
-/// Annonce de démarrage : `AGENTS.md chargé (N lignes, ~M tokens)`.
+/// Annonce de chargement : `AGENTS.md loaded (N lines, ~M tokens)`.
 pub fn loaded_message(content: &str) -> String {
     let (lines, toks) = stats(content);
     format!("AGENTS.md loaded ({lines} lines, ~{toks} tokens)")

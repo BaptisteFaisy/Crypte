@@ -134,6 +134,8 @@ impl App {
                 return;
             }
         };
+        // Premier envoi réel : lecture unique d'agents.md (pin + annonce).
+        self.ensure_agents_loaded();
         let mut messages = Vec::with_capacity(2);
         if let Some(content) = &self.agents_md {
             messages.push((String::from("system"), content.clone()));
@@ -278,6 +280,8 @@ impl App {
     /// Dépose un tell (user ou auto) dans le chat `idx` : affiché aussitôt,
     /// déclenché si libre, enfilé sinon. Rend vrai si enfilé.
     pub(crate) fn deliver_tell(&mut self, idx: usize, envelope: String, hops: u8) -> bool {
+        // Premier envoi réel : lecture unique d'agents.md (pin + annonce).
+        self.ensure_agents_loaded();
         let dest = self.sessions.get_mut(idx).expect("chat validé ci-dessus");
         dest.chat.push(Role::User, envelope.clone());
         if dest.sending {
