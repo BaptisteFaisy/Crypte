@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 
 use super::{App, Screen};
 use crate::agents;
+use crate::almanac::Almanac;
 use crate::apparition::Apparition;
 use crate::bus::Bus;
 use crate::chat::Role;
@@ -107,6 +108,7 @@ impl App {
             tick: 0,
             busy: false,
             sessions: Sessions::new(),
+            almanac: Almanac::memory(),
             bus: Bus::new(),
             provider,
             connect_flow: None,

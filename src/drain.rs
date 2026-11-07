@@ -20,6 +20,25 @@ use crate::provider::Completion;
 use crate::sessions::AgentStatus;
 use crate::web::WebAnswer;
 
+impl Incoming {
+    /// Tokens (in, out) facturés par la réponse ; `None` si erreur ou
+    /// recherche web brute (aucun appel LLM).
+    pub(crate) fn usage(&self) -> Option<(u64, u64)> {
+        let billed = match self {
+            Incoming::Chat(_, r) | Incoming::Compact(_, r) | Incoming::Agent(_, _, _, r) => {
+                let done = r.as_ref().ok()?;
+                (done.prompt_tokens, done.completion_tokens)
+            }
+            Incoming::Web(_, r) => {
+                let done = r.as_ref().ok()?;
+                (done.prompt_tokens, done.completion_tokens)
+            }
+        };
+        let raw_web = matches!(self, Incoming::Web(..)) && billed == (0, 0);
+        (!raw_web).then_some(billed)
+    }
+}
+
 impl App {
     /// Réponse chat : ledger + historique + message (ou erreur système),
     /// puis file d'attente et liens auto (voir [`crate::bus`]).

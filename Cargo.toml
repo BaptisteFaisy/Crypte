@@ -18,3 +18,4 @@ toml = "1"
 anyhow = "1"
 ratatui-image = { version = "8", default-features = false, features = ["crossterm"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std", "serde"] }

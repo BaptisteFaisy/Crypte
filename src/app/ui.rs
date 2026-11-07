@@ -29,10 +29,11 @@ pub enum Screen {
     Tokens,
     Bestiary,
     Hub,
+    Almanac,
 }
 
 impl Screen {
-    /// `target` si on n'y est pas déjà, sinon retour au chat (F2, F6).
+    /// `target` si on n'y est pas déjà, sinon retour au chat (F2, F6, F8).
     pub(crate) fn toggle(self, target: Screen) -> Self {
         if self == target {
             Screen::Chat
@@ -46,6 +47,14 @@ impl Screen {
 const EIGHTHS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
 /// Largeur de la jauge de contexte (cellules).
 const CTX_W: usize = 12;
+/// Onglets de l'en-tête : écran, libellé, touche.
+const TABS: [(Screen, &str, &str); 5] = [
+    (Screen::Chat, "chat", ""),
+    (Screen::Tokens, "grimoire", "F2"),
+    (Screen::Bestiary, "bestiary", "F6"),
+    (Screen::Hub, "hub", "F7"),
+    (Screen::Almanac, "almanac", "F8"),
+];
 /// Coiffes powerline arrondies (sprites internes de Ghostty).
 const CAP_L: &str = "\u{e0b6}";
 const CAP_R: &str = "\u{e0b4}";
@@ -75,6 +84,7 @@ impl App {
             Screen::Tokens => self.draw_tokens(frame, body),
             Screen::Bestiary => self.galerie.draw(frame, body, &mut self.bank),
             Screen::Hub => self.draw_hub(frame, body),
+            Screen::Almanac => self.draw_almanac(frame, body),
         }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
@@ -226,21 +236,42 @@ impl App {
             Modifier::BOLD,
         ));
         spans.push(Span::styled("  ", Style::new()));
-        for (screen, label, key) in [
-            (Screen::Chat, "chat", ""),
-            (Screen::Tokens, "grimoire", "F2"),
-            (Screen::Bestiary, "bestiary", "F6"),
-            (Screen::Hub, "hub", "F7"),
-        ] {
-            spans.extend(tab(label, key, self.screen == screen));
-        }
+        let gauge = ctx_gauge(self.context_used(), self.context_limit());
+        let used = spans_width(&spans) + spans_width(&gauge) + 1;
+        spans.extend(self.tabs((area.width as usize).saturating_sub(used)));
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
-        let gauge = Paragraph::new(Line::from(ctx_gauge(
-            self.context_used(),
-            self.context_limit(),
-        )))
-        .alignment(Alignment::Right);
+        let gauge = Paragraph::new(Line::from(gauge)).alignment(Alignment::Right);
         frame.render_widget(gauge, area);
+    }
+
+    /// Onglets d'écran ; sans les touches (F2…) s'ils ne tiennent pas
+    /// dans `room` colonnes (la jauge ctx reste entière à 80 colonnes).
+    fn tabs(&self, room: usize) -> Vec<Span<'static>> {
+        let build = |keys: bool| -> Vec<Span<'static>> {
+            TABS.iter()
+                .flat_map(|&(screen, label, key)| {
+                    tab(label, if keys { key } else { "" }, self.screen == screen)
+                })
+                .collect()
+        };
+        let full = build(true);
+        if spans_width(&full) <= room {
+            full
+        } else {
+            build(false)
+        }
+    }
+
+    /// Écran almanach : tokens par nuit + la faucheuse qui tient le compte.
+    fn draw_almanac(&mut self, frame: &mut Frame, area: Rect) {
+        let [book, card] = Layout::horizontal([
+            Constraint::Min(40),
+            Constraint::Length(right_width(area.width)),
+        ])
+        .areas(area);
+        self.almanac.draw(frame, book, crate::almanac::today());
+        let reaper = bestiary::get("faucheuse");
+        draw_card(frame, card, reaper, BLOOD, &mut self.bank);
     }
 
     /// Barre d'état : pastilles powerline à gauche, raccourcis à droite.
@@ -305,6 +336,11 @@ fn draw_card(
         .alignment(Alignment::Center)
         .wrap(ratatui::widgets::Wrap { trim: true });
     frame.render_widget(text, lore);
+}
+
+/// Largeur affichée d'une suite de spans.
+fn spans_width(spans: &[Span]) -> usize {
+    spans.iter().map(Span::width).sum()
 }
 
 /// Onglet : pastille citrouille si actif, texte sable sinon (+ touche).
@@ -395,15 +431,36 @@ mod tests {
     }
 
     #[test]
+    fn header_fits_five_tabs_and_gauge_at_80_columns() {
+        let mut app = App::offline().unwrap();
+        for (w, keys) in [(80, false), (120, true)] {
+            let mut term = Terminal::new(TestBackend::new(w, 24)).unwrap();
+            term.draw(|f| app.draw(f)).unwrap();
+            let buf = term.backend().buffer();
+            let head: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
+            for word in ["chat", "grimoire", "bestiary", "hub", "almanac", "ctx"] {
+                assert!(head.contains(word), "{w} cols: {word} missing in {head:?}");
+            }
+            assert_eq!(head.contains("F8"), keys, "{w} cols: {head:?}");
+        }
+    }
+
+    #[test]
     fn every_screen_renders_at_common_sizes() {
         let mut app = App::offline().unwrap();
+        app.almanac = crate::almanac::Almanac::demo(crate::almanac::today());
         app.sessions
             .current_mut()
             .chat
             .push(Role::Assistant, "les os craquent sous la lune");
         for (w, h) in [(80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [Screen::Chat, Screen::Tokens, Screen::Bestiary] {
+            for screen in [
+                Screen::Chat,
+                Screen::Tokens,
+                Screen::Bestiary,
+                Screen::Almanac,
+            ] {
                 app.screen = screen;
                 app.spook();
                 app.tick();

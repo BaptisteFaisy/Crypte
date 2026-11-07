@@ -290,7 +290,7 @@ pub fn help_text() -> &'static str {
      /permissions [yolo|auto] — future tools mode (remembered)\n\
      /web <query> — web search + summary with cited sources\n\
      /help — this help\n\
-     Keys: F2 grimoire · F3/F4 chats · F5 scare · F6 bestiary · F7 hub · Ctrl+N\n\
+     Keys: F2 grimoire · F3/F4 chats · F5 scare · F6 bestiary · F7 hub · F8 almanac · Ctrl+N\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
 }
 

@@ -2,7 +2,7 @@
 
 Chat LLM dans une crypte hantée (TUI ratatui) pensé pour Ghostty :
 multi-chats, mascotte fantôme Kiro (F5), bestiaire pixel art (F6, images
-Kitty), effets horreur, compteur tokens, sous-agents `/agent`,
+Kitty), effets horreur, compteur tokens, almanach tokens/jour (F8), sous-agents `/agent`,
 compaction `/compact`. UI et messages **en anglais**.
 
 ## Commandes
@@ -13,7 +13,7 @@ cargo test                       # tous les tests doivent être verts
 cargo fmt --check                # formatage propre exigé
 ./target/debug/kiro-horror-tui --smoke   # headless 80x24, sans réseau ni clé
 ./target/debug/kiro-horror-tui --planche docs/bestiaire.png  # après retouche d'un sprite
-./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 3 écrans en ANSI
+./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 5 écrans en ANSI
 ./target/debug/kiro-horror-tui --muse-auth --once "Reply with exactly: OK"
 cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 ```
@@ -43,12 +43,16 @@ unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
 crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 `font.rs` police 3×5, `social.rs` orbes et bavardages), `app/esprits.rs`
 (écran + touches du hub). Sprites du hub : `assets/hub/*.txt`.
+`almanac.rs` (tokens par jour) + `almanac/disk.rs` (JSON
+`~/.local/share/kiro-horror-tui/`, relu avant chaque écriture, jamais
+réécrit s'il est illisible) + `almanac/view.rs` (écran F8).
 `web/` (`/web` : backends → fetch → cache → synthèse, parsing pur dans
 `web/parse.rs`, pertinence dans `web/rank.rs`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async) → `drain_replies`
-(`Incoming::Chat|Agent|Compact|Web`) → ledger + historique + affichage.
+(`Incoming::Chat|Agent|Compact|Web`) → almanach (`Incoming::usage`) +
+ledger + historique + affichage.
 Bus : `/tell`/`/msg` déposent (affiché aussitôt, déclenché si libre,
 enfilé sinon, pompé en groupe à la tombée) ; `/agent @<n>` livre ailleurs
 (`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id from Chat k]`,

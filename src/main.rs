@@ -7,6 +7,7 @@
 //! `--planche <png>` (bestiaire en PNG), `--apercu <fichier>` (frames en ANSI).
 
 mod agents;
+mod almanac;
 mod app;
 mod apparition;
 mod bestiary;
@@ -40,6 +41,7 @@ use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
 
+use crate::almanac::Almanac;
 use crate::app::{App, Screen};
 use crate::chat::Role;
 use crate::provider::{Provider, ProviderConfig};
@@ -58,7 +60,7 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 4 screens (120x36, offline) as ANSI
+        --preview <file>  Write the 5 screens (120x36, offline) as ANSI
         --demo            Offline demo crypt, opened on the spirit hub (F7)
 
 CONFIG (environment, wins over --config):
@@ -83,6 +85,12 @@ AGENTS.MD (system context, read once at first send):
 KEYS (terminal >= 80x24):
     Enter  send    Esc/q  quit    F2  grimoire (tokens)    F5  scare
     F3/F4  previous/next chat    Ctrl+N or click [+]  new chat    F6  bestiary    F7  hub
+    F8  almanac (tokens per day, kept across sessions)
+
+ALMANAC (tokens per day, local date):
+    File: $XDG_DATA_HOME/kiro-horror-tui/almanac.json
+          (else ~/.local/share/kiro-horror-tui/almanac.json)
+    Every billed call counts (chats, agents, /compact, /web, --once)
 
 GHOSTTY:
     Images via the Kitty protocol (halfblocks elsewhere), window
@@ -185,6 +193,11 @@ async fn run_once(cfg: &ProviderConfig, prompt: &str) -> Result<()> {
     let done = provider
         .complete(&[("user".to_string(), prompt.to_string())])
         .await?;
+    let mut almanac = Almanac::open_default();
+    almanac.record(done.prompt_tokens, done.completion_tokens);
+    if let Some(err) = almanac.error() {
+        eprintln!("almanac: {err}");
+    }
     println!("{}", done.text);
     println!(
         "tokens: in={} out={} total={}",
@@ -224,8 +237,10 @@ async fn main() -> Result<()> {
     };
     if !args.demo {
         app.enable_history();
+        app.almanac = Almanac::open_default();
     }
     if args.demo {
+        app.almanac = Almanac::demo(crate::almanac::today());
         app.populate_hub_demo();
         app.open_hub();
     }
@@ -242,9 +257,10 @@ async fn main() -> Result<()> {
 }
 
 /// App hors ligne garnie pour `--smoke` / `--apercu` : deux messages,
-/// Kiro effrayé, quelques ticks d'effets.
+/// almanach de démo (mémoire), Kiro effrayé, quelques ticks d'effets.
 fn demo_app() -> Result<App> {
     let mut app = App::offline()?;
+    app.almanac = Almanac::demo(crate::almanac::today());
     let chat = &mut app.sessions.current_mut().chat;
     chat.push(Role::User, "smoke: who haunts this crypt?");
     chat.push(Role::Assistant, "smoke: the CI ghost, and it bleeds.");
@@ -275,6 +291,10 @@ fn smoke() -> Result<()> {
     let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
     anyhow::ensure!(filled > 100, "check frame almost empty ({filled} cells)");
     println!("smoke OK: 80x24 frame, {filled} cells filled");
+    let buf = render(&mut app, Screen::Almanac, 80, 24)?;
+    let bars = buf.content.iter().filter(|c| c.symbol() == "█").count();
+    anyhow::ensure!(bars > 0, "almanac frame has no bars");
+    println!("smoke OK: almanac 80x24, {bars} bar cells");
     println!(
         "smoke OK: tokens estimate('hello')={}",
         crate::tokens::estimate("hello")
@@ -282,17 +302,23 @@ fn smoke() -> Result<()> {
     Ok(())
 }
 
-/// Écrit les 4 écrans (120x36, hors ligne) en ANSI truecolor dans `path` :
+/// Écrit les 5 écrans (120x36, hors ligne) en ANSI truecolor dans `path` :
 /// `cat <fichier>` dans Ghostty montre l'UI sans clé ni réseau.
 fn apercu(path: &str) -> Result<()> {
     let mut app = demo_app()?;
     let mut out = String::new();
-    for screen in [Screen::Chat, Screen::Tokens, Screen::Bestiary, Screen::Hub] {
+    for screen in [
+        Screen::Chat,
+        Screen::Tokens,
+        Screen::Bestiary,
+        Screen::Hub,
+        Screen::Almanac,
+    ] {
         out.push_str(&to_ansi(&render(&mut app, screen, 120, 36)?));
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (4 screens 120x36)");
+    println!("preview: {path} (5 screens 120x36)");
     Ok(())
 }
 

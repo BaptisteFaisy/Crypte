@@ -30,7 +30,7 @@ impl App {
         self.screen = Screen::Hub;
     }
 
-    /// Touches du hub : flèches (choisir), Entrée (ouvrir le chat), F7 retour.
+    /// Touches du hub : flèches (choisir), Entrée (ouvrir le chat), F7 retour, F8 almanach.
     pub(crate) fn on_hub_key(&mut self, code: KeyCode) -> bool {
         match code {
             KeyCode::Esc | KeyCode::Char('q') => false,
@@ -44,6 +44,7 @@ impl App {
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = Screen::Bestiary),
             KeyCode::F(7) => self.cmd(|s| s.screen = Screen::Chat),
+            KeyCode::F(8) => self.cmd(|s| s.show_almanac()),
             _ => true,
         }
     }

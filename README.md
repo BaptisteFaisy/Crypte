@@ -8,7 +8,8 @@ vignette, fog, static, blood drops, lightning), a header **context
 gauge** (`ctx`, % of the model's context window), and a **global**
 token counter (status bar: current chat + session total, all
 chats and sub-agents included; F2: grimoire + souls per chat with
-a TOTAL line). Terminal **≥ 80x24** required.
+a TOTAL line), and an **almanac** of tokens per day kept across
+sessions (F8). Terminal **≥ 80x24** required.
 
 ![The crypt bestiary](docs/bestiaire.png)
 
@@ -130,6 +131,10 @@ exempt, stays the remedy).
 | F5 | scare: Kiro scared 2s, jump scare, lightning flash |
 | F6 | toggle chat / bestiary (arrows to pick) |
 | F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
+| F8 | toggle chat / almanac (tokens per day) |
+
+On narrow terminals the header tabs drop their key hints (F2…) so
+the `ctx` gauge always fits.
 
 ## Ghostty
 
@@ -174,6 +179,24 @@ Offline demo, no key needed:
 ```sh
 ./target/debug/kiro-horror-tui --demo
 ```
+
+## Almanac (F8)
+
+Tokens per day, local date, kept across sessions in
+`$XDG_DATA_HOME/kiro-horror-tui/almanac.json` (else
+`~/.local/share/kiro-horror-tui/almanac.json`). Every billed call
+counts: chats, sub-agents, bus replies, `/compact`, `/web` syntheses
+(raw results cost nothing), `--once`. Three panels: the **tally of
+the dead** (tonight, 7 / 30 nights, all time, average per active
+night, darkest night), **souls reaped per night** (one bar per
+night, up to 30, tonight in candlelight) and the **necrology**
+(in / out / total / calls, most recent first).
+
+Each call re-reads the file before adding its share, so several
+crypts open at once never erase each other; F8 re-reads it too. An
+unreadable file is never overwritten: the almanac stays in memory
+and shows the error in red. `--smoke`, `--preview` and `--demo` use
+an in-memory demo almanac and never touch the file.
 
 ## Bestiary (pixel art)
 
@@ -317,4 +340,6 @@ scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
 `hub.rs` + `hub/` (F7 spirit hub: tile-based simulation, `iso.rs`
 isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
 `font.rs` 3×5 pixel font, `social.rs` orbs and chatter),
-`app/esprits.rs` (hub screen + keys), `app/keys.rs` (bestiary keys).
+`app/esprits.rs` (hub screen + keys), `app/keys.rs` (bestiary +
+almanac keys), `almanac.rs` (tokens per day) + `almanac/disk.rs`
+(JSON file) + `almanac/view.rs` (F8 almanac screen).

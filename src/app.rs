@@ -18,6 +18,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::{layout::Rect, DefaultTerminal};
 use tokio::sync::mpsc;
 
+use crate::almanac::Almanac;
 use crate::apparition::Apparition;
 use crate::bus::Bus;
 use crate::chat::Role;
@@ -56,6 +57,8 @@ pub struct App {
     tick: u64,
     busy: bool,
     pub(crate) sessions: Sessions,
+    /// Tokens par jour (F8) ; mémoire seule tant que `main` n'ouvre pas le fichier.
+    pub(crate) almanac: Almanac,
     pub(crate) bus: Bus,
     pub(crate) provider: Option<Arc<Provider>>,
     pub(crate) connect_flow: Option<ConnectFlow>,
@@ -163,6 +166,7 @@ impl App {
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Bestiary)),
             KeyCode::F(7) => self.cmd(|s| s.open_hub()),
+            KeyCode::F(8) => self.cmd(|s| s.show_almanac()),
             _ => true,
         }
     }
@@ -238,6 +242,9 @@ impl App {
         let mut routed = false;
         while let Ok(msg) = self.rx.try_recv() {
             routed = true;
+            if let Some((prompt, completion)) = msg.usage() {
+                self.almanac.record(prompt, completion);
+            }
             match msg {
                 Incoming::Chat(id, reply) => self.drain_chat(id, reply),
                 Incoming::Agent(owner, agent_id, deliver, reply) => {
@@ -327,6 +334,31 @@ mod tests {
             .last()
             .map(|m| m.text.clone())
             .unwrap_or_default()
+    }
+
+    #[test]
+    fn every_billed_reply_counts_in_the_almanac() {
+        let mut app = test_app();
+        let done = |p, c| Completion {
+            text: String::from("ok"),
+            prompt_tokens: p,
+            completion_tokens: c,
+        };
+        let raw_web = WebAnswer {
+            text: String::from("raw"),
+            backend: "ddg",
+            prompt_tokens: 0,
+            completion_tokens: 0,
+        };
+        let tx = app.tx.clone();
+        tx.send(Incoming::Chat(0, Ok(done(10, 5)))).unwrap();
+        tx.send(Incoming::Compact(7, Ok(done(3, 2)))).unwrap();
+        tx.send(Incoming::Chat(0, Err(anyhow::anyhow!("boom"))))
+            .unwrap();
+        tx.send(Incoming::Web(0, Ok(raw_web))).unwrap();
+        app.drain_replies();
+        let tonight = app.almanac.day(crate::almanac::today());
+        assert_eq!((tonight.total(), tonight.calls), (20, 2));
     }
 
     #[test]
