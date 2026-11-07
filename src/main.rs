@@ -84,7 +84,7 @@ AGENTS.MD (system context, read once at first send):
 
 KEYS (terminal >= 80x24):
     Enter  send    Esc/q  quit    F2  grimoire (tokens)    F5  scare
-    F3/F4  previous/next chat    Ctrl+N or click [+]  new chat    F6  bestiary    F7  hub
+    Ctrl+N or click [+]  new chat    F6  bestiary    F7  hub
     F8  almanac (tokens per day, kept across sessions)
 
 ALMANAC (tokens per day, local date):

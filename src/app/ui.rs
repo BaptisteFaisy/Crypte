@@ -401,7 +401,7 @@ fn key_hints() -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
     let word = Style::new().fg(ASH);
     let mut spans = Vec::new();
-    for (k, w) in [("F3/F4", "chats"), ("F5", "scare"), ("Esc", "flee")] {
+    for (k, w) in [("F5", "scare"), ("Esc", "flee")] {
         spans.push(Span::styled(k, key));
         spans.push(Span::styled(format!(" {w}  "), word));
     }

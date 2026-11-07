@@ -132,12 +132,14 @@ impl Sessions {
         self.current = self.chats.len() - 1;
     }
 
-    /// Chat précédent (cyclique).
+    /// Chat précédent (cyclique) — utilisé par les tests (plus de raccourci clavier).
+    #[cfg(test)]
     pub fn prev(&mut self) {
         self.current = self.current.checked_sub(1).unwrap_or(self.chats.len() - 1);
     }
 
-    /// Chat suivant (cyclique).
+    /// Chat suivant (cyclique) — utilisé par les tests (plus de raccourci clavier).
+    #[cfg(test)]
     pub fn next(&mut self) {
         self.current = (self.current + 1) % self.chats.len();
     }
