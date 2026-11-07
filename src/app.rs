@@ -86,6 +86,9 @@ pub struct App {
     /// Bloc des lignes de chats de la sidebar (mémorisé au rendu, une
     /// ligne par chat, `None` hors écran chat) : clic = choisir le chat.
     pub(crate) side_rows: Option<Rect>,
+    /// Croix × des chats (mémorisées au rendu, une par chat, `None` si
+    /// masquée) : clic = fermer le chat (vide hors écran chat).
+    pub(crate) close_btns: Vec<Option<Rect>>,
     /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
     /// clic = aller à l'écran (chat, hub).
     pub(crate) tab_hits: Vec<(Screen, Rect)>,
@@ -268,6 +271,17 @@ mod tests {
         assert_eq!(app.right_delta, 2);
         assert!(app.on_key(key(KeyCode::Right)));
         assert_eq!(app.right_delta, 0);
+    }
+
+    #[test]
+    fn ctrl_w_ferme_le_chat_courant() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.add_chat();
+        let key = KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL);
+        assert!(app.on_key(key));
+        assert_eq!(app.sessions.count(), 1);
+        assert_eq!(app.sessions.current().name, "Chat 1");
     }
 
     #[test]

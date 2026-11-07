@@ -391,21 +391,19 @@ impl App {
             return;
         };
         let id = self.sessions.index();
-        let sess = self.sessions.current();
-        let pinned = sess.pinned_system;
-        if sess.history.len() < COMPACT_MIN {
+        if self.sessions.current().history.len() < COMPACT_MIN {
             self.push_system(String::from("nothing to compact"));
             return;
         }
+        self.sessions.current_mut().waiting = true;
+        let sess = self.sessions.current();
+        let pinned = sess.pinned_system;
+        let history = sess.history.clone();
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
         let mut messages = vec![(String::from("system"), String::from(COMPACT_INSTRUCTION))];
-        messages.extend(
-            agents::without_pinned(&sess.history, pinned)
-                .iter()
-                .cloned(),
-        );
+        messages.extend(agents::without_pinned(&history, pinned).iter().cloned());
         self.pool.spawn(async move {
             let reply = provider
                 .complete_full(&messages, &model, effort.as_deref())

@@ -18,6 +18,8 @@ pub struct ChatSession {
     pub ledger: TokenLedger,
     pub sending: bool,
     pub sending_since: Option<Instant>,
+    /// Réponse annexe en vol (`/compact`, `/web` : indexée, non bloquante).
+    pub waiting: bool,
     /// Modèle du chat (`None` = défaut provider).
     pub model: Option<String>,
     /// Sous-agents lancés depuis ce chat.
@@ -40,6 +42,7 @@ impl ChatSession {
             ledger: TokenLedger::new(),
             sending: false,
             sending_since: None,
+            waiting: false,
             model: None,
             agents: Vec::new(),
             pinned_system: false,

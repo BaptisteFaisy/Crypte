@@ -25,6 +25,6 @@ pub fn help_text() -> &'static str {
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
      /kiro — kiro .kiro/ status (steering, specs, hooks, mcp)\n\
      /help — this help\n\
-     Keys: F5 scare · F7 hub · Ctrl+N\n\
+     Keys: F5 scare · F7 hub · Ctrl+N · Ctrl+W close\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
 }

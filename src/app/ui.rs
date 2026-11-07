@@ -50,6 +50,7 @@ impl App {
         let area = frame.area();
         self.plus_btn = None;
         self.side_rows = None;
+        self.close_btns.clear();
         self.tab_hits.clear();
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
@@ -90,6 +91,7 @@ impl App {
         let hits = self.sessions.draw_sidebar(frame, side);
         self.side_rows = hits.chats;
         self.plus_btn = hits.plus;
+        self.close_btns = hits.closes;
         let sess = self.sessions.current_mut();
         let view = ChatView {
             title: &sess.name,
@@ -119,6 +121,7 @@ impl App {
         let hits = self.sessions.draw_sidebar(frame, side);
         self.side_rows = hits.chats;
         self.plus_btn = hits.plus;
+        self.close_btns = hits.closes;
         let sess = self.sessions.current_mut();
         let view = ChatView {
             title: &sess.name,
