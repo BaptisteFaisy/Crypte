@@ -3,7 +3,7 @@
 //! CLI : `--help`, `--smoke` (rendu headless sans reseau ni cle API),
 //! `--config <fichier.toml>` (config provider, surchargeable par env),
 //! `--once <texte>` (un appel puis exit), `--muse-auth` (cle depuis le store Muse),
-//! `--agents-file <fichier>` (contexte systeme, prime sur ./AGENTS.md puis ./AGENT.md),
+//! `--agents-file <fichier>` (contexte systeme, prime sur ./AGENTS.md puis ./AGENT.md, lu au premier envoi),
 //! `--planche <png>` (bestiaire en PNG), `--apercu <fichier>` (frames en ANSI).
 
 mod agents;
@@ -75,7 +75,7 @@ MUSE (--muse-auth):
     Defaults: base https://api.meta.ai/v1, model muse-spark-1.3-contributor
     (KH_BASE_URL / KH_API_KEY / KH_MODEL take priority)
 
-AGENTS.MD (system context, loaded once — restart to reload):
+AGENTS.MD (system context, read once at first send):
     Lookup: --agents-file <f> wins, else ./AGENTS.md then ./AGENT.md
     Pinned atop every chat + /agent calls (see /usage)
     Excluded from /compact (meta summary) and from --once (raw)
@@ -217,11 +217,10 @@ async fn main() -> Result<()> {
         let cfg = resolve_config(&args)?;
         return run_once(&cfg, prompt).await;
     }
-    let agents_md = crate::agents::load(args.agents_file.as_deref());
     let mut app = match resolve_config(&args) {
         _ if args.demo => App::offline()?,
-        Ok(cfg) => App::from_config_with_agents(cfg, agents_md)?,
-        Err(_) => App::disconnected_with_agents(agents_md),
+        Ok(cfg) => App::from_config_with_agents_file(cfg, args.agents_file)?,
+        Err(_) => App::disconnected_with_agents_file(args.agents_file),
     };
     if !args.demo {
         app.enable_history();
