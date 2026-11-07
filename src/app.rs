@@ -354,11 +354,11 @@ mod tests {
             completion_tokens: 0,
         };
         let tx = app.tx.clone();
-        tx.send(Incoming::Chat(0, Ok(done(10, 5)))).unwrap();
-        tx.send(Incoming::Compact(7, Ok(done(3, 2)))).unwrap();
-        tx.send(Incoming::Chat(0, Err(anyhow::anyhow!("boom"))))
+        tx.try_send(Incoming::Chat(0, Ok(done(10, 5)))).unwrap();
+        tx.try_send(Incoming::Compact(7, Ok(done(3, 2)))).unwrap();
+        tx.try_send(Incoming::Chat(0, Err(anyhow::anyhow!("boom"))))
             .unwrap();
-        tx.send(Incoming::Web(0, Ok(raw_web))).unwrap();
+        tx.try_send(Incoming::Web(0, Ok(raw_web))).unwrap();
         app.drain_replies();
         let tonight = app.almanac.day(crate::almanac::today());
         assert_eq!((tonight.total(), tonight.calls), (20, 2));
