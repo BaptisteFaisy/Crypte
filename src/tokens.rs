@@ -3,21 +3,12 @@
 //! `estimate` utilise l'encodeur `o200k_base` (GPT-4o/o1) de tiktoken-rs,
 //! avec repli heuristique (`len/4`) si l'encodeur est indisponible.
 //! `TokenLedger` accumule l'usage réel retourné par l'API (seule source
-//! fiable cross-provider) et affiche un tableau de bord session + dernier appel.
+//! fiable cross-provider), lu par `/usage` et la barre de statut.
 
 use std::sync::OnceLock;
 
-use ratatui::{
-    layout::Rect,
-    style::{Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
-};
 use serde::{Deserialize, Serialize};
 use tiktoken_rs::{o200k_base, CoreBPE};
-
-use crate::theme;
 
 /// Encodeur partagé (lourd, ~32 Mo), chargé une seule fois au premier
 /// vrai besoin (`estimate`) puis gardé : le recharger après éviction
@@ -224,7 +215,7 @@ impl TokenLedger {
     }
 
     /// Agrège des registres empruntés, sans `Vec` intermédiaire
-    /// (registre total lu à chaque frame de l'écran des âmes).
+    /// (registre total lu par `/usage`).
     /// Sommes in/out/durées, tarifs à 0.
     pub fn total_of_iter<'a>(ledgers: impl Iterator<Item = &'a TokenLedger>) -> TokenLedger {
         let mut total = TokenLedger::new();
@@ -237,74 +228,6 @@ impl TokenLedger {
                 .saturating_add(ledger.timed_completion);
         }
         total
-    }
-
-    /// Dessine le grimoire : session, dernier appel, coût, débit, et la
-    /// part prompt/réponse en jauge (citrouille = réponse).
-    pub fn draw(&self, frame: &mut Frame, area: Rect) {
-        let label = Style::new().fg(theme::SAND);
-        let num = Style::new().fg(theme::BONE).add_modifier(Modifier::BOLD);
-        let row = |name: &'static str, value: String| {
-            Line::from(vec![
-                Span::styled(format!("  {name:<9}"), label),
-                Span::styled(value, num),
-            ])
-        };
-        let lines = vec![
-            Line::raw(""),
-            row(
-                "session",
-                format!(
-                    "in={} out={} tot={}",
-                    self.prompt,
-                    self.completion,
-                    self.total()
-                ),
-            ),
-            row(
-                "last",
-                format!("in={} out={}", self.last_prompt, self.last_completion),
-            ),
-            row("cost", fmt_cost(self.cost())),
-            row(
-                "tps",
-                format!(
-                    "last={} avg={}",
-                    fmt_tps(self.last_tps()),
-                    fmt_tps(self.avg_tps())
-                ),
-            ),
-            Line::raw(""),
-            self.share_gauge(area.width.saturating_sub(6) as usize),
-        ];
-        let block = Block::new()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(theme::UMBER))
-            .title(theme::title(
-                "\u{f068c} token grimoire",
-                theme::BLOOD,
-                theme::CANDLE,
-            ));
-        frame.render_widget(Paragraph::new(lines).block(block), area);
-    }
-
-    /// Jauge prompt (os) / réponse (citrouille) sur `width` colonnes.
-    fn share_gauge(&self, width: usize) -> Line<'static> {
-        let total = self.total();
-        if total == 0 || width == 0 {
-            let dim = Style::new().fg(theme::ASH).add_modifier(Modifier::ITALIC);
-            return Line::styled("  no souls consumed yet", dim);
-        }
-        let out = (self.completion as f64 / total as f64 * width as f64).round() as usize;
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                "█".repeat(width - out.min(width)),
-                Style::new().fg(theme::UMBER),
-            ),
-            Span::styled("█".repeat(out.min(width)), Style::new().fg(theme::PUMPKIN)),
-        ])
     }
 }
 

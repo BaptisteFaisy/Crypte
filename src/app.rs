@@ -82,7 +82,7 @@ pub struct App {
     /// ligne par chat, `None` hors écran chat) : clic = choisir le chat.
     pub(crate) side_rows: Option<Rect>,
     /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
-    /// clic = aller à l'écran (chat, grimoire, bestiaire, hub, almanach).
+    /// clic = aller à l'écran (chat, bestiaire, hub, almanach).
     pub(crate) tab_hits: Vec<(Screen, Rect)>,
     pub(crate) thinking: Option<String>,
     pub(crate) permissions: Mode,
@@ -171,7 +171,6 @@ impl App {
             KeyCode::Char(c) if !ctrl => self.cmd(|s| s.sessions.current_mut().chat.input_push(c)),
             KeyCode::Backspace => self.cmd(|s| s.sessions.current_mut().chat.input_pop()),
             KeyCode::Enter => self.cmd(|s| s.send()),
-            KeyCode::F(2) => self.cmd(|s| s.screen = s.screen.toggle(Screen::Tokens)),
             KeyCode::F(3) => self.cmd(|s| s.sessions.prev()),
             KeyCode::F(4) => self.cmd(|s| s.sessions.next()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),

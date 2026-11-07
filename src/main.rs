@@ -65,7 +65,7 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 5 screens (120x36, offline) as ANSI
+        --preview <file>  Write the 4 screens (120x36, offline) as ANSI
         --demo            Offline demo crypt, opened on the spirit hub (F7)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
 
@@ -90,7 +90,7 @@ AGENTS.MD (system context, read once at first send):
     Excluded from /compact (meta summary) and from --once (raw)
 
 KEYS (terminal >= 80x24):
-    Enter  send    q  quit    F2  grimoire (tokens)    F5  scare
+    Enter  send    q  quit    F5  scare
     F3/F4  previous/next chat    Ctrl+N or click [+]  new chat    F6  bestiary    F7  hub
     F8  almanac (tokens per day, kept across sessions)
 
@@ -336,23 +336,17 @@ fn smoke() -> Result<()> {
     Ok(())
 }
 
-/// Écrit les 5 écrans (120x36, hors ligne) en ANSI truecolor dans `path` :
+/// Écrit les 4 écrans (120x36, hors ligne) en ANSI truecolor dans `path` :
 /// `cat <fichier>` dans Ghostty montre l'UI sans clé ni réseau.
 fn apercu(path: &str) -> Result<()> {
     let mut app = demo_app()?;
     let mut out = String::new();
-    for screen in [
-        Screen::Chat,
-        Screen::Tokens,
-        Screen::Bestiary,
-        Screen::Hub,
-        Screen::Almanac,
-    ] {
+    for screen in [Screen::Chat, Screen::Bestiary, Screen::Hub, Screen::Almanac] {
         out.push_str(&to_ansi(&render(&mut app, screen, 120, 36)?));
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (5 screens 120x36)");
+    println!("preview: {path} (4 screens 120x36)");
     Ok(())
 }
 
@@ -381,4 +375,17 @@ fn to_ansi(buf: &Buffer) -> String {
         out.push_str("\x1b[0m\n");
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helps_ne_mentionnent_plus_le_grimoire() {
+        for help in [HELP, crate::commands::help_text()] {
+            assert!(!help.contains("grimoire"));
+            assert!(!help.contains("F2"));
+        }
+    }
 }

@@ -40,7 +40,6 @@ impl App {
                 s.sessions.select(s.hub.selected);
                 s.screen = Screen::Chat;
             }),
-            KeyCode::F(2) => self.cmd(|s| s.screen = Screen::Tokens),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = Screen::Bestiary),
             KeyCode::F(7) => self.cmd(|s| s.screen = Screen::Chat),
