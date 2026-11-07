@@ -15,13 +15,20 @@ sessions (F8). Terminal **≥ 80x24** required.
 
 ## Run
 
-In Ghostty, dressed up (theme + shader, builds release if needed):
+`ghostty/crypte` runs the TUI in the current terminal when it can host
+the crypt (interactive TTY, truecolor, at least 80x24), else it opens a
+dressed-up Ghostty window (theme + shader, builds release if needed):
 
 ```sh
 KH_API_KEY=... KH_MODEL=... ghostty/crypte
 ghostty/crypte --muse-auth
-ghostty/crypte --no-shader --muse-auth
+ghostty/crypte --window --no-shader --muse-auth   # force the window
 ```
+
+`--window` forces the Ghostty window; print-only modes (`--help`,
+`--smoke`, `--once`, `--sheet`, `--preview`) always run in place. If your
+terminal renders truecolor without advertising it, `export
+COLORTERM=truecolor` opts it in.
 
 In the current terminal:
 
