@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use crate::bus::QueuedTell;
 use crate::chat::ChatState;
+use crate::history::trim_history;
 use crate::tokens::TokenLedger;
 
 use super::subagents::SubAgent;
@@ -54,6 +55,40 @@ impl ChatSession {
         self.pinned_system = true;
     }
 
+    /// Ajoute un tour provider, borné LRU (`HISTORY_MAX`, tête pinnée gardée).
+    pub fn push_history(&mut self, role: &str, text: String) {
+        self.history.push((String::from(role), text));
+        trim_history(&mut self.history, self.pinned_system);
+    }
+
+    /// Octets heap estimés du chat (capacités des buffers : nom, affichage,
+    /// historique provider, modèle, file, agents). Mesure analytique,
+    /// déterministe à scénario fixé (hors slack allocateur).
+    pub fn heap_bytes(&self) -> usize {
+        let mut bytes = self.name.capacity() + self.chat.heap_bytes();
+        bytes += heap_pairs(&self.history);
+        bytes += self.model.as_ref().map(|m| m.capacity()).unwrap_or(0);
+        bytes += self
+            .inbox
+            .iter()
+            .map(|queued| queued.envelope.capacity())
+            .sum::<usize>();
+        bytes += self
+            .agents
+            .iter()
+            .map(|agent| {
+                agent.prompt.capacity()
+                    + heap_pairs(&agent.history)
+                    + agent
+                        .inbox
+                        .iter()
+                        .map(|ask| ask.text.capacity())
+                        .sum::<usize>()
+            })
+            .sum::<usize>();
+        bytes
+    }
+
     /// Tokens des sous-agents du chat (in + out ; un agent `Running`
     /// vaut 0 tant que sa réponse n'est pas arrivée).
     pub fn agents_total(&self) -> u64 {
@@ -61,5 +96,52 @@ impl ChatSession {
             .iter()
             .map(|a| a.prompt_tokens.saturating_add(a.completion_tokens))
             .fold(0, u64::saturating_add)
+    }
+}
+
+/// Heap d'un échange : rôles + contenus (+ slack du `Vec`).
+fn heap_pairs(pairs: &Vec<(String, String)>) -> usize {
+    pairs.capacity() * std::mem::size_of::<(String, String)>()
+        + pairs
+            .iter()
+            .map(|(role, content)| role.capacity() + content.capacity())
+            .sum::<usize>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::history::HISTORY_MAX;
+
+    #[test]
+    fn push_history_borne_lru_garde_pin() {
+        let mut chat = ChatSession::new(String::from("Chat 1"));
+        chat.pin_system("pin");
+        for i in 0..250 {
+            chat.push_history("user", format!("m{i}"));
+        }
+        assert_eq!(chat.history.len(), HISTORY_MAX);
+        assert_eq!(chat.history[0].1, "pin");
+        assert_eq!(chat.history[1].1, "m51");
+    }
+
+    fn garni() -> ChatSession {
+        let mut chat = ChatSession::new(String::from("Chat 1"));
+        chat.pin_system("pin");
+        for i in 0..40 {
+            chat.push_history("user", format!("question {i}"));
+            chat.push_history("assistant", format!("reponse {i}"));
+        }
+        chat
+    }
+
+    #[test]
+    fn heap_bytes_deterministe_et_croit_avec_le_contenu() {
+        let vide = ChatSession::new(String::from("Chat 1"));
+        let plein = garni();
+        assert_eq!(garni().heap_bytes(), plein.heap_bytes());
+        assert!(plein.heap_bytes() > vide.heap_bytes());
+        let contenus: usize = plein.history.iter().map(|(_, c)| c.len()).sum();
+        assert!(plein.heap_bytes() >= contenus);
     }
 }

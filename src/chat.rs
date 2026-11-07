@@ -80,6 +80,28 @@ impl ChatState {
         &self.messages
     }
 
+    /// Octets heap estimés (messages + brouillon + prompt ; analytique).
+    pub fn heap_bytes(&self) -> usize {
+        let mut bytes = self.messages.capacity() * std::mem::size_of::<Message>()
+            + self
+                .messages
+                .iter()
+                .map(|message| message.text.capacity())
+                .sum::<usize>();
+        bytes += self.input.capacity();
+        bytes += self
+            .prompt_label
+            .as_ref()
+            .map(|s| s.capacity())
+            .unwrap_or(0);
+        bytes += self
+            .input_preview
+            .as_ref()
+            .map(|s| s.capacity())
+            .unwrap_or(0);
+        bytes
+    }
+
     /// Tape un caractère dans le brouillon.
     pub fn input_push(&mut self, c: char) {
         self.input.push(c);
@@ -328,6 +350,15 @@ mod tests {
                 assert!(row.chars().count() <= w, "{row:?} > {w}");
             }
         }
+    }
+
+    #[test]
+    fn heap_bytes_croit_avec_les_messages() {
+        let mut chat = ChatState::new();
+        let vide = chat.heap_bytes();
+        chat.push(Role::User, "bonsoir");
+        assert!(chat.heap_bytes() > vide);
+        assert!(chat.heap_bytes() >= "bonsoir".len());
     }
 
     #[test]

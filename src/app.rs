@@ -223,7 +223,7 @@ impl App {
             sess.name = short_name(&text);
         }
         sess.chat.push(Role::User, text.clone());
-        sess.history.push(("user".to_string(), text));
+        sess.push_history("user", text);
         let history = send_window(&sess.history, sess.pinned_system);
         sess.sending = true;
         sess.auto_hops = 0;

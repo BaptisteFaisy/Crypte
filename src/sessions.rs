@@ -14,6 +14,8 @@ use std::path::Path;
 use crate::tokens::TokenLedger;
 
 /// Chats ouverts + position du courant (jamais vide, index toujours valide).
+/// Accès direct par index (`Vec`), sans table secondaire : quelques chats,
+/// `select`/`get` en O(1) sans surcoût mémoire d'index redondant.
 pub struct Sessions {
     chats: Vec<ChatSession>,
     current: usize,
