@@ -244,6 +244,8 @@ forwards every reply from `a` to `b` (chat or agent, `[auto …]`, triggers
 its reply); `/links` lists the rules + counters, `/unlink` removes. Auto
 chains are capped at 8 hops (loop guard, note at the source). Every chain
 stays user-originated (command or user-made link): no infinite loops.
+Agent replies delivered to a chat are also versed into its context
+(user role, tagged, no reply triggered — queued behind a busy chat).
 
 ## Compact
 

@@ -145,11 +145,13 @@ impl Bus {
 }
 
 /// Tell en file (affiché aussitôt dans le chat cible, versé à
-/// l'historique + déclenché dès que le chat est libre).
+/// l'historique dès que le chat est libre ; `trigger` = déclenche une
+/// réponse, sinon simple versement au contexte, façon « btw »).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueuedTell {
     pub envelope: String,
     pub hops: u8,
+    pub trigger: bool,
 }
 
 /// Ask en file (déclenché dès que l'agent est libre, livré à `deliver`).
@@ -432,5 +434,58 @@ mod flow_tests {
         assert!(text.contains("Chat 2 #2"), "{text}");
         app.run_command("/agents");
         assert!(last_text(&app, 1).starts_with("#2"));
+    }
+
+    #[test]
+    fn livraison_agent_verse_contexte_sans_declencher() {
+        let mut app = test_app();
+        app.add_chat();
+        let history = vec![(String::from("user"), String::from("u"))];
+        let id = app.sessions.add_agent(0, "prompt", history).unwrap();
+        app.drain_agent(0, id, 1, Ok(done("trouvaille")));
+        let dest = app.sessions.get(1).unwrap();
+        assert!(!dest.sending); // FYI : pas de réponse déclenchée
+        let tagged = "[agent#1 from Chat 1] trouvaille";
+        assert_eq!(last_text(&app, 1), tagged);
+        assert!(dest.history.iter().any(|(r, t)| r == "user" && t == tagged));
+    }
+
+    #[test]
+    fn livraison_agent_chat_occupe_enfilee_sans_declencher() {
+        let mut app = test_app();
+        let history = vec![(String::from("user"), String::from("u"))];
+        let id = app.sessions.add_agent(0, "prompt", history).unwrap();
+        app.sessions.get_mut(0).unwrap().sending = true; // réponse en vol
+        app.drain_agent(0, id, 0, Ok(done("trouvaille")));
+        assert_eq!(app.sessions.get(0).unwrap().inbox.len(), 1); // enfilée
+        assert_eq!(last_text(&app, 0), "[agent#1] trouvaille"); // affichée
+        app.drain_chat(0, Ok(done("ok"))); // tombée : versée, sans relance
+        let dest = app.sessions.get(0).unwrap();
+        assert!(!dest.sending);
+        assert!(dest.inbox.is_empty());
+        assert!(dest
+            .history
+            .iter()
+            .any(|(r, t)| r == "user" && t.contains("trouvaille")));
+    }
+
+    #[tokio::test]
+    async fn pompe_mixte_tell_et_livraison_declenche_une_fois() {
+        let mut app = test_app();
+        app.add_chat();
+        app.sessions.prev(); // courant = Chat 1
+        app.sessions.get_mut(1).unwrap().sending = true;
+        let history = vec![(String::from("user"), String::from("u"))];
+        let id = app.sessions.add_agent(0, "prompt", history).unwrap();
+        app.run_command("/tell 2 bonjour"); // trigger:true, enfilé
+        app.drain_agent(0, id, 1, Ok(done("trouvaille"))); // trigger:false
+        app.drain_chat(1, Ok(done("ok")));
+        let dest = app.sessions.get(1).unwrap();
+        assert!(dest.sending); // le tell déclenche, une seule réponse
+        assert!(dest.inbox.is_empty());
+        let users: Vec<_> = dest.history.iter().filter(|(r, _)| r == "user").collect();
+        assert_eq!(users.len(), 2);
+        assert!(users[0].1.contains("bonjour"));
+        assert!(users[1].1.contains("trouvaille"));
     }
 }
