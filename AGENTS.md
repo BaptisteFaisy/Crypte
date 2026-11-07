@@ -48,7 +48,8 @@ Flux : `send` (user → provider, tâche async) → `drain_replies`
 Bus : `/tell`/`/msg` déposent (affiché aussitôt, déclenché si libre,
 enfilé sinon, pompé en groupe à la tombée) ; `/agent @<n>` livre ailleurs
 (`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id from Chat k]`,
-statut sur le propriétaire, ledger sur la livraison) ; `/ask` poursuit
+statut sur le propriétaire, ledger + versement contexte sur la livraison
+(rôle user, taggé, sans déclencher) ; `/ask` poursuit
 l'échange agent (enfilé si en cours, 20 messages max) ; `/link` retransmet
 chaque réponse en éventail (`[auto …]`, 8 relais max). Chaque chaîne reste
 d'origine user (commande ou lien) : pas de boucles infinies.

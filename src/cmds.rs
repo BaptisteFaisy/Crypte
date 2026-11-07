@@ -280,7 +280,11 @@ impl App {
         let dest = self.sessions.get_mut(idx).expect("chat validé ci-dessus");
         dest.chat.push(Role::User, envelope.clone());
         if dest.sending {
-            dest.inbox.push_back(QueuedTell { envelope, hops });
+            dest.inbox.push_back(QueuedTell {
+                envelope,
+                hops,
+                trigger: true,
+            });
             return true;
         }
         dest.history.push((String::from("user"), envelope));

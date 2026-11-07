@@ -12,7 +12,7 @@ use anyhow::Result;
 use crate::agents;
 use crate::app::{App, Incoming};
 use crate::apparition::Omen;
-use crate::bus::{LinkEnd, QueuedAsk, MAX_AUTO_HOPS};
+use crate::bus::{LinkEnd, QueuedAsk, QueuedTell, MAX_AUTO_HOPS};
 use crate::chat::Role;
 use crate::history::send_window;
 use crate::hub::Signal;
@@ -54,7 +54,8 @@ impl App {
 
     /// Réponse sous-agent : statut + échange sur le chat propriétaire,
     /// ledger + message sur le chat de livraison (`[agent#id]`, ou
-    /// `[agent#id de Chat k]` si livré ailleurs), puis file et liens.
+    /// `[agent#id from Chat k]` si livré ailleurs), versée aussi dans son
+    /// contexte (rôle user, sans déclencher), puis file et liens.
     pub(crate) fn drain_agent(
         &mut self,
         owner: usize,
@@ -87,8 +88,17 @@ impl App {
         if let Some(dest) = self.sessions.get_mut(deliver) {
             dest.ledger
                 .record(done.prompt_tokens, done.completion_tokens, 0.0);
-            dest.chat
-                .push(Role::Assistant, format!("{tag} {}", done.text.clone()));
+            let tagged = format!("{tag} {}", done.text.clone());
+            dest.chat.push(Role::Assistant, tagged.clone());
+            if dest.sending {
+                dest.inbox.push_back(QueuedTell {
+                    envelope: tagged,
+                    hops: 0,
+                    trigger: false,
+                });
+            } else {
+                dest.history.push((String::from("user"), tagged));
+            }
             self.hub.signal(Signal::Deliver {
                 agent: agent_id,
                 to: deliver,
@@ -187,8 +197,9 @@ impl App {
         });
     }
 
-    /// File du chat `id` : verse les tells en attente à l'historique
-    /// (déjà affichés à l'enfilement) et déclenche UNE réponse groupée.
+    /// File du chat `id` : verse tout à l'historique (déjà affichés à
+    /// l'enfilement) et déclenche UNE réponse groupée si au moins une
+    /// entrée l'exige (`trigger`, sinon simple versement contexte).
     /// Rien si occupé, inconnu, file vide, ou déconnecté (file gardée).
     fn pump_chat_inbox(&mut self, id: usize) {
         if self.provider.is_none() {
@@ -201,9 +212,16 @@ impl App {
             return;
         }
         let mut hops = 0u8;
+        let mut trigger = false;
         while let Some(queued) = sess.inbox.pop_front() {
-            hops = hops.max(queued.hops);
+            if queued.trigger {
+                trigger = true;
+                hops = hops.max(queued.hops);
+            }
             sess.history.push((String::from("user"), queued.envelope));
+        }
+        if !trigger {
+            return;
         }
         sess.auto_hops = hops;
         self.launch_chat(id);
