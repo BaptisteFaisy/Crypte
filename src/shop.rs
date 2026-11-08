@@ -305,7 +305,7 @@ impl App {
     }
 
     /// Touches boutique : flèches (choisir), Entrée (acheter),
-    /// F6 (retour chat), F7 (hub), q (fuir).
+    /// F6 (retour chat), F7 (chat, hub visible), q (fuir).
     pub(crate) fn on_shop_key(&mut self, code: KeyCode) -> bool {
         match code {
             KeyCode::Char('q') => false,
@@ -314,7 +314,7 @@ impl App {
             KeyCode::Enter => self.cmd(|s| s.buy_selected()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = Screen::Chat),
-            KeyCode::F(7) => self.cmd(|s| s.open_hub()),
+            KeyCode::F(7) => self.cmd(|s| s.screen = Screen::Chat),
             _ => true,
         }
     }
