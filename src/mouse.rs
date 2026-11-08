@@ -1,11 +1,12 @@
 //! Souris : molette = défilement de l'historique, clic gauche = bouton [+]
 //! (nouveau chat), bouton [×] (fermer le chat), lignes de la sidebar
 //! (choisir le chat), onglets de l'en-tête (changer d'écran), articles
-//! de la boutique (acheter).
+//! de la boutique (acheter), drag du bord droit de la sidebar
+//! (redimensionner la colonne).
 //!
 //! La capture souris est activée par `main` (désactivée en sortie) ;
 //! les rectangles sont mémorisés à chaque frame (`App::plus_btn`,
-//! `App::close_btns`, `App::side_rows`, `App::tab_hits`,
+//! `App::close_btns`, `App::side_rows`, `App::side_area`, `App::tab_hits`,
 //! `App::shop_rows`, `ChatState::area`).
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -15,19 +16,84 @@ use crate::app::{App, Screen};
 use crate::chat::SCROLL_STEP;
 
 impl App {
-    /// Molette : défiler le chat ; clic gauche : [+] = nouveau chat,
-    /// [×] = fermer le chat, ligne = choisir le chat, onglet = changer
-    /// d'écran, article = acheter (le reste est ignoré).
+    /// Molette : défiler le chat ; pression gauche : poignée sidebar
+    /// (drag) ou clic ; drag : redimensionner la sidebar ; release :
+    /// fin du drag ; mouvement : éclairer la poignée survolée.
+    /// Clic : [+] = nouveau chat, [×] = fermer, ligne = choisir,
+    /// onglet = écran, article = acheter (le reste est ignoré).
     pub(crate) fn on_mouse(&mut self, mev: MouseEvent) {
         match mev.kind {
             MouseEventKind::ScrollUp => return self.wheel(mev, -SCROLL_STEP),
             MouseEventKind::ScrollDown => return self.wheel(mev, SCROLL_STEP),
+            MouseEventKind::Down(MouseButton::Left) => self.press(mev.column, mev.row),
+            MouseEventKind::Drag(MouseButton::Left) => self.drag_to(mev.column),
+            MouseEventKind::Up(MouseButton::Left) => self.resizing_side = None,
+            MouseEventKind::Moved => self.hover(mev.column, mev.row),
             _ => {}
         }
-        if mev.kind != MouseEventKind::Down(MouseButton::Left) {
+    }
+
+    /// Pression gauche : poignée sidebar = début de drag, sinon clic
+    /// (une pression ailleurs annule aussi un drag resté coincé).
+    fn press(&mut self, column: u16, row: u16) {
+        if self.side_grab(column, row) {
             return;
         }
-        let at = Position::new(mev.column, mev.row);
+        self.resizing_side = None;
+        self.click(Position::new(column, row));
+    }
+
+    /// Début de drag sur la poignée (bord droit sidebar + bord gauche
+    /// chat, 2 colonnes) : mémorise le décalage grab→bord (anti-saut)
+    /// et applique le delta. Rend vrai si la poignée est touchée.
+    fn side_grab(&mut self, column: u16, row: u16) -> bool {
+        let Some(edge) = self.side_edge(row) else {
+            return false;
+        };
+        if column < edge || column > edge + 1 {
+            return false;
+        }
+        self.resizing_side = Some(edge as i16 - column as i16);
+        self.drag_to(column);
+        true
+    }
+
+    /// Drag bouton gauche : le delta suit la souris (largeur − auto,
+    /// borné ±64 comme `right_delta`, clamp terminal au rendu).
+    /// Sans drag en cours : ignoré (pas de surprise).
+    fn drag_to(&mut self, column: u16) {
+        let Some(grab) = self.resizing_side else {
+            return;
+        };
+        let Some(side) = self.side_area else {
+            return;
+        };
+        let width = column as i16 + grab - side.x as i16 + 1;
+        self.side_delta = (width - self.side_auto as i16).clamp(-64, 64);
+    }
+
+    /// Survol sans bouton : éclaire la poignée sous le pointeur.
+    fn hover(&mut self, column: u16, row: u16) {
+        self.side_hot = self
+            .side_edge(row)
+            .is_some_and(|edge| column >= edge && column <= edge + 1);
+    }
+
+    /// Colonne du bord droit de la sidebar à cette ligne (`None` hors
+    /// écran chat, sans sidebar rendue, ou ligne hors sidebar).
+    fn side_edge(&self, row: u16) -> Option<u16> {
+        if self.screen != Screen::Chat {
+            return None;
+        }
+        self.side_area.and_then(|r| {
+            (row >= r.y && row < r.y + r.height).then(|| r.x + r.width.saturating_sub(1))
+        })
+    }
+
+    /// Clic gauche : [+] = nouveau chat, [×] = fermer le chat, onglet =
+    /// changer d'écran, article = acheter, ligne = choisir le chat
+    /// (le reste est ignoré).
+    fn click(&mut self, at: Position) {
         if self.plus_btn.is_some_and(|r| r.contains(at)) {
             self.add_chat();
             return;
@@ -129,6 +195,55 @@ mod tests {
         app.plus_btn = None;
         app.on_mouse(click(5, 2));
         assert_eq!(app.sessions.count(), 2);
+    }
+
+    #[test]
+    fn drag_poignee_ajuste_le_delta_sans_saut_ni_chat() {
+        let drag = |c: u16, r: u16| event(MouseEventKind::Drag(MouseButton::Left), c, r);
+        let mut app = test_app();
+        app.side_area = Some(Rect::new(0, 1, 18, 22));
+        app.side_auto = 18;
+        app.plus_btn = Some(Rect::new(1, 2, 16, 1));
+        app.on_mouse(click(17, 10)); // bord droit : grab, pas de chat
+        assert_eq!(app.sessions.count(), 1);
+        assert!(app.resizing_side.is_some());
+        assert_eq!(app.side_delta, 0, "grab sans saut");
+        app.on_mouse(drag(25, 10));
+        assert_eq!(app.side_delta, 8);
+        app.on_mouse(drag(10, 10));
+        assert_eq!(app.side_delta, -7);
+        app.on_mouse(event(MouseEventKind::Up(MouseButton::Left), 10, 10));
+        app.on_mouse(drag(30, 10)); // après release : figé
+        assert_eq!(app.side_delta, -7);
+        // Grab sur la 2e colonne (bord du chat) : sans saut non plus.
+        app.on_mouse(click(18, 10));
+        assert_eq!(app.side_delta, 0);
+        // Clic [+] juste à côté (dernière colonne intérieure) : nouveau chat.
+        app.on_mouse(click(16, 2));
+        assert_eq!(app.sessions.count(), 2);
+        assert!(app.resizing_side.is_none(), "pression ailleurs annule");
+    }
+
+    #[test]
+    fn survol_eclaire_poignee_et_hors_chat_ignore() {
+        let mut app = test_app();
+        app.side_area = Some(Rect::new(0, 1, 18, 22));
+        app.side_auto = 18;
+        app.on_mouse(event(MouseEventKind::Moved, 17, 10));
+        assert!(app.side_hot);
+        app.on_mouse(event(MouseEventKind::Moved, 40, 10));
+        assert!(!app.side_hot);
+        // Hors écran chat : ni grab ni survol.
+        app.screen = Screen::Shop;
+        app.on_mouse(click(17, 10));
+        assert!(app.resizing_side.is_none());
+        assert_eq!(app.side_delta, 0);
+        app.on_mouse(event(MouseEventKind::Moved, 17, 10));
+        assert!(!app.side_hot);
+        // Drag sans grab préalable : ignoré.
+        app.screen = Screen::Chat;
+        app.on_mouse(event(MouseEventKind::Drag(MouseButton::Left), 30, 10));
+        assert_eq!(app.side_delta, 0);
     }
 
     #[test]

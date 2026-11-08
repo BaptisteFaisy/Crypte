@@ -174,6 +174,7 @@ exempt, stays the remedy).
 | Ctrl+N | new chat |
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
 | Click `[×]` (sidebar) | close that chat (refused if a reply is in flight) |
+| Drag sidebar right edge | resize the coffins column (min 10, chat kept ≥ 30) |
 | Ctrl+W | close the current chat |
 | F5 | scare: jump scare 2s, lightning flash, hub panic |
 | F6 | shop: consumed tokens become coins (↑↓ + Enter to buy) |
@@ -425,7 +426,7 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 ## Modules (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (state + 100ms loop),
-`mouse.rs` ([+] click = new chat, [×] click = close chat),
+`mouse.rs` ([+] click = new chat, [×] click = close chat, edge drag = sidebar width),
 `drain.rs` (routing async replies to chats),
 `chat.rs` (history + input + maskable custom prompt),
 `fx.rs` (horror overlay), `tokens.rs` (tiktoken counter),
