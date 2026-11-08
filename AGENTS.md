@@ -125,8 +125,8 @@ seul, jamais l'historique) →
 (`Incoming::usage`, `None` pour `ToolDone`) + ledger + historique + affichage.
 Ctrl+C stoppe le vol du chat courant (`stop_chat` : époque bumpée, réponse
 tardive ignorée au `drain`, boucle outil annulée ; sans effet si rien en vol).
-Boucle outils : réponse avec `tool_calls` (budget 8 tours, voir
-`tools::MAX_ROUNDS`) → file séquentielle → porte `tool_gate`
+Boucle outils : réponse avec `tool_calls` (sans limite de tours,
+jusqu'au texte final ; Ctrl+C annule) → file séquentielle → porte `tool_gate`
 (`permissions_cmds.rs` : règle fine `allow`/`ask`/`deny` par outil,
 exact + préfixe `*`, défaut = mode `yolo`/`auto` via
 `tools::needs_confirm` ; `deny` refuse sans y/n et prévient le modèle)

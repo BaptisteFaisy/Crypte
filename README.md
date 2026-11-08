@@ -408,8 +408,9 @@ Per-tool rules refine the mode: `/permissions <tool> <allow|ask|deny>`
 ## Tools (browser, desktop, shell)
 
 The model can use your machine: `/tools` shows the state, `/tools off`
-disables it for the session (default on). Each send may loop up to
-8 LLM turns: reply → tool calls → results → reply, until the final answer.
+disables it for the session (default on). Each send loops with no turn
+limit: reply → tool calls → results → reply, until the final answer
+(Ctrl+C cancels a runaway loop).
 
 - **Browser** (8 tools): invisible Chromium on a virtual display (`:99`,
   never your screen) in its own `crypte-<pid>` session — open, snapshot

@@ -74,7 +74,7 @@ impl App {
                     sess.ledger
                         .record(done.prompt_tokens, done.completion_tokens, elapsed);
                 }
-                if !done.tool_calls.is_empty() && self.tool_budget_left() {
+                if !done.tool_calls.is_empty() {
                     self.drain_tool_calls(id, done);
                     return;
                 }
@@ -82,10 +82,6 @@ impl App {
                 let Some(sess) = self.sessions.get_mut(id) else {
                     return;
                 };
-                if !done.tool_calls.is_empty() {
-                    sess.chat
-                        .push(Role::System, String::from("(tool limit reached)"));
-                }
                 sess.push_history("assistant", done.text.clone());
                 let shown = sess.track_question(&done.text);
                 sess.chat.push(Role::Assistant, shown);
