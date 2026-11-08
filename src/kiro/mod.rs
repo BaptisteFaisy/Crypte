@@ -10,6 +10,10 @@
 
 pub mod cmds;
 pub mod glob;
+pub mod hook_cmds;
+pub mod hook_exec;
+pub mod hook_match;
+pub mod hook_run;
 pub mod hooks;
 pub mod ignore;
 pub mod mcp;
