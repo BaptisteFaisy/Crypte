@@ -120,6 +120,7 @@ AGENTS.MD (system context, read once at first send):
 KEYS (terminal >= 70x17):
     Enter  send    q  quit    F5  scare
     Ctrl+N or click [+]  new chat
+    Ctrl+C  stop the current reply (late reply ignored)
     F6 or tab click  shop (1 token consumed = 1 coin)    click item  buy
     Drag sidebar right edge  resize the coffins column
     Drag in history  copy    Ctrl+V  paste in the input bar

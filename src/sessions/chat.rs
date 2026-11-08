@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use crate::bus::QueuedTell;
-use crate::chat::ChatState;
+use crate::chat::{ChatState, Role};
 use crate::history::trim_history;
 use crate::question::PendingQuestion;
 use crate::tokens::TokenLedger;
@@ -19,6 +19,9 @@ pub struct ChatSession {
     pub ledger: TokenLedger,
     pub sending: bool,
     pub sending_since: Option<Instant>,
+    /// Époque du vol en cours : bumpée à chaque stop (Ctrl+C) ; une
+    /// réponse d'époque révolue est ignorée (`drain_chat`).
+    pub epoch: u64,
     /// Réponse annexe en vol (`/compact`, `/web` : indexée, non bloquante).
     pub waiting: bool,
     /// Modèle du chat (`None` = défaut provider).
@@ -45,6 +48,7 @@ impl ChatSession {
             ledger: TokenLedger::new(),
             sending: false,
             sending_since: None,
+            epoch: 0,
             waiting: false,
             model: None,
             agents: Vec::new(),
@@ -74,6 +78,21 @@ impl ChatSession {
     pub fn push_history(&mut self, role: &str, text: String) {
         self.history.push((String::from(role), text));
         trim_history(&mut self.history, self.pinned_system);
+    }
+
+    /// Stoppe le vol en cours (Ctrl+C) : époque bumpée (la réponse
+    /// tardive sera ignorée), flags effacés, note système. Rend vrai
+    /// si un vol a été stoppé (faux si rien n'était en vol).
+    pub fn stop_sending(&mut self) -> bool {
+        if !self.sending {
+            return false;
+        }
+        self.sending = false;
+        self.sending_since = None;
+        self.epoch += 1;
+        self.chat
+            .push(Role::System, String::from("réponse stoppée (Ctrl+C)"));
+        true
     }
 
     /// Réponse reçue : mémorise la question éventuelle, rend le texte affiché.
@@ -178,6 +197,24 @@ mod tests {
         chat.clear();
         assert!(chat.history.is_empty());
         assert!(chat.chat.messages().is_empty());
+    }
+
+    #[test]
+    fn stop_sending_coupe_le_vol_bumpe_l_epoque_et_note() {
+        let mut chat = ChatSession::new(String::from("Chat 1"));
+        assert!(!chat.stop_sending(), "rien en vol : faux");
+        assert_eq!(chat.epoch, 0);
+        assert!(chat.chat.messages().is_empty(), "rien en vol : muet");
+        chat.sending = true;
+        chat.sending_since = Some(std::time::Instant::now());
+        assert!(chat.stop_sending());
+        assert!(!chat.sending);
+        assert!(chat.sending_since.is_none());
+        assert_eq!(chat.epoch, 1);
+        let last = chat.chat.messages().last().unwrap();
+        assert!(last.text.contains("stoppée"), "note : {:?}", last.text);
+        assert!(!chat.stop_sending(), "second stop : faux");
+        assert_eq!(chat.epoch, 1, "époque figée sans vol");
     }
 
     #[test]

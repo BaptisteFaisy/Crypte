@@ -50,8 +50,8 @@ use crate::tools::flow::Delivery;
 use crate::tools::flow::ToolRun;
 use crate::web::WebAnswer;
 
-/// Message async d'une tâche provider : chat (`idx`), agent
-/// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
+/// Message async d'une tâche provider : chat (`idx`, époque du vol),
+/// agent (`propriétaire`, id, `livraison`), compaction (`idx`, voir
 /// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]),
 /// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]),
 /// génération spec (`chat`, état chaîné, voir [`crate::kiro::spec_run`]),
@@ -59,7 +59,7 @@ use crate::web::WebAnswer;
 /// terminée, voir [`crate::kiro::hook_run`]), critique de Kiro (voir
 /// [`crate::phantom`]).
 pub(crate) enum Incoming {
-    Chat(usize, Result<Completion>),
+    Chat(usize, u64, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
     Compact(usize, Result<Completion>),
     Web(usize, Result<WebAnswer>),
@@ -244,7 +244,7 @@ impl App {
                 self.almanac.record(prompt, completion);
             }
             match msg {
-                Incoming::Chat(id, reply) => self.drain_chat(id, reply),
+                Incoming::Chat(id, epoch, reply) => self.drain_chat(id, epoch, reply),
                 Incoming::Agent(owner, agent_id, deliver, reply) => {
                     self.drain_agent(owner, agent_id, deliver, reply);
                 }
@@ -360,9 +360,9 @@ mod tests {
             completion_tokens: 0,
         };
         let tx = app.tx.clone();
-        tx.try_send(Incoming::Chat(0, Ok(done(10, 5)))).unwrap();
+        tx.try_send(Incoming::Chat(0, 0, Ok(done(10, 5)))).unwrap();
         tx.try_send(Incoming::Compact(7, Ok(done(3, 2)))).unwrap();
-        tx.try_send(Incoming::Chat(0, Err(anyhow::anyhow!("boom"))))
+        tx.try_send(Incoming::Chat(0, 0, Err(anyhow::anyhow!("boom"))))
             .unwrap();
         tx.try_send(Incoming::Web(0, Ok(raw_web))).unwrap();
         app.drain_replies();

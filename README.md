@@ -185,6 +185,7 @@ exempt, stays the remedy).
 | Click `[×]` (sidebar) | close that chat (refused if a reply is in flight) |
 | Drag sidebar right edge | resize the coffins column (min 10, chat kept ≥ 30) |
 | Ctrl+W | close the current chat |
+| Ctrl+C | stop the current reply (the late reply is ignored) |
 | F5 | scare: jump scare 2s, lightning flash, hub panic, Kiro flees |
 | Click the roaming ghost | hit him (knockback, stars, BONK; 3 quick hits = KO) |
 | Click his speech bubble | dismiss it |

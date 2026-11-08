@@ -47,6 +47,7 @@ impl App {
             KeyCode::Char('q') if !ctrl && empty => false,
             KeyCode::Char('n' | 'N') if ctrl => self.cmd(|s| s.add_chat()),
             KeyCode::Char('w' | 'W') if ctrl => self.cmd(|s| s.close_chat(s.sessions.index())),
+            KeyCode::Char('c' | 'C') if ctrl => self.cmd(|s| s.stop_chat()),
             KeyCode::Char('v' | 'V') if ctrl => self.cmd(|s| s.paste_clip()),
             KeyCode::Char(c) if !ctrl => self.cmd(|s| s.type_char(c)),
             KeyCode::Backspace => self.cmd(|s| s.backspace()),
@@ -106,7 +107,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::ProviderConfig;
+    use crate::provider::{Completion, ProviderConfig};
 
     /// App de test (clé factice, aucun appel réseau).
     fn test_app() -> App {
@@ -126,6 +127,53 @@ mod tests {
         let ctrl_v = KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL);
         assert!(app.on_key(ctrl_v));
         assert_eq!(app.sessions.current().chat.input, attendu);
+    }
+
+    #[test]
+    fn ctrl_c_stoppe_le_vol_sans_quitter() {
+        let mut app = test_app();
+        app.sessions.get_mut(0).unwrap().sending = true;
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert!(app.on_key(ctrl_c)); // ne quitte pas
+        assert!(!app.sessions.get(0).unwrap().sending, "vol stoppé");
+    }
+
+    #[test]
+    fn ctrl_c_sans_vol_muet_puis_stop_puis_renvoi() {
+        let mut app = test_app();
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert!(app.on_key(ctrl_c)); // rien en vol : muet
+        assert!(app.sessions.current().chat.messages().is_empty());
+        // Vol 1 (époque 0) stoppé : réponse tardive ignorée.
+        app.sessions.get_mut(0).unwrap().sending = true;
+        assert!(app.on_key(ctrl_c));
+        let tardive = Completion {
+            text: String::from("trop tard"),
+            tool_calls: Vec::new(),
+            prompt_tokens: 1,
+            completion_tokens: 1,
+        };
+        app.drain_chat(0, 0, Ok(tardive));
+        let sess = app.sessions.get(0).unwrap();
+        assert!(!sess.sending, "tardive ne relance rien");
+        assert_eq!(sess.ledger.total(), 0, "tardive non comptée");
+        assert!(
+            !sess.history.iter().any(|(_, t)| t == "trop tard"),
+            "tardive non versée"
+        );
+        // Vol 2 (époque 1) : réponse acceptée normalement.
+        app.sessions.get_mut(0).unwrap().sending = true;
+        let fraiche = Completion {
+            text: String::from("à temps"),
+            tool_calls: Vec::new(),
+            prompt_tokens: 1,
+            completion_tokens: 1,
+        };
+        app.drain_chat(0, 1, Ok(fraiche));
+        let sess = app.sessions.get(0).unwrap();
+        assert!(!sess.sending);
+        assert_eq!(sess.ledger.total(), 2);
+        assert_eq!(sess.history.last().unwrap().1, "à temps");
     }
 
     #[test]

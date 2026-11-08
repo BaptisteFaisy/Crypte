@@ -30,7 +30,7 @@ impl Incoming {
             | Incoming::Vps(..)
             | Incoming::McpRefresh(..)
             | Incoming::HookDone(..) => return None,
-            Incoming::Chat(_, r)
+            Incoming::Chat(_, _, r)
             | Incoming::Compact(_, r)
             | Incoming::Agent(_, _, _, r)
             | Incoming::SpecNew(_, _, r)
@@ -51,7 +51,11 @@ impl Incoming {
 impl App {
     /// Réponse chat : ledger + historique + message (ou erreur système),
     /// puis file d'attente et liens auto (voir [`crate::bus`]).
-    pub(crate) fn drain_chat(&mut self, id: usize, reply: Result<Completion>) {
+    /// Époque révolue (vol stoppé au Ctrl+C puis renvoyé) : ignorée.
+    pub(crate) fn drain_chat(&mut self, id: usize, epoch: u64, reply: Result<Completion>) {
+        if self.sessions.get(id).is_some_and(|s| s.epoch != epoch) {
+            return;
+        }
         let elapsed = {
             let Some(sess) = self.sessions.get_mut(id) else {
                 return;
@@ -214,13 +218,13 @@ impl App {
         let Some(provider) = self.provider.clone() else {
             return;
         };
-        let history = {
+        let (history, epoch) = {
             let Some(sess) = self.sessions.get_mut(idx) else {
                 return;
             };
             sess.sending = true;
             sess.sending_since = Some(Instant::now());
-            send_window(&sess.history, sess.pinned_system)
+            (send_window(&sess.history, sess.pinned_system), sess.epoch)
         };
         let model = self.effective_model_for(idx);
         let effort = self.thinking.clone();
@@ -229,7 +233,7 @@ impl App {
             let reply = provider
                 .complete_full(&history, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Chat(idx, reply)).await;
+            let _ = tx.send(Incoming::Chat(idx, epoch, reply)).await;
         });
     }
 
@@ -473,7 +477,7 @@ mod tests {
             prompt_tokens: 3,
             completion_tokens: 5,
         };
-        app.drain_chat(0, Ok(done));
+        app.drain_chat(0, 0, Ok(done));
         let content = std::fs::read_to_string(&path).unwrap();
         let line = content.lines().next().unwrap();
         let v: serde_json::Value = serde_json::from_str(line).unwrap();
