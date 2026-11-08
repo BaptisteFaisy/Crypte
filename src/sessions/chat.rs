@@ -62,6 +62,14 @@ impl ChatSession {
         self.pinned_system = true;
     }
 
+    /// Vide la conversation (`/clear`) : affichage + historique provider,
+    /// question en attente effacée ; pinné, modèle, tokens et agents gardés.
+    pub fn clear(&mut self) {
+        self.chat.clear();
+        self.history.truncate(usize::from(self.pinned_system));
+        self.pending = None;
+    }
+
     /// Ajoute un tour provider, borné LRU (`HISTORY_MAX`, tête pinnée gardée).
     pub fn push_history(&mut self, role: &str, text: String) {
         self.history.push((String::from(role), text));
@@ -143,6 +151,33 @@ mod tests {
             chat.push_history("assistant", format!("reponse {i}"));
         }
         chat
+    }
+
+    #[test]
+    fn clear_vide_conversation_garde_pinne() {
+        use crate::chat::Role;
+        let mut chat = ChatSession::new(String::from("Chat 1"));
+        chat.pin_system("pin");
+        chat.push_history("user", String::from("salut"));
+        chat.chat.push(Role::User, "salut");
+        chat.chat.scroll.by(-5);
+        chat.pending =
+            crate::question::render_display("```question\nOn continue ?\n1. Oui\n2. Non\n```").1;
+        assert!(chat.pending.is_some());
+        chat.clear();
+        assert!(chat.chat.messages().is_empty());
+        assert_eq!(chat.chat.scroll.offset(), 0);
+        assert_eq!(
+            chat.history,
+            vec![(String::from("system"), String::from("pin"))]
+        );
+        assert!(chat.pending.is_none());
+        // Sans pinné : historique totalement vidé.
+        let mut chat = ChatSession::new(String::from("Chat 2"));
+        chat.push_history("user", String::from("x"));
+        chat.clear();
+        assert!(chat.history.is_empty());
+        assert!(chat.chat.messages().is_empty());
     }
 
     #[test]

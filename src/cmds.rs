@@ -26,6 +26,7 @@ impl App {
         match commands::parse(text) {
             Some(Command::Usage) => self.cmd_usage(),
             Some(Command::New) => self.add_chat(),
+            Some(Command::Clear) => self.cmd_clear(),
             Some(Command::Bestiary) => self.cmd_bestiary(),
             Some(Command::Help) => self.push_system(texts::help_text().to_string()),
             Some(Command::Model(arg)) => self.cmd_model(arg),
@@ -63,6 +64,17 @@ impl App {
             }
             None => self.push_system(String::from("unknown command — /help for help")),
         }
+    }
+
+    /// `/clear` : vide la conversation du chat courant (pinné conservé) ;
+    /// refusé si une réponse est en cours (elle retomberait dedans).
+    fn cmd_clear(&mut self) {
+        if self.sessions.current().sending {
+            self.push_system(String::from("reply in flight — retry"));
+            return;
+        }
+        self.sessions.current_mut().clear();
+        self.push_system(String::from("conversation cleared"));
     }
 
     /// `/bestiary` : une créature au hasard dans le panneau droit
@@ -394,6 +406,27 @@ mod tests {
             model: String::from("factice"),
         })
         .unwrap()
+    }
+
+    #[test]
+    fn clear_vide_le_chat_et_refuse_si_envoi() {
+        let mut app = test_app();
+        let current = app.sessions.current_mut();
+        current.chat.push(Role::User, "salut");
+        current
+            .history
+            .push((String::from("user"), String::from("salut")));
+        app.run_command("/clear");
+        let last = app.sessions.current().chat.messages().last().unwrap();
+        assert_eq!(last.text, "conversation cleared");
+        assert_eq!(app.sessions.current().chat.messages().len(), 1);
+        assert!(app.sessions.current().history.is_empty());
+        // Envoi en cours : refusé, rien n'est effacé.
+        app.sessions.current_mut().sending = true;
+        app.run_command("/clear");
+        let last = app.sessions.current().chat.messages().last().unwrap();
+        assert_eq!(last.text, "reply in flight — retry");
+        assert_eq!(app.sessions.current().chat.messages().len(), 2);
     }
 
     #[test]

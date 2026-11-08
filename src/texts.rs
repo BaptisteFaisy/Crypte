@@ -2,11 +2,12 @@
 //!
 //! Extrait de `commands.rs` (limite 500 lignes) : pur, sans état.
 
-/// Aide : les 32 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 33 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (chat + session + all-time almanac)\n\
      /new — new chat (resets the current chat)\n\
+     /clear — clear the current chat conversation\n\
      /bestiary — show a random creature in the side panel\n\
      /thinking [level] — reasoning level (default/low/medium/high)\n\
      /model [name|reset] — show or change the model\n\

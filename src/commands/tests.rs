@@ -81,6 +81,13 @@ fn parse_kiro_sans_argument() {
 }
 
 #[test]
+fn parse_clear_sans_argument() {
+    assert_eq!(parse("/clear"), Some(Command::Clear));
+    assert_eq!(parse("  /clear x  "), Some(Command::Clear));
+    assert!(crate::texts::help_text().contains("/clear"));
+}
+
+#[test]
 fn parse_bestiary_sans_argument() {
     assert_eq!(parse("/bestiary"), Some(Command::Bestiary));
     assert_eq!(parse("  /bestiary x  "), Some(Command::Bestiary));

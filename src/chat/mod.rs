@@ -100,6 +100,14 @@ impl ChatState {
         &self.messages
     }
 
+    /// Vide l'historique affiché, recolle le défilement en bas et
+    /// invalide le cache de rendu (`/clear`).
+    pub fn clear(&mut self) {
+        self.messages.clear();
+        self.scroll.to_bottom();
+        self.wrap_version = self.wrap_version.wrapping_add(1);
+    }
+
     /// Octets heap estimés (messages + brouillon + prompt + cache ; analytique).
     pub fn heap_bytes(&self) -> usize {
         let mut bytes = self.messages.capacity() * std::mem::size_of::<Message>()

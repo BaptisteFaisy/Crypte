@@ -586,7 +586,7 @@ retorts), `app/critic.rs` (critique calls, `/critic`, clicks),
 `sidebar.rs` (coffins column + [+] new-chat button + [×] close),
 `commands.rs` (parsing `/…` commands), `texts.rs` (help + usage texts),
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
-`/compact` `/connect` `/web` `/settings`),
+`/clear` `/compact` `/connect` `/web` `/settings`),
 `connect.rs` (`/connect` handlers + flow: masked key → model),
 `settings.rs` + `settings/` (`/settings`: `known.rs` provider table,
 `store.rs` encrypted vault, `ui.rs` screen, `keys.rs` key handling),
