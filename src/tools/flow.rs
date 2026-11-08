@@ -3,7 +3,7 @@
 //! Un envoi avec outils (`/tools on`) boucle : réponse → appels (file
 //! séquentielle) → confirmations des modifications en mode `auto` →
 //! exécution ([`super::exec`]) → résultats rejoués → nouvel appel, jusqu'à
-//! la réponse finale ou [`super::MAX_ROUNDS`]. La boucle vit dans [`App`]
+//! la réponse finale (aucune limite de tours). La boucle vit dans [`App`]
 //! (jamais persistée) ; l'historique provider ne reçoit que le texte final.
 
 use std::collections::VecDeque;
@@ -12,7 +12,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use super::exec::{self, Outcome};
 use super::wire::{ToolCall, WireMsg};
-use super::{defs, GUIDE, MAX_ROUNDS};
+use super::{defs, GUIDE};
 use crate::app::{App, Incoming};
 use crate::chat::Role;
 use crate::history::send_window;
@@ -24,8 +24,6 @@ pub struct ToolRun {
     pub chat: usize,
     /// Transcript filaire (historique + guide + appels + résultats).
     pub wire: Vec<WireMsg>,
-    /// Appels LLM effectués (1 = premier tour déjà reçu).
-    pub rounds: u8,
     /// Appels décidés, exécutés dans l'ordre.
     pub queue: VecDeque<ToolCall>,
     /// Confirmation y/n attendue (touches capturées, voir `on_tool_key`).
@@ -78,14 +76,6 @@ impl App {
             KeyCode::Char('n' | 'N') | KeyCode::Esc => self.tool_resolve(false),
             _ => true,
         }
-    }
-
-    /// Budget tours restant (pas de boucle → premier tour, toujours OK).
-    pub(crate) fn tool_budget_left(&self) -> bool {
-        self.tool_run
-            .as_ref()
-            .map(|run| run.rounds < MAX_ROUNDS)
-            .unwrap_or(true)
     }
 
     /// Réponse avec appels : affiche le texte (hors historique), prépare la
@@ -143,7 +133,6 @@ impl App {
         ToolRun {
             chat: id,
             wire,
-            rounds: 1,
             queue: VecDeque::new(),
             confirming: false,
         }
@@ -203,18 +192,15 @@ impl App {
         true
     }
 
-    /// Relance LLM avec le transcript outillé (tour suivant, borné).
+    /// Relance LLM avec le transcript outillé (tour suivant, sans limite).
     /// Sans provider (impossible en pratique) : boucle avortée proprement.
     fn tool_spawn_llm(&mut self) {
         let Some(provider) = self.provider.clone() else {
             self.tool_abort("no provider — loop aborted");
             return;
         };
-        let (chat, wire) = match self.tool_run.as_mut() {
-            Some(run) => {
-                run.rounds += 1;
-                (run.chat, run.wire.clone())
-            }
+        let (chat, wire) = match self.tool_run.as_ref() {
+            Some(run) => (run.chat, run.wire.clone()),
             None => return,
         };
         let model = self.effective_model_for(chat);
