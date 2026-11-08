@@ -469,8 +469,13 @@ global `~/.kiro/`), so a project moves back and forth between both:
   `team/<name>` subfolders, project wins over global, json wins
   over md) : `/agents` lists them (model/tools/mcp shown when
   declared), `/agent <name> <text>` spawns with the custom prompt
-  and its model when declared. `tools`/`mcpServers` are read and
-  shown but not executed yet (sub-agents have no tools).
+  and its model when declared. `tools`/`excludedTools` filter the
+  sub-agent's tools, `mcpServers` restricts its MCP servers (names
+  only — per-agent server configs are not connected). Sub-agents
+  run tools on their own (bounded: 20 rounds, 60 calls max, `Ask`/
+  `Deny` become refusals since nobody can confirm, `PreToolUse`
+  hooks don't fire); in `auto` mode they only get reads unless a
+  rule allows more, in `yolo` everything.
 - **Skills** (`.kiro/skills/*/SKILL.md`, Claude-compatible frontmatter
   `name`/`description`, body = instructions) : `/skills` lists them,
   `/skill <name> [text]` prefixes the skill to the current draft

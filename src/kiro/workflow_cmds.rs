@@ -246,7 +246,7 @@ impl App {
         self.sessions.workflow_runs.insert(agent_id, run);
         self.push_flow_line(chat, format!("workflow {recipe}: {label} ({agent})"));
         self.hooks_fire_agent_spawn(chat, &user);
-        self.launch_agent(chat, agent_id, chat, history);
+        self.launch_agent(chat, agent_id, chat, history, None);
     }
 
     /// Étape finie (réponse agent) : sortie captée, suivante ou fin.

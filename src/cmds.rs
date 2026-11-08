@@ -245,10 +245,12 @@ impl App {
                 self.push_system(format!("agent#{agent_id} busy — queued (position {pos})"));
             }
             Ok((owner, history)) => {
+                let mut filter = None;
                 if let Some((_, agent)) = self.sessions.find_agent_mut(agent_id) {
                     agent.auto_hops = 0;
+                    filter = Some(agent.tool_filter.clone());
                 }
-                self.launch_agent(owner, agent_id, here, history);
+                self.launch_agent(owner, agent_id, here, history, filter);
             }
         }
     }
