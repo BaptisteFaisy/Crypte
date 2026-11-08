@@ -6,6 +6,7 @@ use std::time::Instant;
 use crate::bus::QueuedTell;
 use crate::chat::ChatState;
 use crate::history::trim_history;
+use crate::question::PendingQuestion;
 use crate::tokens::TokenLedger;
 
 use super::subagents::SubAgent;
@@ -30,6 +31,8 @@ pub struct ChatSession {
     pub inbox: VecDeque<QueuedTell>,
     /// Relais auto de la réponse en vol (0 = déclenchée par le user).
     pub auto_hops: u8,
+    /// Question de l'IA en attente (`None` = aucune, pastille jaune sinon).
+    pub pending: Option<PendingQuestion>,
 }
 
 impl ChatSession {
@@ -48,6 +51,7 @@ impl ChatSession {
             pinned_system: false,
             inbox: VecDeque::new(),
             auto_hops: 0,
+            pending: None,
         }
     }
 
@@ -64,6 +68,13 @@ impl ChatSession {
         trim_history(&mut self.history, self.pinned_system);
     }
 
+    /// Réponse reçue : mémorise la question éventuelle, rend le texte affiché.
+    pub fn track_question(&mut self, raw: &str) -> String {
+        let (shown, asked) = crate::question::render_display(raw);
+        self.pending = asked;
+        shown
+    }
+
     /// Octets heap estimés du chat (capacités des buffers : nom, affichage,
     /// historique provider, modèle, file, agents). Mesure analytique,
     /// déterministe à scénario fixé (hors slack allocateur).
@@ -76,6 +87,11 @@ impl ChatSession {
             .iter()
             .map(|queued| queued.envelope.capacity())
             .sum::<usize>();
+        bytes += self
+            .pending
+            .as_ref()
+            .map(|q| q.question.capacity() + q.options.iter().map(|o| o.capacity()).sum::<usize>())
+            .unwrap_or(0);
         bytes += self
             .agents
             .iter()

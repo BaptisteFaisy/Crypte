@@ -22,6 +22,13 @@ use crate::ghostty;
 use crate::haunt::{self, Act};
 use crate::theme::{self, ASH, BLOOD, BONE, CANDLE, PUMPKIN, UMBER};
 
+/// Raccourcis du jeu rappelés dans la barre d'état.
+pub(super) const HINTS: [(&str, &str); 3] = [
+    ("F5", " thunder  "),
+    ("Esc/F9", " back  "),
+    ("F6", " shop  "),
+];
+
 /// Clavier du jeu : terminal réel branché (jamais d'écriture brute vers
 /// stdout sans lui : tests, `--smoke`), protocole Kitty géré (interrogé
 /// à la première entrée en jeu) et empilé (pendant le jeu).

@@ -1,4 +1,4 @@
-//! Peinture partagée sur canevas RGBA (hub F7, haunt F9) : couleur de
+//! Peinture partagée sur canevas RGBA (hub, jeu Haunt F9) : couleur de
 //! thème → pixel, pose bornée, collage de sprite (opacité, teinte unie,
 //! découpe sous une ligne). Jamais de filtre : chaque pixel reste net.
 

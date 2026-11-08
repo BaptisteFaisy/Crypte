@@ -496,6 +496,17 @@ stays user-originated (command or user-made link): no infinite loops.
 Agent replies delivered to a chat are also versed into its context
 (user role, tagged, no reply triggered — queued behind a busy chat).
 
+## AI questions
+
+The AI (chats and sub-agents) can ask you a real multiple-choice
+question by writing a ```question block (2 to 4 options); the TUI
+detects it, shows it rendered (`— the crypt asks you: …` + numbered
+options) and the chat pill turns candle yellow (`?` marker in the
+sidebar, adapted input hint). Reply with the digit (`2`) or in your
+own words — any sent message answers (`/` commands don't). The format
+instructions are injected into every request (chats + `/agent`,
+never into `/compact` or `--once`).
+
 ## Compact
 
 `/compact` (6 messages minimum) asks for an EN summary (< 20
@@ -557,6 +568,7 @@ scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
 (right-panel creature, `/bestiary` reveals),
 `ghostty.rs` (OSC, progress, synced rendering),
 `history.rs` (send window + chat naming),
+`question.rs` (```question block: parse, render, digit reply),
 `hub.rs` + `hub/` (spirit hub: tile-based simulation, `iso.rs`
 isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
 `font.rs` 3×5 pixel font, `social.rs` orbs and chatter),

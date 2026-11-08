@@ -63,6 +63,7 @@ impl Sessions {
                 &c.name,
                 c.sending,
                 self.running_agents(i),
+                c.pending.is_some(),
                 inner_w,
             );
             lines.push(line);
@@ -210,8 +211,9 @@ const CLOSE_BTN_W: usize = 3;
 const CLOSE_W: usize = 4;
 
 /// Une ligne de sidebar : `▍` + point `●` (vert au repos, bleu en
-/// réflexion) + nom tronqué + `…` si envoi + ` A{n}` + `[×]` + marge.
-/// Le chat courant : barre citrouille, nom os gras, fond braise.
+/// réflexion) + nom tronqué + `…` si envoi + ` A{n}` + ` ?` si question
+/// IA en attente (bougie) + `[×]` + marge. Le chat courant : barre
+/// citrouille, nom os gras, fond braise.
 /// (Les compteurs tokens vivent dans `/usage`, pas ici.)
 /// Rend aussi si la croix tient (`false` : omise, pas de clic).
 fn sidebar_line(
@@ -219,6 +221,7 @@ fn sidebar_line(
     name: &str,
     sending: bool,
     agents: usize,
+    question: bool,
     width: usize,
 ) -> (Line<'static>, bool) {
     let agents = if agents > 0 {
@@ -227,8 +230,9 @@ fn sidebar_line(
         String::new()
     };
     let suffix = if sending { "…" } else { "" };
-    // `agents` ASCII : `len()` vaut la largeur ; `…`/`×` = 1 colonne.
-    let used = 2 + DOT_W + agents.len() + usize::from(sending) + CLOSE_W;
+    let mark = if question { " ?" } else { "" };
+    // `agents` ASCII : `len()` vaut la largeur ; `…`/`×`/`?` = 1 colonne.
+    let used = 2 + DOT_W + agents.len() + usize::from(sending) + mark.len() + CLOSE_W;
     let (name, pad) = fit_name(name, width.saturating_sub(used));
     let (bar, name_style) = if current {
         let bold = Style::new().fg(theme::BONE).add_modifier(Modifier::BOLD);
@@ -244,6 +248,7 @@ fn sidebar_line(
         Span::styled(pad, name_style),
         Span::styled(agents, Style::new().fg(theme::ECTO)),
         Span::styled(suffix, Style::new().fg(theme::CANDLE)),
+        Span::styled(mark, Style::new().fg(theme::CANDLE)),
     ];
     if fits {
         let close = Style::new().fg(theme::BLOOD).add_modifier(Modifier::BOLD);
@@ -284,7 +289,7 @@ mod tests {
     #[test]
     fn point_vert_au_repos_bleu_en_reflexion() {
         for (sending, want) in [(false, theme::MOSS), (true, theme::WISP)] {
-            let (line, _) = sidebar_line(false, "Chat 1", sending, 0, 16);
+            let (line, _) = sidebar_line(false, "Chat 1", sending, 0, false, 16);
             let dot = line.spans.iter().find(|s| s.content.as_ref() == "● ");
             assert_eq!(
                 dot.and_then(|s| s.style.fg),
@@ -330,13 +335,13 @@ mod tests {
 
     #[test]
     fn croix_sang_en_fin_de_ligne_si_ca_tient() {
-        let (line, fits) = sidebar_line(false, "Chat 1", false, 0, 16);
+        let (line, fits) = sidebar_line(false, "Chat 1", false, 0, false, 16);
         assert!(fits);
         let last = line.spans.last().unwrap();
         assert_eq!(last.content.as_ref(), "[×] ");
         assert_eq!(last.style.fg, Some(theme::BLOOD));
         // Trop étroit : bouton omis, pas de clic.
-        let (tight, fits) = sidebar_line(false, "Chat 1", false, 0, 7);
+        let (tight, fits) = sidebar_line(false, "Chat 1", false, 0, false, 7);
         assert!(!fits);
         assert!(tight.spans.iter().all(|s| s.content.as_ref() != "[×] "));
     }

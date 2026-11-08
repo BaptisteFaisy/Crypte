@@ -47,6 +47,12 @@ const TABS: [(Screen, &str, &str); 3] = [
     (Screen::Shop, "shop", "F6"),
     (Screen::Haunt, "haunt", "F9"),
 ];
+/// Raccourcis de la barre d'état (hors jeu).
+const HINTS: [(&str, &str); 3] = [
+    ("F5", " scare  "),
+    ("Ctrl+←/→", " column  "),
+    ("q", " quit  "),
+];
 /// Coiffes powerline arrondies (sprites internes de Ghostty).
 const CAP_L: &str = "\u{e0b6}";
 const CAP_R: &str = "\u{e0b4}";
@@ -117,6 +123,7 @@ impl App {
             title: &sess.name,
             tick: self.tick,
             sending: sess.sending,
+            question_pending: sess.pending.is_some(),
         };
         sess.chat.draw(frame, chat, view);
         let sending = sess.sending;
@@ -151,6 +158,7 @@ impl App {
             title: &sess.name,
             tick: self.tick,
             sending: sess.sending,
+            question_pending: sess.pending.is_some(),
         };
         sess.chat.draw(frame, chat, view);
     }
@@ -219,7 +227,8 @@ impl App {
             self.sessions.index() + 1,
             self.sessions.count()
         );
-        left.extend(pill(&chat, PUMPKIN, VOID));
+        let asking = sess.pending.is_some();
+        left.extend(pill(&chat, if asking { CANDLE } else { PUMPKIN }, VOID));
         let model = short_model(self.effective_model_ref());
         let model = if compact {
             model.chars().take(10).collect::<String>()
@@ -354,7 +363,7 @@ fn fear_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
 }
 
 /// Raccourcis rappelés dans la barre d'état (courts si `short`) ; en
-/// jeu, `q` ne quitte pas : on rappelle comment en sortir.
+/// jeu, `q` ne quitte pas : ceux du jeu (`haunt::HINTS`).
 fn key_hints(short: bool, game: bool) -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
     if short {
@@ -362,20 +371,8 @@ fn key_hints(short: bool, game: bool) -> Vec<Span<'static>> {
     }
     let word = Style::new().fg(ASH);
     let mut spans = Vec::with_capacity(6);
-    let hints: [(&'static str, &'static str); 3] = if game {
-        [
-            ("F5", " thunder  "),
-            ("Esc/F9", " back  "),
-            ("F7", " hub  "),
-        ]
-    } else {
-        [
-            ("F5", " scare  "),
-            ("Ctrl+←/→", " column  "),
-            ("q", " quit  "),
-        ]
-    };
-    for (k, w) in hints {
+    let hints = if game { &super::haunt::HINTS } else { &HINTS };
+    for &(k, w) in hints {
         spans.push(Span::styled(k, key));
         spans.push(Span::styled(w, word));
     }

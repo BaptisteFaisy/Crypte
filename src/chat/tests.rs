@@ -35,6 +35,7 @@ fn defiler_affiche_les_vieux_messages_puis_revient() {
         title: "test",
         tick: 0,
         sending: false,
+        question_pending: false,
     };
     let dump = |chat: &mut ChatState| {
         let mut term = Terminal::new(TestBackend::new(40, 14)).unwrap();
@@ -124,6 +125,7 @@ fn curseur_saisie_fixe_ne_clignote_pas() {
             title: "test",
             tick,
             sending: false,
+            question_pending: true,
         };
         let mut term = Terminal::new(TestBackend::new(40, 14)).unwrap();
         term.draw(|f| chat.draw(f, f.area(), view)).unwrap();

@@ -41,6 +41,13 @@ impl App {
             ));
             return;
         }
+        // Pending AI question: a digit picks the option, any other
+        // text answers freely (both clear the question).
+        let pending = self.sessions.current_mut().pending.take();
+        let text = pending
+            .as_ref()
+            .and_then(|q| crate::question::resolve_answer(q, &text))
+            .unwrap_or(text);
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
@@ -75,5 +82,61 @@ impl App {
                 let _ = tx.send(Incoming::Chat(id, reply)).await;
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::{Completion, ProviderConfig};
+
+    /// App de test (clé factice, aucun appel réseau attendu).
+    fn test_app() -> App {
+        App::from_config(ProviderConfig {
+            base_url: String::from("http://localhost:9/"),
+            api_key: String::from("factice"),
+            model: String::from("factice"),
+        })
+        .unwrap()
+    }
+
+    /// Aller-retour question IA : le drain mémorise + rend, `send("2")`
+    /// envoie le libellé et efface l'attente (brut gardé pour le LLM).
+    #[tokio::test]
+    async fn question_drain_then_digit_send_round_trip() {
+        let mut app = test_app();
+        let raw = "look:\n```question\nShall we go on?\n1. Yes\n2. No thanks\n```";
+        app.drain_chat(
+            0,
+            Ok(Completion {
+                text: raw.to_string(),
+                tool_calls: Vec::new(),
+                prompt_tokens: 1,
+                completion_tokens: 2,
+            }),
+        );
+        assert!(app.sessions.current().pending.is_some(), "asked");
+        let shown = app
+            .sessions
+            .current()
+            .chat
+            .messages()
+            .last()
+            .unwrap()
+            .text
+            .clone();
+        assert!(shown.contains("the crypt asks you"), "rendered: {shown:?}");
+        assert!(!shown.contains("```"), "block replaced: {shown:?}");
+        assert_eq!(app.sessions.current().history.last().unwrap().1, raw);
+        app.sessions.current_mut().chat.input.push_str("2");
+        app.send();
+        let sess = app.sessions.current();
+        assert!(sess.pending.is_none(), "answering clears");
+        assert_eq!(
+            sess.history.last(),
+            Some(&(String::from("user"), String::from("No thanks"))),
+            "digit sends the label"
+        );
+        assert!(sess.sending, "send goes out normally");
     }
 }

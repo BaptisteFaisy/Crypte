@@ -8,7 +8,7 @@ mod close;
 mod subagents;
 
 pub use chat::ChatSession;
-pub use close::{shift_bus_links, CloseOutcome};
+pub use close::{shift_bus_links, unlink_chat, CloseOutcome};
 pub use subagents::{AgentStatus, AskError, SubAgent};
 
 use std::path::Path;
