@@ -70,6 +70,8 @@ pub struct SubAgent {
     pub workspace: Option<PathBuf>,
     /// Workflow `/spec` porteur (`None` = lancé seul via `/agent`).
     pub spec: Option<SpecTag>,
+    /// Filtre d'outils custom (vide = tout, posé au spawn `/agent`).
+    pub tool_filter: crate::tools::agent::Filter,
 }
 
 impl SubAgent {
@@ -86,6 +88,7 @@ impl SubAgent {
             auto_hops: 0,
             workspace: None,
             spec: None,
+            tool_filter: crate::tools::agent::Filter::default(),
         }
     }
 
