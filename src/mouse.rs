@@ -297,11 +297,22 @@ mod tests {
         assert_eq!(rows.height, 2);
         app.on_mouse(click(rows.x, rows.y + 1));
         assert_eq!(app.sessions.index(), 1);
-        // Onglet mémorisé : un seul (chat), clic → chat.
-        assert_eq!(app.tab_hits.len(), 1);
-        assert_eq!(app.tab_hits[0].0, Screen::Chat);
-        let chat = app.tab_hits[0].1;
-        app.screen = Screen::Settings;
+        // Onglets mémorisés : chat + boutique, clic → écran.
+        assert_eq!(app.tab_hits.len(), 2);
+        let shop = app
+            .tab_hits
+            .iter()
+            .find(|(s, _)| *s == Screen::Shop)
+            .unwrap()
+            .1;
+        app.on_mouse(click(shop.x, shop.y));
+        assert_eq!(app.screen, Screen::Shop);
+        let chat = app
+            .tab_hits
+            .iter()
+            .find(|(s, _)| *s == Screen::Chat)
+            .unwrap()
+            .1;
         app.on_mouse(click(chat.x, chat.y));
         assert_eq!(app.screen, Screen::Chat);
         // [+] mémorisé : clic → 3e chat.
