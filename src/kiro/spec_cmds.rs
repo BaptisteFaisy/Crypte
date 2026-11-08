@@ -141,7 +141,7 @@ impl App {
         let file = gen.file_name();
         let mut gen = gen;
         gen.store(done.text.clone());
-        if let Err(err) = write_doc(&dir, file, &done.text) {
+        if let Err(err) = write_doc(self.t5.checkpoint_dir.as_deref(), &dir, file, &done.text) {
             self.push_spec_line(
                 chat,
                 format!("spec {}: cannot write {file}: {err}", gen.name),
@@ -354,7 +354,9 @@ impl App {
             );
             return None;
         };
-        if std::fs::write(&path, updated).is_err() {
+        let tracked =
+            crate::kiro::checkpoint::write_via(self.t5.checkpoint_dir.as_deref(), &path, &updated);
+        if tracked.is_err() {
             self.push_spec_line(
                 run.chat,
                 format!("spec {}: cannot write tasks.md — run stopped", run.name),
@@ -460,14 +462,17 @@ impl App {
     }
 }
 
-/// Écrit un doc de spec (dossier créé, `\n` final garanti).
-fn write_doc(dir: &Path, file: &str, text: &str) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    if text.ends_with('\n') {
-        std::fs::write(dir.join(file), text)
+/// Écrit un doc de spec (dossier créé, `\n` final garanti, snapshot
+/// si `ckpt`).
+fn write_doc(ckpt: Option<&Path>, dir: &Path, file: &str, text: &str) -> std::io::Result<()> {
+    let owned: String;
+    let final_text = if text.ends_with('\n') {
+        text
     } else {
-        std::fs::write(dir.join(file), format!("{text}\n"))
-    }
+        owned = format!("{text}\n");
+        &owned
+    };
+    crate::kiro::checkpoint::write_via(ckpt, &dir.join(file), final_text)
 }
 
 #[cfg(test)]

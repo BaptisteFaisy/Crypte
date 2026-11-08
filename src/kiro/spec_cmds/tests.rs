@@ -12,6 +12,7 @@ fn test_app() -> App {
     let mut app = App::from_config(cfg).unwrap();
     app.agents_tried = true;
     app.agents_md = None;
+    app.t5.checkpoint_dir = None;
     app
 }
 
@@ -222,8 +223,8 @@ fn h_yolo_failed(dir: &Path) {
 #[test]
 fn divers_sans_projet() {
     let dir = std::env::temp_dir().join(format!("kh-spec-divers-{}", std::process::id()));
-    write_doc(&dir, "requirements.md", "R1").unwrap();
-    write_doc(&dir, "design.md", "D1\n").unwrap();
+    write_doc(None, &dir, "requirements.md", "R1").unwrap();
+    write_doc(None, &dir, "design.md", "D1\n").unwrap();
     assert_eq!(
         std::fs::read_to_string(dir.join("requirements.md")).unwrap(),
         "R1\n"
@@ -232,6 +233,11 @@ fn divers_sans_projet() {
         std::fs::read_to_string(dir.join("design.md")).unwrap(),
         "D1\n"
     );
+    // Snapshots via dossier injecté (2e écriture → 1 snapshot).
+    let ckpt = dir.join("ckpt");
+    write_doc(Some(&ckpt), &dir, "tracked.md", "v1").unwrap();
+    write_doc(Some(&ckpt), &dir, "tracked.md", "v2").unwrap();
+    assert_eq!(crate::kiro::checkpoint::list_in(&ckpt).len(), 1);
     std::fs::remove_dir_all(&dir).ok();
     let mut app = test_app();
     assert!(app.spec_waiting.is_none());

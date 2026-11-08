@@ -13,13 +13,9 @@
 //!
 //! Déjà branché : `memory::remember` (snapshot avant ajout).
 //!
-//! Sites à brancher (T5 expose l'API, le parent branche au merge —
-//! `spec_cmds.rs` INTERDIT en T5) :
-//!
-//! 1. `kiro::spec_cmds::write_doc` : les deux `std::fs::write` (docs
-//!    requirements/design/tasks) → `write_tracked` du texte final.
-//! 2. `App::spec_check_off` : `std::fs::write(&path, updated)` (cochage
-//!    `tasks.md`) → `write_tracked(&path, &updated)`.
+//! Branchés via `T5State.checkpoint_dir` (`None` = sans snapshot) :
+//! `memory::remember`, `spec_cmds::write_doc` (3 docs),
+//! `App::spec_check_off` (cochage `tasks.md`).
 
 use std::path::{Path, PathBuf};
 
@@ -48,8 +44,13 @@ pub fn dir() -> Option<PathBuf> {
 /// Écrit `content` dans `path` en snapshottant le précédent (s'il existe).
 /// Dossier indisponible : écriture simple, sans snapshot.
 pub fn write_tracked(path: &Path, content: &str) -> std::io::Result<()> {
-    match dir() {
-        Some(ckpt) => write_tracked_in(&ckpt, path, content),
+    write_via(dir().as_deref(), path, content)
+}
+
+/// `write_tracked` avec dossier explicite (`None` = écriture simple).
+pub fn write_via(ckpt: Option<&Path>, path: &Path, content: &str) -> std::io::Result<()> {
+    match ckpt {
+        Some(dir) => write_tracked_in(dir, path, content),
         None => {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
@@ -87,11 +88,6 @@ pub fn write_tracked_in(ckpt: &Path, path: &Path, content: &str) -> std::io::Res
     std::fs::write(path, content)
 }
 
-/// Snapshots, plus récent d'abord (dossier réel).
-pub fn list() -> Vec<Snapshot> {
-    dir().map(|d| list_in(&d)).unwrap_or_default()
-}
-
 /// Snapshots, plus récent d'abord (chemin injecté, tests ; illisibles ignorés).
 pub fn list_in(dir: &Path) -> Vec<Snapshot> {
     let mut files = snap_files(dir);
@@ -104,14 +100,6 @@ pub fn list_in(dir: &Path) -> Vec<Snapshot> {
             Some(Snapshot { file, original })
         })
         .collect()
-}
-
-/// Restaure `target` (dossier réel) : message de succès ou d'erreur (anglais).
-pub fn rewind(target: &str) -> Result<String, String> {
-    match dir() {
-        Some(ckpt) => rewind_in(&ckpt, target),
-        None => Err(String::from("no checkpoints")),
-    }
 }
 
 /// Restaure `target` dans `dir` : rang `1..=n` ou basename/fragment du
