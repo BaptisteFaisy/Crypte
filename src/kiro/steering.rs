@@ -48,7 +48,7 @@ pub struct Steering {
 
 /// Parse un fichier (`name` = nom sans extension).
 pub fn parse(name: &str, raw: &str) -> Steering {
-    let (front, body) = split_frontmatter(raw);
+    let (front, body) = crate::kiro::frontmatter::split(raw);
     let mut file = Steering {
         name: name.to_string(),
         inclusion: Inclusion::Always,
@@ -61,24 +61,9 @@ pub fn parse(name: &str, raw: &str) -> Steering {
     file
 }
 
-/// Sépare frontmatter (`---` en tête) et corps.
-fn split_frontmatter(raw: &str) -> (Option<&str>, &str) {
-    let mut parts = raw.splitn(3, "---");
-    let (head, front, body) = (parts.next(), parts.next(), parts.next());
-    match (head, front, body) {
-        (Some(head), Some(front), Some(body)) if head.trim().is_empty() => {
-            let body = body
-                .strip_prefix("\r\n")
-                .or_else(|| body.strip_prefix('\n'))
-                .unwrap_or(body);
-            (Some(front), body)
-        }
-        _ => (None, raw),
-    }
-}
-
 /// Applique le frontmatter (lignes `clé: valeur`, listes `- item`).
 fn apply_frontmatter(file: &mut Steering, front: &str) {
+    use crate::kiro::frontmatter::unquote;
     let mut key = String::new();
     for line in front.lines() {
         let line = line.trim();
@@ -112,50 +97,12 @@ fn is_pattern_key(key: &str) -> bool {
     key.trim_end_matches('s') == "filematchpattern"
 }
 
-/// Retire les guillemets simples/doubles autour d'une valeur.
-fn unquote(value: &str) -> String {
-    let bytes = value.as_bytes();
-    if bytes.len() >= 2 {
-        let (first, last) = (bytes[0], bytes[bytes.len() - 1]);
-        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
-            return value[1..value.len() - 1].to_string();
-        }
-    }
-    value.to_string()
-}
-
 /// Charge un dossier (`.md` triés, illisibles ignorés).
 pub fn load_dir(dir: &Path) -> Vec<Steering> {
-    let mut paths = Vec::new();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "md") {
-            paths.push(path);
-        }
-    }
-    paths.sort();
-    paths
-        .into_iter()
-        .filter_map(|path| {
-            let raw = std::fs::read_to_string(&path).ok()?;
-            let stem = path.file_stem()?.to_string_lossy().into_owned();
-            Some(parse(&stem, &raw))
-        })
-        .collect()
+    crate::kiro::frontmatter::load_md_files(dir, parse)
 }
 
-/// Charge global puis projet (cwd + home réels).
-pub fn load_all() -> Vec<Steering> {
-    load_all_in(
-        &crate::kiro::project_dir(),
-        crate::kiro::global_dir().as_deref(),
-    )
-}
-
-/// Charge global puis projet (chemins injectés, tests).
+/// Charge global puis projet (chemins injectés).
 pub fn load_all_in(project: &Path, global: Option<&Path>) -> Vec<Steering> {
     let mut out = Vec::new();
     if let Some(global) = global {

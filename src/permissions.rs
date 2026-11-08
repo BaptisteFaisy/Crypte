@@ -1,19 +1,27 @@
-//! Mode de permissions des futurs outils (`/permissions yolo|auto`).
+//! Permissions des outils : mode global + règles fines par outil.
 //!
 //! `yolo` = exécute sans demander, `auto` (défaut) = demande confirmation
 //! à chaque modification. Persisté dans
 //! `$HOME/.config/kiro-horror-tui/permissions` (un mot, `auto` si absent,
 //! illisible ou inconnu) ; relu au démarrage.
 //!
-//! `impl App` déporté (handler `/permissions`, `cmds.rs` étant au plafond
-//! de 500 lignes) : lit/écrit l'état via les accès `pub(crate)` de [`App`].
+//! Règles fines (T5) : `allow` (exécute), `ask` (confirme), `deny` (refuse
+//! sans demander), par motif exact (`shell_run`) ou préfixe (`mcp_github_*`,
+//! seul le `*` final compte) ; le plus long motif qui matche gagne, sinon
+//! le mode global s'applique. Persistées dans
+//! `$HOME/.config/kiro-horror-tui/permissions-rules` (lignes
+//! `<motif> <règle>).
+//!
+//! Types purs uniquement : le handler `/permissions` et la porte des
+//! outils (`impl App`) vivent dans [`crate::permissions_cmds`] (plafond
+//! 500 lignes).
 
 use std::path::{Path, PathBuf};
 
-use crate::app::App;
-
 /// Fichier d'état, relatif à `$HOME`.
 const STATE_PATH: &str = ".config/kiro-horror-tui/permissions";
+/// Fichier des règles fines, relatif à `$HOME` (même dossier que le mode).
+const RULES_PATH: &str = ".config/kiro-horror-tui/permissions-rules";
 
 /// Mode de permissions (`Auto` par défaut : demande à chaque modification).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -50,9 +58,107 @@ impl Mode {
     }
 }
 
-/// Valeurs acceptées, pour les messages d'erreur.
-pub fn values() -> &'static str {
-    "yolo, auto"
+/// Règle par outil (`allow` = exécute, `ask` = confirme, `deny` = refuse).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rule {
+    Allow,
+    Ask,
+    Deny,
+}
+
+impl Rule {
+    /// Parse insensible à la casse et aux espaces (`None` si inconnu).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "allow" => Some(Self::Allow),
+            "ask" => Some(Self::Ask),
+            "deny" => Some(Self::Deny),
+            _ => None,
+        }
+    }
+
+    /// Étiquette affichée et persistée (`allow` / `ask` / `deny`).
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Allow => "allow",
+            Self::Ask => "ask",
+            Self::Deny => "deny",
+        }
+    }
+}
+
+/// Décision effective pour un appel d'outil (règle ou défaut du mode).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decision {
+    Allow,
+    Ask,
+    Deny,
+}
+
+/// Règles par outil (motif exact ou préfixe `*`, ordre d'insertion).
+#[derive(Debug, Clone, Default)]
+pub struct Rules {
+    pub(crate) entries: Vec<(String, Rule)>,
+}
+
+impl Rules {
+    /// Pose une règle (remplace celle du même motif, sinon ajoute).
+    pub fn set(&mut self, pattern: &str, rule: Rule) {
+        if let Some(entry) = self.entries.iter_mut().find(|(p, _)| p == pattern) {
+            entry.1 = rule;
+        } else {
+            self.entries.push((pattern.to_string(), rule));
+        }
+    }
+
+    /// Décision pour `name` : règle du plus long motif qui matche (`*`
+    /// final = préfixe, ex æquo = première posée), sinon défaut du mode
+    /// global ([`crate::tools::needs_confirm`] : `ask` ou `allow`).
+    pub fn decide(&self, mode: Mode, name: &str) -> Decision {
+        let mut best: Option<(usize, Rule)> = None;
+        for (pattern, rule) in &self.entries {
+            let hit = match pattern.strip_suffix('*') {
+                Some(prefix) => name.starts_with(prefix),
+                None => name == pattern,
+            };
+            if hit && best.map(|(len, _)| pattern.len() > len).unwrap_or(true) {
+                best = Some((pattern.len(), *rule));
+            }
+        }
+        match best.map(|(_, rule)| rule) {
+            Some(Rule::Allow) => Decision::Allow,
+            Some(Rule::Ask) => Decision::Ask,
+            Some(Rule::Deny) => Decision::Deny,
+            None if crate::tools::needs_confirm(mode, name) => Decision::Ask,
+            None => Decision::Allow,
+        }
+    }
+}
+
+/// État T5 porté par [`App`] : règles fines + chemins résolus (env et
+/// maison lus une fois, à la construction ; les tests écrivent les champs
+/// directement, sans toucher à l'environnement).
+pub struct T5State {
+    pub rules: Rules,
+    pub rules_path: Option<PathBuf>,
+    pub kiro_project: PathBuf,
+    pub kiro_global: Option<PathBuf>,
+    pub checkpoint_dir: Option<PathBuf>,
+}
+
+impl T5State {
+    /// Résout tout (règles + dirs Kiro) depuis env/maison.
+    pub fn load() -> Self {
+        Self {
+            rules: rules_path()
+                .map(|p| load_rules_from(&p))
+                .unwrap_or_default(),
+            rules_path: rules_path(),
+            kiro_project: crate::kiro::project_dir(),
+            kiro_global: crate::kiro::global_dir(),
+            checkpoint_dir: crate::kiro::checkpoint::dir(),
+        }
+    }
 }
 
 /// Chemin du fichier d'état (`None` si `HOME` manquant).
@@ -60,6 +166,13 @@ pub fn path() -> Option<PathBuf> {
     std::env::var("HOME")
         .ok()
         .map(|home| Path::new(&home).join(STATE_PATH))
+}
+
+/// Chemin du fichier des règles (`None` si `HOME` manquant).
+pub fn rules_path() -> Option<PathBuf> {
+    std::env::var("HOME")
+        .ok()
+        .map(|home| Path::new(&home).join(RULES_PATH))
 }
 
 /// Charge le mode persisté (`Auto` si absent, illisible ou inconnu).
@@ -75,6 +188,28 @@ pub fn load_from(path: &Path) -> Mode {
         .unwrap_or_default()
 }
 
+/// Charge les règles depuis `path` (vide si absent ; lignes `<motif>
+/// <règle> ; blancs, `#` commentaires et malformés ignorés).
+pub fn load_rules_from(path: &Path) -> Rules {
+    let mut rules = Rules::default();
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return rules;
+    };
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut words = line.split_whitespace();
+        if let (Some(pattern), Some(word), None) = (words.next(), words.next(), words.next()) {
+            if let Some(rule) = Rule::parse(word) {
+                rules.set(pattern, rule);
+            }
+        }
+    }
+    rules
+}
+
 /// Persiste `mode` dans `path` (crée le dossier parent si besoin).
 pub fn save_to(path: &Path, mode: Mode) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
@@ -83,36 +218,16 @@ pub fn save_to(path: &Path, mode: Mode) -> std::io::Result<()> {
     std::fs::write(path, format!("{}\n", mode.label()))
 }
 
-impl App {
-    /// `/permissions [yolo|auto]` : affiche ou change le mode des futurs
-    /// outils (`yolo` = sans demander, `auto` = demande à chaque
-    /// modification, en anglais) ; le choix est persisté dans le fichier d'état.
-    pub(crate) fn cmd_permissions(&mut self, arg: Option<String>) {
-        match arg {
-            None => self.push_system(permissions_line(self.permissions)),
-            Some(v) => match Mode::parse(&v) {
-                None => self.push_system(format!("invalid mode: {v} — values: {}", values())),
-                Some(mode) => {
-                    self.permissions = mode;
-                    let mut msg = permissions_line(mode);
-                    match &self.permissions_path {
-                        Some(p) => {
-                            if let Err(err) = save_to(p, mode) {
-                                msg.push_str(&format!(" — could not save: {err}"));
-                            }
-                        }
-                        None => msg.push_str(" — not persisted (HOME missing)"),
-                    }
-                    self.push_system(msg);
-                }
-            },
-        }
+/// Persiste `rules` dans `path` (crée le dossier parent si besoin).
+pub fn save_rules_to(path: &Path, rules: &Rules) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
-}
-
-/// Ligne d'affichage du mode : `permissions: auto (asks …)` (en anglais).
-fn permissions_line(mode: Mode) -> String {
-    format!("permissions: {} ({})", mode.label(), mode.describe())
+    let mut out = String::new();
+    for (pattern, rule) in &rules.entries {
+        out.push_str(&format!("{pattern} {}\n", rule.label()));
+    }
+    std::fs::write(path, out)
 }
 
 #[cfg(test)]
@@ -133,6 +248,11 @@ mod tests {
         assert_eq!(Mode::default(), Mode::Auto);
         assert_eq!(Mode::Yolo.label(), "yolo");
         assert_eq!(Mode::Auto.label(), "auto");
+        assert_eq!(Rule::parse("ALLOW"), Some(Rule::Allow));
+        assert_eq!(Rule::parse("ask"), Some(Rule::Ask));
+        assert_eq!(Rule::parse("deny "), Some(Rule::Deny));
+        assert_eq!(Rule::parse("maybe"), None);
+        assert_eq!(Rule::Deny.label(), "deny");
     }
 
     #[test]
@@ -144,6 +264,50 @@ mod tests {
         assert_eq!(load_from(&dir.join("absent")), Mode::Auto);
         std::fs::write(&path, "turbo\n").unwrap();
         assert_eq!(load_from(&path), Mode::Auto);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn regles_match_decide_et_fichier() {
+        let mut rules = Rules::default();
+        assert!(rules.entries.is_empty());
+        // Sans règle : défaut du mode (`needs_confirm` inchangé).
+        assert_eq!(rules.decide(Mode::Auto, "shell_run"), Decision::Ask);
+        assert_eq!(rules.decide(Mode::Yolo, "shell_run"), Decision::Allow);
+        assert_eq!(rules.decide(Mode::Auto, "browser_read"), Decision::Allow);
+        rules.set("shell_run", Rule::Deny);
+        rules.set("mcp_*", Rule::Deny);
+        rules.set("mcp_github_*", Rule::Allow);
+        assert!(!rules.entries.is_empty());
+        // L'explicite bat le mode, le préfixe long bat le court.
+        assert_eq!(rules.decide(Mode::Yolo, "shell_run"), Decision::Deny);
+        assert_eq!(rules.decide(Mode::Auto, "mcp_github_read"), Decision::Allow);
+        assert_eq!(rules.decide(Mode::Auto, "mcp_other_x"), Decision::Deny);
+        assert_eq!(rules.decide(Mode::Auto, "shell_exec"), Decision::Ask);
+        // Reposer remplace (pas de doublon).
+        rules.set("shell_run", Rule::Allow);
+        assert_eq!(rules.decide(Mode::Auto, "shell_run"), Decision::Allow);
+        // Fichier : blancs, commentaires et malformés ignorés.
+        let dir = tmp_dir("rules");
+        let path = dir.join("permissions-rules");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            &path,
+            "# gloss\n\nshell_run deny\nmcp_github_* allow\nbogus\nx y z\n",
+        )
+        .unwrap();
+        let file = load_rules_from(&path);
+        assert_eq!(file.decide(Mode::Yolo, "shell_run"), Decision::Deny);
+        assert_eq!(file.decide(Mode::Auto, "mcp_github_read"), Decision::Allow);
+        assert!(load_rules_from(&dir.join("absent")).entries.is_empty());
+        let back = dir.join("copy");
+        save_rules_to(&back, &file).unwrap();
+        let reloaded = load_rules_from(&back);
+        assert_eq!(reloaded.decide(Mode::Yolo, "shell_run"), Decision::Deny);
+        assert_eq!(
+            reloaded.decide(Mode::Auto, "mcp_github_read"),
+            Decision::Allow
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

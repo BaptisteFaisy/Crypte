@@ -12,7 +12,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use super::exec::{self, Outcome};
 use super::wire::{ToolCall, WireMsg};
-use super::{defs, needs_confirm, GUIDE, MAX_ROUNDS};
+use super::{defs, GUIDE, MAX_ROUNDS};
 use crate::app::{App, Incoming};
 use crate::chat::Role;
 use crate::history::send_window;
@@ -119,6 +119,13 @@ impl App {
         if current != Some(id) {
             return;
         }
+        for delivery in &deliveries {
+            self.hooks_fire(
+                crate::kiro::hooks::Trigger::PostToolUse,
+                &delivery.call.name,
+                id,
+            );
+        }
         self.tool_delivered(deliveries);
     }
 
@@ -152,17 +159,11 @@ impl App {
             self.tool_spawn_llm();
             return;
         };
-        if needs_confirm(self.permissions, &call.name) {
-            self.tool_ask(&call);
-        } else if let Some(run) = self.tool_run.as_mut() {
-            run.queue.pop_front();
-            let chat = run.chat;
-            self.tool_spawn_exec(chat, call);
-        }
+        self.tool_gate(call);
     }
 
     /// Demande confirmation : saute au chat, affiche l'appel, prompt y/n.
-    fn tool_ask(&mut self, call: &ToolCall) {
+    pub(crate) fn tool_ask(&mut self, call: &ToolCall) {
         let chat = self.tool_run.as_ref().map(|run| run.chat).unwrap_or(0);
         self.sessions.select(chat);
         if let Some(run) = self.tool_run.as_mut() {
@@ -219,8 +220,9 @@ impl App {
         let model = self.effective_model_for(chat);
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
+        let mcp = self.mcp.clone();
         self.pool.spawn(async move {
-            let tools = defs();
+            let tools = mcp.tooled_defs().await;
             let reply = provider
                 .complete_with_tools(&wire, &tools, &model, effort.as_deref())
                 .await;
@@ -231,12 +233,18 @@ impl App {
     /// Exécute un appel (ligne `running`, tâche async, livraison `ToolDone`).
     /// Hors pool LLM : un exécutable local (jusqu'à 90 s) ne doit pas
     /// occuper un permis réseau ; le canal borné garde la backpressure.
-    fn tool_spawn_exec(&mut self, chat: usize, call: ToolCall) {
+    pub(crate) fn tool_spawn_exec(&mut self, chat: usize, call: ToolCall) {
+        self.hooks_fire(crate::kiro::hooks::Trigger::PreToolUse, &call.name, chat);
         self.push_tool_line(chat, format!("[tool {}]", call_line(&call)));
         let tx = self.tx.clone();
+        let mcp = self.mcp.clone();
         tokio::spawn(async move {
             let started = std::time::Instant::now();
-            let out = exec::run_tool(chat, &call.name, &call.args).await;
+            let out = if crate::kiro::mcp_client::is_mcp_name(&call.name) {
+                mcp.call(chat, &call.name, &call.args).await
+            } else {
+                exec::run_tool(chat, &call.name, &call.args).await
+            };
             let ms = started.elapsed().as_millis().min(9_999_999) as u64;
             let delivery = Delivery::from_outcome(call, out, ms);
             let _ = tx.send(Incoming::ToolDone(chat, vec![delivery])).await;
@@ -244,7 +252,7 @@ impl App {
     }
 
     /// Livraisons : affiche chaque résultat, rejoue au transcript, avance.
-    fn tool_delivered(&mut self, deliveries: Vec<Delivery>) {
+    pub(crate) fn tool_delivered(&mut self, deliveries: Vec<Delivery>) {
         let mut failed = false;
         let mut lines = Vec::with_capacity(deliveries.len());
         let mut results = Vec::with_capacity(deliveries.len());

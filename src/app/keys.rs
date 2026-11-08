@@ -7,13 +7,17 @@ use crate::chat::SCROLL_PAGE;
 
 impl App {
     /// Traite une touche ; renvoie false pour quitter.
-    /// Confirmation outil ou flow `/connect` : touches dédiées (pas de quit).
+    /// Confirmation outil, flow `/connect` ou attente `/spec run` :
+    /// touches dédiées (pas de quit).
     pub(super) fn on_key(&mut self, key: KeyEvent) -> bool {
         if self.tool_run.as_ref().is_some_and(|run| run.confirming) {
             return self.on_tool_key(key);
         }
         if self.connect_flow.is_some() {
             return self.on_flow_key(key);
+        }
+        if self.spec_waiting.is_some() {
+            return self.on_spec_key(key);
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);

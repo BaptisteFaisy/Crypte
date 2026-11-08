@@ -42,7 +42,8 @@ chats + sous-agents, silencieux si désactivé),
 `known.rs`, coffre chiffre `store.rs` (ChaCha20-Poly1305, `0600`, cle
 maitre `master.key` ou `KH_SETTINGS_KEY`), ecran `ui.rs`, touches
 `keys.rs`),
-`permissions.rs` (mode yolo/auto + persistance fichier + handler),
+`permissions.rs` (mode yolo/auto + règles fines par outil + persistance
++ `T5State`, handler + porte dans `permissions_cmds.rs`),
 `persist.rs` (chats : autosave JSON ~5 s + sortie, restauration silencieuse,
 fichier illisible préservé en `.corrupt`),
 `connect.rs` (handlers + flow `/connect` : statut, store Muse, clé masquée → modèle),
@@ -72,21 +73,35 @@ jamais réécrit s'il est illisible).
 argv purs, `exec.rs` exécution + timeout + journal, `flow.rs` boucle +
 confirmations y/n, `log.rs` JSONL tailles seules, `live.rs` tests live
 ignorés).
-`kiro/` (compat Kiro T1 : `steering.rs`, `spec.rs`, `hooks.rs`, `mcp.rs`,
-`ignore.rs`, `status.rs`, `glob.rs`, `cmds.rs` (`/kiro`) ; steering
-`always` fusionné au pin agents.md, voir `agents::load_merged`).
+`kiro/` (compat Kiro : `steering.rs`, `spec.rs` (+ T2 : noms,
+`check_task`), `hooks.rs`, `mcp.rs` (+ T4 : `cwd`/`headers`),
+`ignore.rs`, `status.rs`, `glob.rs`, `cmds.rs` (`/kiro`),
+`spec_cmds.rs` (`/spec` : handlers `new`/statut/`run` + drain, tests
+dans `spec_cmds/tests.rs`), `spec_prompts.rs` (prompts purs),
+`spec_run.rs` (`SpecGen`/`SpecRun`, purs), `mcp_client.rs`
+(protocole), `mcp_conn.rs` (stdio/HTTP), `mcp_pool.rs` (parc),
+`mcp_cmds.rs` (`/mcp`), `hook_match.rs` (regex `matcher`),
+`hook_run.rs` (moteur : sélection + tirs + file `agent`),
+`hook_exec.rs` (`sh -c` async + `HookOutcome`), `hook_cmds.rs`
+(`/hooks`), `frontmatter.rs` (partagé), `agents_md.rs` (customs),
+`skills.rs` + `skills_cmds.rs` (`/skills`, `/skill`),
+`checkpoint.rs` + `checkpoint_cmds.rs` (`/checkpoints`, `/rewind`),
+`memory.rs` + `memory_cmds.rs` (`/remember`) ; steering `always` +
+mémoire fusionnés au pin agents.md, voir `agents::load_merged_in`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async, outillé si `/tools on`) →
 `drain_replies` (`Incoming::Chat|Agent|Compact|Web|ToolDone`) → almanach
 (`Incoming::usage`, `None` pour `ToolDone`) + ledger + historique + affichage.
 Boucle outils : réponse avec `tool_calls` (budget 8 tours, voir
-`tools::MAX_ROUNDS`) → file séquentielle → confirmation y/n des
-modifications en mode `auto` (lectures libres, `yolo` libre, voir
-`tools::needs_confirm` + `/permissions`) → `exec::run_tool` (binaires
-existants, timeout, sortie tronquée) → `Incoming::ToolDone` → résultats
-rejoués (`tool`, `tool_call_id`) → nouvel appel, jusqu'au texte final
-(seul persisté à l'historique ; guide transitoire `tools::GUIDE`).
+`tools::MAX_ROUNDS`) → file séquentielle → porte `tool_gate`
+(`permissions_cmds.rs` : règle fine `allow`/`ask`/`deny` par outil,
+exact + préfixe `*`, défaut = mode `yolo`/`auto` via
+`tools::needs_confirm` ; `deny` refuse sans y/n et prévient le modèle)
+→ `exec::run_tool` (binaires existants, timeout, sortie tronquée) →
+`Incoming::ToolDone` → résultats rejoués (`tool`, `tool_call_id`) →
+nouvel appel, jusqu'au texte final (seul persisté à l'historique ;
+guide transitoire `tools::GUIDE`).
 Bus : `/tell`/`/msg` déposent (affiché aussitôt, déclenché si libre,
 enfilé sinon, pompé en groupe à la tombée) ; `/agent @<n>` livre ailleurs
 (`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id from Chat k]`,
@@ -99,7 +114,27 @@ d'origine user (commande ou lien) : pas de boucles infinies.
 `[agents.md pinné?]` + `[résumé]` + 4 derniers (voir
 `agents::compacted_history`, pure et testée).
 Kiro : `.kiro/` projet + `~/.kiro/` lus comme Kiro (steering `always`
-→ pin, `/kiro` = statut ; T2+ : exécution specs, hooks, client MCP).
+→ pin, `/kiro` = statut). `/spec new` génère requirements → design →
+tasks (3 appels chaînés via `Incoming::SpecNew`, fichiers écrits au
+fil de l'eau) ; `/spec <nom>` = statut ; `/spec <nom> run` exécute
+les tâches via sous-agents `/agent` (requirements + design en
+contexte), tâche cochée sur disque à chaque tombée, `y/n` entre
+tâches en `auto` (voir `spec_waiting`), direct en `yolo`. T4 :
+client MCP tools (`enabled` connectés au premier besoin,
+`mcp_<serveur>_<outil>`, `autoApprove` sans confirmation, `/mcp` +
+`/mcp refresh`). T3 : moteur hooks (trigger + `matcher` regex +
+`.kiroignore` fichiers ; `command` = `sh -c` async 30 s via
+`Incoming::HookDone`, `agent` = prompt préfixé au prochain envoi ;
+tirs : envoi, outils, fichiers spec, tâches, agents, boot ;
+garde anti-récursion profondeur 1, `/hooks` = statut + récents).
+T5 : règles fines `/permissions <outil> <allow|ask|deny>` (`list`,
+`reset`, persistées à côté du mode), agents customs
+`.kiro/agents/*.md` (listés par `/agents`, `/agent <nom> <texte>`
+avec prompt custom), skills `.kiro/skills/*/SKILL.md` (`/skills`,
+`/skill` préfixé à la saisie, transitoire), checkpoints
+(`write_tracked`, anneau 20, `/checkpoints`, `/rewind`),
+mémoire `.kiro/MEMORY.md` + globale (pin après steering,
+`/remember`). Kiro : complet (T1-T5).
 `/web` cherche (Tavily → Brave → DuckDuckGo → Wikipedia FR+EN) +
 fetch top-3 parallèle, synthèse LLM avec sources `[n]`
 (`Incoming::Web`, tag `[web:backend]`, brut si déconnecté,
@@ -115,8 +150,10 @@ historique inchangé).
   implémentation par logique (`compacted_history`, `without_pinned`,
   `usage_line` vivent dans `agents.rs`).
 - `.kiro/` : mêmes fichiers que Kiro (workspace + global) ; tests via
-  chemins injectés + `KH_KIRO_PROJECT` / `KH_KIRO_GLOBAL`, jamais le
-  `~/.kiro` réel (déterminisme).
+  chemins injectés UNIQUEMENT (jamais `set_var` : un seul site
+  historique, `spec_bout_en_bout`, fixture sans steering ni MCP) ;
+  `KH_KIRO_*` = overrides manuels du binaire ; en test, global=None
+  par défaut (jamais `~/.kiro` réel).
 - Couleurs : uniquement via `theme.rs` (jamais de `Color::Rgb` ailleurs,
   sauf les fonds RGBA de `gfx.rs` et `bestiary.rs`, documentés = `theme::VOID`).
 - Pixel art : grilles `assets/pixel/*.txt` 32×32, lettres de palette
