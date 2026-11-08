@@ -103,10 +103,11 @@ avec TTL (heures, défaut 24, `0` = permanent) et `revoque`.
 
 ```sh
 ./target/debug/kiro-horror-tui --mbox ordre list                    # → aucun ordre
-./target/debug/kiro-horror-tui --mbox ordre new --to @moi --ttl 24 -- Relire docs/mbox.md
-./target/debug/kiro-horror-tui --mbox ordre ack O-20261108-001 applique --from moi
-./target/debug/kiro-horror-tui --mbox ordre pull moi               # mes ordres actifs
-./target/debug/kiro-horror-tui --mbox ordre revoque O-20261108-001 "doublon"
+./target/debug/kiro-horror-tui --mbox jeton new doc-agent           # → secret=<hex, 1x>
+./target/debug/kiro-horror-tui --mbox ordre new --to @moi --ttl 24 --token "doc-agent:<secret>" -- Relire docs/mbox.md
+./target/debug/kiro-horror-tui --mbox ordre pull @moi               # mes ordres actifs
+./target/debug/kiro-horror-tui --mbox ordre ack O-20261108-001 applique --from moi --token "doc-agent:<secret>"
+./target/debug/kiro-horror-tui --mbox ordre revoque O-20261108-001 "doublon" --token "doc-agent:<secret>"
 ```
 
 `new`, `revoque` et `ack` sont des écritures sensibles : elles exigent
@@ -141,8 +142,10 @@ agent doc-test-9cefc5d6 send_ok=1
 integrite ordres: 0 ok 0 ko 0 sans hash
 ```
 
-`metriques --agent ID` restreint à un agent. La ligne `integrite`
-vérifie les `hash=` scellés des ordres (voir § 2.4).
+`metriques --agent ID` restreint la section `agent ...` à un
+agent ; les compteurs globaux et la ligne `integrite` s'affichent
+toujours. La ligne `integrite` vérifie les `hash=` scellés des
+ordres (voir § 2.4).
 
 ### 1.9 Bac à sable : `--fantome` et `fantome`
 
@@ -193,7 +196,7 @@ boite/bus/ordres/acks/vue_ordres/hb/etat/tailles`), horodatage
 | `jeton.rs` | CLI `jeton` (extension sans équivalent shell) |
 | `ordres.rs` | ordres : parse 8 champs, TTL, révocation, `hash=` |
 | `ack.rs` | ACK `lu\|applique\|refuse` + motif de refus |
-| `journal.rs` | journaux : lister, `lister` (pont `tail --all`) |
+| `journal.rs` | journaux : `lister` (+ pont `tail --all`) |
 | `throttle.rs` | dedup inbox 1800 s, quota 6/h, dedup bus 300 s |
 | `digest.rs` | `digest_flush` (file P2) |
 | `sonde.rs` | sondes `hb` (état, fraîcheur, `hb list`) |
@@ -212,7 +215,7 @@ branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
 
 - Stockage : fichier `mbox-jetons` **0600**, dossier **0700**
   (`autorite.rs:212-219`), écriture atomique tmp+rename.
-- Secret 32 octets, montré une fois (`jeton.rs:52-54`), jamais affiché
+- Secret 32 octets, montré une fois (`jeton.rs:51`), jamais affiché
   ni journalisé ailleurs ; comparaison à temps constant, fail-closed.
 - Porte : `outils::porte_jeton` (`--token "nom:secret"`, découpe au
   dernier `:`) + garde anti-secret sur le texte, exigée pour `send
