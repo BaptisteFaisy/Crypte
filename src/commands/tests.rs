@@ -65,6 +65,16 @@ fn parse_tools_marche_arret_optionnels() {
 }
 
 #[test]
+fn parse_critic_marche_arret_optionnels() {
+    assert_eq!(parse("/critic"), Some(Command::Critic(None)));
+    assert_eq!(
+        parse("/critic off"),
+        Some(Command::Critic(Some(String::from("off"))))
+    );
+    assert!(crate::texts::help_text().contains("/critic [on|off]"));
+}
+
+#[test]
 fn parse_kiro_sans_argument() {
     assert_eq!(parse("/kiro"), Some(Command::Kiro));
     assert!(crate::texts::help_text().contains("/kiro"));

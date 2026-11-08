@@ -1,6 +1,8 @@
 //! Commandes slash (`/usage` `/new` `/bestiary` `/thinking` `/model` `/agent`
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
-//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/hooks` `/skills` `/skill` `/checkpoints` `/rewind` `/remember` `/settings` `/help`).
+//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/hooks`
+//! `/skills` `/skill` `/checkpoints` `/rewind` `/remember` `/critic`
+//! `/settings` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -56,6 +58,7 @@ pub enum Command {
     Web(String),
     Tools(Option<String>),
     Kiro,
+    Critic(Option<String>),
     Vps {
         args: Vec<String>,
     },
@@ -108,8 +111,8 @@ pub const REMEMBER_USAGE: &str = "usage: /remember <text> — memorize into .kir
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
 /// Matche le premier mot ; cibles + texte consomment le reste,
-/// `/thinking` `/model` `/connect` `/tools` `/mcp` ont un arg optionnel,
-/// `/permissions` consomme tous les mots suivants.
+/// `/thinking` `/model` `/connect` `/tools` `/mcp` `/critic` ont un arg
+/// optionnel, `/permissions` consomme tous les mots suivants.
 pub fn parse(input: &str) -> Option<Command> {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
@@ -137,6 +140,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/kiro" => Some(Command::Kiro),
         "/mcp" => Some(Command::Mcp(opt_arg(&mut parts))),
         "/hooks" => Some(Command::Hooks),
+        "/critic" => Some(Command::Critic(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/skills" => Some(Command::Skills),
         "/checkpoints" => Some(Command::Checkpoints),

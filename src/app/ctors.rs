@@ -18,6 +18,7 @@ use crate::events::EventLog;
 use crate::fx::Fx;
 use crate::gfx::ImageBank;
 use crate::hub::Hub;
+use crate::phantom::Phantom;
 use crate::pool::{SpawnPool, INCOMING_CAP};
 use crate::provider::{Provider, ProviderConfig};
 use crate::sessions::{CloseOutcome, Sessions};
@@ -113,6 +114,7 @@ impl App {
     ) -> Self {
         let (tx, rx) = mpsc::channel(INCOMING_CAP);
         let app = Self {
+            phantom: Phantom::new(rand::random()),
             fx: Fx::new(),
             bank: ImageBank::headless(),
             apparition: Apparition::new(),

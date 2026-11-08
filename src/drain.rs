@@ -33,7 +33,8 @@ impl Incoming {
             Incoming::Chat(_, r)
             | Incoming::Compact(_, r)
             | Incoming::Agent(_, _, _, r)
-            | Incoming::SpecNew(_, _, r) => {
+            | Incoming::SpecNew(_, _, r)
+            | Incoming::Critique(r) => {
                 let done = r.as_ref().ok()?;
                 (done.prompt_tokens, done.completion_tokens)
             }

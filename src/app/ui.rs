@@ -57,6 +57,7 @@ impl App {
         self.tab_hits.clear();
         self.shop_rows.clear();
         self.bank.begin_frame();
+        self.phantom.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
         if area.width < MIN_W || area.height < MIN_H {
             let msg = "Terminal too small: 70x17 required (q to quit)";
@@ -85,7 +86,8 @@ impl App {
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
     }
 
-    /// Corps chat : cercueils | discussion | hub + apparition.
+    /// Corps chat : cercueils | discussion | hub + apparition ; Kiro en
+    /// balade par-dessus cercueils et discussion (jamais le panneau droit).
     /// Sous 80 colonnes : cercueils réduits | discussion (droit masqué).
     /// Sidebar redimensionnable : drag de sa poignée (bord droit).
     fn draw_chat(&mut self, frame: &mut Frame, area: Rect) {
@@ -126,6 +128,7 @@ impl App {
             PUMPKIN
         };
         draw_card(frame, omen, creature, accent, &mut self.bank);
+        self.phantom.draw(frame, side.union(chat), &mut self.bank);
     }
 
     /// Corps compact (< 80 col.) : sidebar 14 + discussion au reste.
@@ -149,6 +152,7 @@ impl App {
             question_pending: sess.pending.is_some(),
         };
         sess.chat.draw(frame, chat, view);
+        self.phantom.draw(frame, area, &mut self.bank);
     }
 
     /// Poignée sidebar « chaude » : survolée ou en cours de drag.

@@ -3,7 +3,9 @@
 LLM chat in a haunted crypt, built for **Ghostty**: a bestiary of
 33 pixel-art creatures (real images via the Kitty graphics
 protocol), the spirit hub (every agent as a ghost in an isometric
-crypt, top of the right panel), apparitions that react to the chat,
+crypt, top of the right panel), Kiro the mascot who roams the crypt as
+a big white ghost and snarks at your prompts (see
+[Kiro the critic](#kiro-the-critic)), apparitions that react to the chat,
 horror effects (warm vignette, fog, lightning), a header **fear
 gauge** (`fear`, % of the model's context window), and a **global**
 token counter (status bar: current chat + session total, all
@@ -176,7 +178,9 @@ exempt, stays the remedy).
 | Click `[×]` (sidebar) | close that chat (refused if a reply is in flight) |
 | Drag sidebar right edge | resize the coffins column (min 10, chat kept ≥ 30) |
 | Ctrl+W | close the current chat |
-| F5 | scare: jump scare 2s, lightning flash, hub panic |
+| F5 | scare: jump scare 2s, lightning flash, hub panic, Kiro flees |
+| Click the roaming ghost | hit him (knockback, stars, BONK; 3 quick hits = KO) |
+| Click his speech bubble | dismiss it |
 | F6 | shop: consumed tokens become coins (↑↓ + Enter to buy) |
 | Click tab / shop item | switch screen / buy in the shop |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
@@ -212,6 +216,30 @@ What the crypt uses from Ghostty (and degrades cleanly elsewhere):
   pixel is read at its own place).
 
 No sound: no bell, no notification.
+
+## Kiro the critic
+
+On the chat screen Kiro, the crypt's mascot, roams as a big white ghost
+(the hub's ghosts, drawn 32×32, a real image in Ghostty) and wanders
+over the coffins and the conversation, never under the input nor over
+the right column. Every prompt you send is also sent, in parallel, to
+the **same model as the chat** with a short instruction: Kiro answers
+with one sarcastic, negative remark about how the prompt is written
+(English, ≤ 25 words, the prompt is truncated to 1,500 chars) and says
+it in a bubble, mouth flapping, then stares at you, unimpressed. While
+the critique is in flight he squints ("hm..."). One critique at a
+time; its tokens count in the almanac (`/usage`), never in the chat
+history.
+
+Click him to hit him: he is knocked away from the blow, shakes, stars
+spin around his head, a `BONK!` pops on the impact side, lightning
+flashes and he answers back. Three quick hits knock him out: he falls
+upside down to the floor, then gets up grumbling. A click on his bubble
+dismisses it. F5 scares him too (hands up, he flees).
+
+`/critic` shows the status (model, critiques, tokens); `/critic off`
+makes him rest (hidden, no more calls), `/critic on` brings him back
+(default on, not remembered across restarts).
 
 ## Spirit hub
 
@@ -489,7 +517,11 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 ## Modules (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (state + 100ms loop),
-`mouse.rs` ([+] click = new chat, [×] click = close chat, edge drag = sidebar width),
+`mouse.rs` ([+] click = new chat, [×] click = close chat, edge drag =
+sidebar width, click the roaming Kiro = hit him), `phantom.rs` +
+`phantom/` (Kiro the critic: `motion.rs` wandering/knockback/KO,
+`draw.rs` sprite + bubble + stars, `lines.rs` critique instruction +
+retorts), `app/critic.rs` (critique calls, `/critic`, clicks),
 `drain.rs` (routing async replies to chats),
 `chat.rs` (history + input + maskable custom prompt),
 `fx.rs` (horror overlay), `tokens.rs` (tiktoken counter),

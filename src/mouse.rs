@@ -1,8 +1,9 @@
-//! Souris : molette = défilement de l'historique, clic gauche = bouton [+]
-//! (nouveau chat), bouton [×] (fermer le chat), lignes de la sidebar
-//! (choisir le chat), onglets de l'en-tête (changer d'écran), articles
-//! de la boutique (acheter), drag du bord droit de la sidebar
-//! (redimensionner la colonne).
+//! Souris : molette = défilement de l'historique, clic gauche = Kiro en
+//! balade (le frapper, ou faire taire sa bulle), bouton [+] (nouveau
+//! chat), bouton [×] (fermer le chat), lignes de la sidebar (choisir le
+//! chat), onglets de l'en-tête (changer d'écran), articles de la
+//! boutique (acheter), drag du bord droit de la sidebar (redimensionner
+//! la colonne).
 //!
 //! La capture souris est activée par `main` (désactivée en sortie) ;
 //! les rectangles sont mémorisés à chaque frame (`App::plus_btn`,
@@ -19,8 +20,9 @@ impl App {
     /// Molette : défiler le chat ; pression gauche : poignée sidebar
     /// (drag) ou clic ; drag : redimensionner la sidebar ; release :
     /// fin du drag ; mouvement : éclairer la poignée survolée.
-    /// Clic : [+] = nouveau chat, [×] = fermer, ligne = choisir,
-    /// onglet = écran, article = acheter (le reste est ignoré).
+    /// Clic : Kiro = le frapper (bulle = la taire), [+] = nouveau chat,
+    /// [×] = fermer, ligne = choisir, onglet = écran, article = acheter
+    /// (le reste est ignoré).
     pub(crate) fn on_mouse(&mut self, mev: MouseEvent) {
         match mev.kind {
             MouseEventKind::ScrollUp => return self.wheel(mev, -SCROLL_STEP),
@@ -33,9 +35,14 @@ impl App {
         }
     }
 
-    /// Pression gauche : poignée sidebar = début de drag, sinon clic
+    /// Pression gauche : Kiro en balade d'abord (dessiné par-dessus, même
+    /// sur la poignée), puis poignée sidebar = début de drag, sinon clic
     /// (une pression ailleurs annule aussi un drag resté coincé).
     fn press(&mut self, column: u16, row: u16) {
+        if self.click_phantom(Position::new(column, row)) {
+            self.resizing_side = None;
+            return;
+        }
         if self.side_grab(column, row) {
             return;
         }

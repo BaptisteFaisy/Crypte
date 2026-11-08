@@ -32,6 +32,7 @@ mod mouse;
 mod permissions;
 mod permissions_cmds;
 mod persist;
+mod phantom;
 mod pool;
 mod provider;
 mod question;

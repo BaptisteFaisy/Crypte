@@ -46,6 +46,7 @@ impl App {
             Some(Command::Web(query)) => self.cmd_web(query),
             Some(Command::Tools(arg)) => self.cmd_tools(arg),
             Some(Command::Kiro) => self.cmd_kiro(),
+            Some(Command::Critic(arg)) => self.cmd_critic(arg),
             Some(Command::Vps { args }) => self.cmd_vps(args),
             Some(Command::SpecNew { name, idea }) => self.cmd_spec_new(name, idea),
             Some(Command::SpecShow { name }) => self.cmd_spec_show(name),
