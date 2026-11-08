@@ -457,10 +457,12 @@ global `~/.kiro/`), so a project moves back and forth between both:
   agents, boot (single-fire, no re-trigger); `/hooks` shows
   loaded hooks by trigger + recent firings.
 - **MCP** (`.kiro/settings/mcp.json`, stdio + remote) : live client
-  (tools only, no resources/prompts) — servers connect on first
-  tool-using send, tools show as `mcp_<server>_<tool>`, `autoApprove`
-  skips confirmation ; `/mcp` shows servers + tools, `/mcp refresh`
-  reconnects.
+  (tools, resources, prompts) — servers connect lazily, tools show
+  as `mcp_<server>_<tool>`, `autoApprove` skips confirmation ;
+  `/mcp` shows servers + tools, `/mcp refresh` reconnects,
+  `/mcp resources|prompts` lists, `/mcp read <server> <uri>`
+  displays content, `/mcp prompt <server> <name> [k=v]` arms the
+  rendered messages in the draft (transient).
 - **Custom agents** (`.kiro/agents/`, official Kiro format: `.json`
   or `.md`, same fields `name`/`description`/`prompt`/`model`/
   `tools`/`excludedTools`/`mcpServers`, md body = system prompt,

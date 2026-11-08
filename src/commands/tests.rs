@@ -95,13 +95,17 @@ fn parse_bestiary_sans_argument() {
 }
 
 #[test]
-fn parse_mcp_refresh_optionnel() {
-    assert_eq!(parse("/mcp"), Some(Command::Mcp(None)));
+fn parse_mcp_args_bruts() {
+    assert_eq!(parse("/mcp"), Some(Command::Mcp(vec![])));
     assert_eq!(
-        parse("/mcp refresh"),
-        Some(Command::Mcp(Some(String::from("refresh"))))
+        parse("/mcp read gh file://a"),
+        Some(Command::Mcp(vec![
+            String::from("read"),
+            String::from("gh"),
+            String::from("file://a"),
+        ]))
     );
-    assert!(crate::texts::help_text().contains("/mcp [refresh]"));
+    assert!(crate::texts::help_text().contains("/mcp [refresh|resources|prompts]"));
 }
 
 #[test]

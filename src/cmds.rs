@@ -57,7 +57,7 @@ impl App {
             Some(Command::SpecNew { name, idea }) => self.cmd_spec_new(name, idea),
             Some(Command::SpecShow { name }) => self.cmd_spec_show(name),
             Some(Command::SpecRun { name }) => self.cmd_spec_run(name),
-            Some(Command::Mcp(arg)) => self.cmd_mcp(arg),
+            Some(Command::Mcp(args)) => self.cmd_mcp(args),
             Some(Command::Hooks) => self.cmd_hooks(),
             Some(Command::Cloud(args)) => self.cmd_cloud(args),
             Some(Command::Workflow(args)) => self.cmd_workflow(args),

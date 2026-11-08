@@ -66,7 +66,7 @@ pub(crate) enum Incoming {
     Critique(Result<Completion>),
     Vps(crate::vps::VpsOutcome),
     SpecNew(usize, SpecGen, Result<Completion>),
-    McpRefresh(String),
+    McpText(String),
     HookDone(HookOutcome),
     Cloud(usize, usize, crate::kiro::cloud::CloudMsg),
 }
@@ -255,7 +255,7 @@ impl App {
                 Incoming::Critique(reply) => self.drain_critique(reply),
                 Incoming::Vps(outcome) => self.drain_vps(outcome),
                 Incoming::SpecNew(chat, gen, reply) => self.drain_spec_new(chat, gen, reply),
-                Incoming::McpRefresh(text) => self.drain_mcp_refresh(text),
+                Incoming::McpText(text) => self.drain_mcp_text(text),
                 Incoming::HookDone(out) => self.drain_hook_done(out),
                 Incoming::Cloud(chat, job, msg) => self.drain_cloud(chat, job, msg),
             }
