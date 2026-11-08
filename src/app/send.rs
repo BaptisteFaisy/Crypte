@@ -53,7 +53,7 @@ impl App {
             .unwrap_or(text);
         let judged = text.clone();
         let auto = self.auto_steer_blocks(&text);
-        let powers = self.power_blocks(&text);
+        let (powers, matched) = self.power_blocks(&text);
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
@@ -91,6 +91,7 @@ impl App {
             names.dedup();
             self.push_system(format!("powers: {}", names.join(", ")));
         }
+        self.activate_power_mcp(&matched);
         if self.tools_on {
             let wire = crate::tools::flow::tooled_wire(history);
             let mcp = self.mcp.clone();
@@ -114,10 +115,22 @@ impl App {
         self.critique(id, &judged);
     }
 
-    /// Skills des powers matchant la demande (`power/skill`, corps).
-    fn power_blocks(&self, prompt: &str) -> Vec<(String, String, String)> {
+    /// Skills des powers matchant la demande (`power/skill`, corps) +
+    /// powers matchés (pour l'activation MCP, même sans skills).
+    fn power_blocks(
+        &self,
+        prompt: &str,
+    ) -> (
+        Vec<(String, String, String)>,
+        Vec<crate::kiro::powers::Power>,
+    ) {
         let powers = crate::kiro::powers::load_all(self.t5.kiro_global.as_deref());
-        crate::kiro::powers::activation_blocks(&powers, prompt)
+        let matched: Vec<crate::kiro::powers::Power> = powers
+            .into_iter()
+            .filter(|power| crate::kiro::powers::matches(power, prompt))
+            .collect();
+        let blocks = crate::kiro::powers::activation_blocks(&matched, prompt);
+        (blocks, matched)
     }
 
     /// Blocs steering `auto` matchant la demande (rechargés à chaque

@@ -1,13 +1,15 @@
 //! Powers Kiro (plugins `~/.kiro/powers/installed/*/`, global seul).
 //!
 //! Format Agent Plugins 1.0.0 (agent-plugins.org) : `plugin.json`
-//! (manifeste) + `skills/` ; repli legacy `POWER.md`. Phase 1 :
-//! lecture + activation des skills par mots-clés (le MCP embarqué
-//! attend la phase 2 ; les powers cloud ne sont pas accessibles
-//! localement, pas d'API publique).
+//! (manifeste) + `skills/` + `mcp.json` optionnel ; repli legacy
+//! `POWER.md`. À l'activation (mots-clés), les skills sont injectés et
+//! les serveurs MCP rejoignent le parc pour la session (ajout
+//! idempotent, connexion paresseuse). Les powers cloud ne sont pas
+//! accessibles localement (pas d'API publique).
 
 use std::path::Path;
 
+use crate::kiro::mcp::Server;
 use crate::kiro::skills::Skill;
 
 /// Manifeste `plugin.json` (champs inconnus ignorés, spec ouverte).
@@ -40,7 +42,9 @@ pub struct Power {
     pub keywords: Vec<String>,
     /// Skills embarqués (`skills/*/SKILL.md`, ou corps legacy).
     pub skills: Vec<Skill>,
-    /// `mcp.json` présent (phase 2, affiché seulement).
+    /// Serveurs `mcp.json` (`enabled` seuls, triés, `cwd` absolutisé).
+    pub mcp_servers: Vec<(String, Server)>,
+    /// `mcp.json` présent (même vide ou illisible, diagnostic).
     pub has_mcp: bool,
     /// Format legacy `POWER.md` (sans `plugin.json`).
     pub legacy: bool,
@@ -88,11 +92,37 @@ fn load_one(dir: &Path) -> Option<Power> {
                 .map(|k| k.trim().to_string())
                 .collect(),
             skills: crate::kiro::skills::load_dir(&dir.join("skills")),
+            mcp_servers: load_power_mcp(dir),
             has_mcp: dir.join("mcp.json").is_file(),
             legacy: false,
         }),
         None => load_legacy(dir, &fallback),
     }
+}
+
+/// Serveurs `mcp.json` du power (`enabled` seuls, triés, `cwd`
+/// relatifs absolutisés depuis le dossier du power ; absent ou
+/// invalide = vide, jamais d'erreur).
+fn load_power_mcp(dir: &Path) -> Vec<(String, Server)> {
+    let Some(config) = crate::kiro::mcp::load(&dir.join("mcp.json")) else {
+        return Vec::new();
+    };
+    crate::kiro::mcp::enabled(&config)
+        .into_iter()
+        .map(|(name, server)| (name.clone(), absolutize(server, dir)))
+        .collect()
+}
+
+/// Serveur au `cwd` relatif résolu depuis `dir` (absolu ou vide : tel quel).
+fn absolutize(server: &Server, dir: &Path) -> Server {
+    let mut server = server.clone();
+    if let Some(cwd) = server.cwd.as_deref().filter(|cwd| !cwd.trim().is_empty()) {
+        let path = Path::new(cwd);
+        if path.is_relative() {
+            server.cwd = Some(dir.join(path).to_string_lossy().into_owned());
+        }
+    }
+    server
 }
 
 /// Repli legacy : frontmatter `POWER.md` + corps = skill unique.
@@ -115,6 +145,7 @@ fn load_legacy(dir: &Path, fallback: &str) -> Option<Power> {
         description,
         keywords,
         skills: vec![skill],
+        mcp_servers: Vec::new(),
         has_mcp: false,
         legacy: true,
     })
@@ -181,7 +212,13 @@ mod tests {
                 "keywords": ["postgres", "pull request"], "author": {"name": "x"}}"#,
         )
         .unwrap();
-        std::fs::write(modern.join("mcp.json"), r#"{"mcpServers": {}}"#).unwrap();
+        std::fs::write(
+            modern.join("mcp.json"),
+            r#"{"mcpServers": {"pg": {"command": "mcp-pg", "cwd": "bin"},
+                "off": {"command": "x", "disabled": true},
+                "lointain": {"url": "http://localhost:9/mcp"}}}"#,
+        )
+        .unwrap();
         std::fs::write(
             modern.join("skills/indexes/SKILL.md"),
             "---\nname: indexes\ndescription: Indexe malin.\n---\nCorps index.",
@@ -211,6 +248,19 @@ mod tests {
         assert_eq!(powers[0].version, "1.0.0");
         assert!(powers[0].has_mcp);
         assert!(!powers[0].legacy);
+        let mcp: Vec<&str> = powers[0]
+            .mcp_servers
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(mcp, vec!["lointain", "pg"]);
+        let pg = &powers[0].mcp_servers[1].1;
+        let expect = dir
+            .join("powers/installed/db/bin")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(pg.cwd.as_deref(), Some(expect.as_str()));
+        assert!(powers[1].mcp_servers.is_empty());
         assert_eq!(powers[1].skills.len(), 1);
         assert!(powers[1].legacy);
         assert!(load_all(None).is_empty());

@@ -482,11 +482,13 @@ global `~/.kiro/`), so a project moves back and forth between both:
   (transient, announced). Skills cover reusable prompts (no separate
   system).
 - **Powers** (`~/.kiro/powers/installed/*/`, Agent Plugins format,
-  global only) : `/powers` lists them (keywords, skills, MCP and
-  legacy markers) ; at send time, powers whose keywords match the
-  request inject their skills (announced, ephemeral). Bundled MCP
-  activates in phase 2 ; cloud-synced powers are out of reach
-  (no public API).
+  global only) : `/powers` lists them (keywords, skills, bundled
+  servers, legacy markers) ; at send time, powers whose keywords
+  match the request inject their skills (announced, ephemeral) and
+  their `mcp.json` servers join the pool for the session (lazy
+  connect, config wins on name clashes, survives `/mcp refresh`,
+  relative `cwd` resolved from the power dir). Cloud-synced powers
+  are out of reach (no public API).
 - **Memory** (`.kiro/MEMORY.md` project + `~/.kiro/MEMORY.md`
   global) : pinned after steering at first send
   (agents.md → steering → memory) ; `/remember <text>` appends to

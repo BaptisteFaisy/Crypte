@@ -5,6 +5,7 @@
 //! arrêt propre à la sortie. Un serveur en échec est noté et réessayé
 //! seulement via `/mcp refresh` (jamais de respawn à chaque envoi).
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
@@ -125,7 +126,9 @@ impl McpState {
     async fn refresh_with(&self, fresh: Config) -> String {
         let mut pool = self.inner.lock().await;
         pool.shutdown().await;
+        let kept = pool.take_power_state();
         *pool = McpPool::from_config(fresh);
+        pool.restore_power_state(kept);
         pool.ensure_connected().await;
         pool.status()
     }
@@ -193,11 +196,15 @@ struct Tracked {
     client: Option<Client>,
     tools: Vec<McpTool>,
     error: Option<String>,
+    /// Power d'origine (`None` = config `.kiro/settings/mcp.json`).
+    origin: Option<String>,
 }
 
 /// Parc : serveurs `enabled` + cache des définitions exposées.
 struct McpPool {
     servers: Vec<Tracked>,
+    /// Powers dont le MCP est activé (survit au `/mcp refresh`).
+    powers: HashSet<String>,
 }
 
 impl McpPool {
@@ -211,9 +218,13 @@ impl McpPool {
                 client: None,
                 tools: Vec::new(),
                 error: None,
+                origin: None,
             })
             .collect();
-        Self { servers }
+        Self {
+            servers,
+            powers: HashSet::new(),
+        }
     }
 
     /// Connecte les serveurs manquants (échecs notés, voir `refresh`).
@@ -307,7 +318,16 @@ impl McpPool {
             pt = plural(total),
         );
         for tracked in &self.servers {
-            out.push_str(&format!("\n  {} ({})", tracked.name, server_state(tracked)));
+            let origin = tracked
+                .origin
+                .as_deref()
+                .map(|power| format!("power {power}, "))
+                .unwrap_or_default();
+            out.push_str(&format!(
+                "\n  {} ({origin}{})",
+                tracked.name,
+                server_state(tracked)
+            ));
         }
         out
     }
@@ -411,6 +431,10 @@ fn server_state(tracked: &Tracked) -> String {
         None => format!("{transport}, not connected"),
     }
 }
+
+mod power;
+
+pub(crate) use power::PowerAdd;
 
 #[cfg(test)]
 mod tests;
