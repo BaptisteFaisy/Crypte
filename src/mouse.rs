@@ -26,8 +26,8 @@ impl App {
     /// (le reste est ignoré).
     pub(crate) fn on_mouse(&mut self, mev: MouseEvent) {
         match mev.kind {
-            MouseEventKind::ScrollUp => return self.wheel(mev, -SCROLL_STEP),
-            MouseEventKind::ScrollDown => return self.wheel(mev, SCROLL_STEP),
+            MouseEventKind::ScrollUp => self.wheel(mev, -SCROLL_STEP),
+            MouseEventKind::ScrollDown => self.wheel(mev, SCROLL_STEP),
             MouseEventKind::Down(MouseButton::Left) => self.press(mev.column, mev.row),
             MouseEventKind::Drag(MouseButton::Left) => {
                 self.drag_to(mev.column);

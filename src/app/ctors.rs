@@ -115,7 +115,7 @@ impl App {
         lazy: bool,
     ) -> Self {
         let (tx, rx) = mpsc::channel(INCOMING_CAP);
-        let app = Self {
+        Self {
             phantom: Phantom::new(rand::random()),
             fx: Fx::new(),
             bank: ImageBank::headless(),
@@ -167,8 +167,7 @@ impl App {
             tx,
             rx,
             pool: SpawnPool::new(),
-        };
-        app
+        }
     }
 
     /// Fin de construction : pin + annonce + hint + cache contexte.

@@ -81,10 +81,8 @@ fn apply_frontmatter(file: &mut Steering, front: &str) {
             let value = unquote(value.trim());
             match key.as_str() {
                 "inclusion" => file.inclusion = Inclusion::parse(&value),
-                _ if is_pattern_key(&key) => {
-                    if !value.is_empty() {
-                        file.patterns.push(value);
-                    }
+                _ if is_pattern_key(&key) && !value.is_empty() => {
+                    file.patterns.push(value);
                 }
                 _ => {}
             }

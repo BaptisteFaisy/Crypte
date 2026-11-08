@@ -57,13 +57,12 @@ pub(crate) fn osc52_seq(text: &str) -> String {
 /// Copie `text` vers le terminal (vide = rien, échec silencieux).
 /// En test : no-op (ne vole pas le presse-papiers du dev).
 pub(crate) fn osc52_copy(text: &str) {
-    if text.is_empty() {
-        return;
-    }
-    #[cfg(not(test))]
-    {
-        use std::io::Write as _;
-        let _ = write!(std::io::stdout().lock(), "{}", osc52_seq(text));
+    if !text.is_empty() {
+        #[cfg(not(test))]
+        {
+            use std::io::Write as _;
+            let _ = write!(std::io::stdout().lock(), "{}", osc52_seq(text));
+        }
     }
 }
 
@@ -273,10 +272,12 @@ impl App {
         }
         let chat = &mut self.sessions.current_mut().chat;
         let inner = history_inner(chat.area.get());
-        chat.select = inner.contains(Position::new(col, row)).then(|| Selection {
-            anchor: (col, row),
-            head: (col, row),
-        });
+        chat.select = inner
+            .contains(Position::new(col, row))
+            .then_some(Selection {
+                anchor: (col, row),
+                head: (col, row),
+            });
     }
 
     /// Drag : étend la sélection en cours (sans sélection : ignoré).
@@ -431,7 +432,7 @@ mod tests {
         MouseEvent {
             kind,
             column: col,
-            row: row,
+            row,
             modifiers: crossterm::event::KeyModifiers::empty(),
         }
     }
