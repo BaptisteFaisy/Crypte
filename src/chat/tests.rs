@@ -190,6 +190,7 @@ fn curseur_saisie_fleches_insertion_et_rendu_milieu() {
         tick: 0,
         sending: false,
         question_pending: false,
+        agents: crate::agent_view::AgentCtx::empty(),
     };
     let mut term = Terminal::new(TestBackend::new(40, 14)).unwrap();
     term.draw(|f| chat.draw(f, f.area(), view)).unwrap();
