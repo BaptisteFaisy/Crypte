@@ -6,6 +6,7 @@
 //! demander ; les modifications demandent confirmation en mode `auto`
 //! (voir `/permissions`), jamais en `yolo`. Interrupteur : `/tools on|off`.
 
+pub mod agent;
 pub mod browser;
 pub mod desktop;
 pub mod exec;
