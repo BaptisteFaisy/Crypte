@@ -15,8 +15,10 @@ dans une branche sont normaux, jamais de reecriture. Seuls les vrais conflits
 
 Declencheurs (file-mergify.yml) : cron 10 min (filet), push sur main, fin de
 check, commentaire Mergify, manuel. Concurrency unique sans annulation.
-Secret `AUTOMERGE_PAT` : signe les commandes Mergify (un ordre poste par un
-bot est ignore). Sans lui : diagnostic + marche a suivre seulement.
+Secret `AUTOMERGE_PAT` (fin : contenus + demandes + tickets en ecriture) :
+signe les seules commandes Mergify (un ordre poste par un bot est ignore).
+Guidance, labels et lectures passent par le jeton de l'installation.
+Sans PAT : diagnostic + marche a suivre seulement.
 Stdlib uniquement.
 """
 
@@ -82,7 +84,7 @@ def set_label(pr, repo, token, name, add):
 def post_comment(repo, token, num, body):
     if DRY:
         print('[dry] #%d commentaire : %s' % (num, body.splitlines()[0]))
-        return None
+        return 0
     code, resp = api('POST', '/repos/%s/issues/%d/comments' % (repo, num),
                      token=token, body={'body': body})
     if code != 201:
@@ -200,7 +202,7 @@ def checks_green(repo, token, sha):
     return ok, ','.join(detail)
 
 
-def handle_checks(repo, wtok, pr, comments, sha, detail):
+def handle_checks(repo, tok, pr, comments, sha, detail):
     num = pr['number']
     parts = dict(item.split('=', 1) for item in detail.split(','))
     bad = sorted(n for n, v in parts.items()
@@ -210,9 +212,8 @@ def handle_checks(repo, wtok, pr, comments, sha, detail):
         body = ('CI non verte sur cette tete : `%s` (auteur : reparer puis '
                 'pousser). La file reprendra ensuite (ou `@mergifyio '
                 'queue`).' % ', '.join(bad))
-        if post_once(repo, wtok, num, comments, marker, body):
-            return 'guide:checks-rouges'
-        return 'attente:checks-rouges-connus'
+        return issue(post_once(repo, tok, num, comments, marker, body),
+                     'guide:checks-rouges', 'attente:checks-rouges-connus')
     missing = sorted(n for n, v in parts.items() if v == '?')
     if missing:
         marker = '<!-- crypte-file:ci-absente sha=%s -->' % sha
@@ -220,17 +221,27 @@ def handle_checks(repo, wtok, pr, comments, sha, detail):
                 'CI muette). Relancez en poussant - ex. `git commit '
                 '--allow-empty -m "ci: relance" && git push` - la file '
                 'reprendra ensuite.' % ', '.join(missing))
-        if post_once(repo, wtok, num, comments, marker, body):
-            return 'guide:ci-absente'
-        return 'attente:ci-absente-connue'
+        return issue(post_once(repo, tok, num, comments, marker, body),
+                     'guide:ci-absente', 'attente:ci-absente-connue')
     return 'attente:checks(%s)' % detail
 
 
 def post_once(repo, token, num, comments, marker, body):
+    """'poste', 'connu' (marqueur deja la) ou 'refuse' (API en echec)."""
     if any(marker in (c.get('body') or '') for c in comments):
-        return False
-    post_comment(repo, token, num, marker + '\n' + body)
-    return True
+        return 'connu'
+    if post_comment(repo, token, num, marker + '\n' + body) is None:
+        return 'refuse'
+    return 'poste'
+
+
+def issue(post_result, guide, connu):
+    """Verdict d'un commentaire de guidance : poste / connu / refuse."""
+    if post_result == 'poste':
+        return guide
+    if post_result == 'connu':
+        return connu
+    return 'erreur:commentaire'
 
 
 MERGE_CMDS = ('```\ngit fetch origin && git checkout <branche> && '
@@ -238,50 +249,53 @@ MERGE_CMDS = ('```\ngit fetch origin && git checkout <branche> && '
               'git push\n```')
 
 
-def handle_dirty(repo, wtok, pr, comments, sha):
+def handle_dirty(repo, tok, pr, comments, sha):
     marker = '<!-- crypte-file:conflit sha=%s -->' % sha
     body = ('Conflits avec `%s` : resolution manuelle requise (par merge, '
             'la file squash ne rebase jamais).\n%s\nLa file reprendra '
             'ensuite (ou `@mergifyio queue`).' % (BASE, MERGE_CMDS))
-    if post_once(repo, wtok, pr['number'], comments, marker, body):
-        set_label(pr, repo, wtok, LABEL_CONFLIT, True)
-        return 'guide:conflit'
-    return 'attente:conflit-connu'
+    res = post_once(repo, tok, pr['number'], comments, marker, body)
+    if res == 'poste':
+        set_label(pr, repo, tok, LABEL_CONFLIT, True)
+    return issue(res, 'guide:conflit', 'attente:conflit-connu')
 
 
 def handle_queue(repo, rtok, wtok, pat, pr, comments, sha, mergify):
     num = pr['number']
     if queued_now(repo, rtok, sha, mergify):
-        set_label(pr, repo, wtok, LABEL_CONFLIT, False)
+        set_label(pr, repo, rtok, LABEL_CONFLIT, False)
         return 'file:dedans'
     done = marker_count(comments, 'requeue', sha)
     if done >= MAX_REQUEUE:
         marker = '<!-- crypte-file:escalade sha=%s -->' % sha
-        body = ('%d remises en file sans succes sur cette tete — main '
+        body = ('%d remises en file sans succes sur cette tete - main '
                 'humaine requise (voir les verdicts Mergify ci-dessus).'
                 % MAX_REQUEUE)
-        if post_once(repo, wtok, num, comments, marker, body):
-            set_label(pr, repo, wtok, LABEL_ESCALADE, True)
+        res = post_once(repo, rtok, num, comments, marker, body)
+        if res == 'poste':
+            set_label(pr, repo, rtok, LABEL_ESCALADE, True)
             return 'escalade:nouvelle'
-        return 'escalade:connue'
+        return issue(res, 'escalade:nouvelle', 'escalade:connue')
     age = marker_age_min(comments, 'requeue', sha)
     if age is not None and age < REQUEUE_COOLDOWN_MIN:
         return 'attente:antirebond(%dmin)' % age
     if not pat:
         marker = '<!-- crypte-file:file-sans-pat sha=%s -->' % sha
-        post_once(repo, wtok, num, comments, marker,
-                  'PR prete (checks verts) mais hors file, et sans secret '
-                  '`AUTOMERGE_PAT` je ne peux pas commander Mergify : postez '
-                  '`@mergifyio queue` pour la remettre en file.')
-        return 'guide:file-sans-pat'
+        return issue(post_once(repo, rtok, num, comments, marker,
+                               'PR prete (checks verts) mais hors file, et '
+                               'sans secret `AUTOMERGE_PAT` je ne peux pas '
+                               'commander Mergify : postez `@mergifyio '
+                               'queue` pour la remettre en file.'),
+                     'guide:file-sans-pat', 'attente:file-sans-pat-connue')
     if DRY:
         return 'dry:remettrait'
-    post_comment(repo, wtok, num,
-                 '@mergifyio queue\n'
-                 '<!-- crypte-file:requeue sha=%s n=%d -->\n'
-                 'Remise en file automatique (balayeur, tentative %d/%d).'
-                 % (sha, done + 1, done + 1, MAX_REQUEUE))
-    set_label(pr, repo, wtok, LABEL_CONFLIT, False)
+    if post_comment(repo, wtok, num,
+                    '@mergifyio queue\n'
+                    '<!-- crypte-file:requeue sha=%s n=%d -->\n'
+                    'Remise en file automatique (balayeur, tentative %d/%d).'
+                    % (sha, done + 1, done + 1, MAX_REQUEUE)) is None:
+        return 'erreur:commande-refusee'
+    set_label(pr, repo, rtok, LABEL_CONFLIT, False)
     return 'file:remise(%d)' % (done + 1)
 
 
@@ -304,10 +318,10 @@ def handle_pr(repo, rtok, wtok, pat, num):
     comments = list_comments(repo, rtok, pr['number'])
     if pr.get('mergeable') is False and \
             (pr.get('mergeable_state') or '') == 'dirty':
-        return handle_dirty(repo, wtok, pr, comments, sha)
+        return handle_dirty(repo, rtok, pr, comments, sha)
     ok, detail = checks_green(repo, rtok, sha)
     if not ok:
-        return handle_checks(repo, wtok, pr, comments, sha, detail)
+        return handle_checks(repo, rtok, pr, comments, sha, detail)
     if pr.get('mergeable') is not True:
         return 'attente:non-fusionnable'
     return handle_queue(repo, rtok, wtok, pat, pr, comments, sha,
@@ -343,8 +357,8 @@ def main():
         event = json.load(handle)
     if not pat:
         print('AUTOMERGE_PAT absent : mode diagnostic (pas de commande)')
-    ensure_label(repo, wtok, LABEL_CONFLIT, 'd73a4a', 'Pose par file-mergify')
-    ensure_label(repo, wtok, LABEL_ESCALADE, 'fbca04', 'Pose par file-mergify')
+    ensure_label(repo, rtok, LABEL_CONFLIT, 'd73a4a', 'Pose par file-mergify')
+    ensure_label(repo, rtok, LABEL_ESCALADE, 'fbca04', 'Pose par file-mergify')
     nums = prs_for_event(repo, rtok, event_name, event)
     if nums is None:
         print('commentaire non-Mergify, rien a faire')
