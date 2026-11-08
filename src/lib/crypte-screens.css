@@ -1,0 +1,168 @@
+/* Thème canonique Crypte (palette --cry-* + styles base screens). Importé par +layout. */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--cry-void);
+  color: var(--cry-bone);
+  font-family: var(--cry-font-title);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+a {
+  color: var(--cry-candle);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--cry-font-title);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin: 0 0 0.5rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  color: var(--cry-candle);
+}
+
+h2 {
+  font-size: 1.15rem;
+  color: var(--cry-pumpkin);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--cry-bone);
+}
+
+button {
+  background: var(--cry-crypt);
+  border: 1px solid var(--cry-umber);
+  border-radius: 3px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--cry-pumpkin);
+  color: var(--cry-candle);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--cry-pumpkin-dark);
+  border-color: var(--cry-pumpkin);
+  color: var(--cry-bone);
+}
+
+button.danger {
+  border-color: var(--cry-dried);
+  color: var(--cry-blood);
+}
+
+input,
+select,
+textarea {
+  background: var(--cry-ink);
+  border: 1px solid var(--cry-umber);
+  border-radius: 3px;
+  padding: 0.3rem 0.5rem;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 1px solid var(--cry-pumpkin);
+  outline-offset: 1px;
+}
+
+code,
+.mono {
+  font-family: var(--cry-font-mono);
+  font-size: 0.86em;
+}
+
+.panel {
+  background: var(--cry-crypt);
+  border: 1px solid var(--cry-umber);
+  border-left: 3px solid var(--cry-pumpkin-dark);
+  border-radius: 2px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.err {
+  color: var(--cry-blood);
+}
+
+.ok {
+  color: var(--cry-ecto);
+}
+
+.dim {
+  color: var(--cry-ash);
+}
+
+table.crypt {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table.crypt th,
+table.crypt td {
+  border-bottom: 1px solid var(--cry-umber);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.crypt th {
+  color: var(--cry-sand);
+  font-weight: 600;
+}
+
+canvas.pixels {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Gutter façon TUI (▍) pour les listes de messages. */
+.gutter {
+  border-left: 3px solid var(--cry-pumpkin-dark);
+  padding-left: 0.6rem;
+  margin: 0.4rem 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

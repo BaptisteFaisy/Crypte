@@ -1,0 +1,144 @@
+/* Thème canonique Crypte (palette --cry-* + styles base shell). Importé par +layout. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--cry-void);
+  color: var(--cry-bone);
+  font-family: var(--cry-font-mono);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Fond chaud : vignette bougie (radial, jamais violet/bleu). */
+.crypte-app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(
+    ellipse 120% 90% at 50% 20%,
+    var(--cry-crypt) 0%,
+    var(--cry-void) 70%
+  );
+}
+
+.crypte-main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem 1rem 1rem;
+}
+
+/* Titre : dégradé caractère par caractère du TUI (BLOOD → CANDLE). */
+.crypte-title {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  background: linear-gradient(
+    90deg,
+    var(--cry-blood),
+    var(--cry-pumpkin) 55%,
+    var(--cry-candle)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+a {
+  color: var(--cry-candle);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cry-candle);
+  outline-offset: 2px;
+}
+
+/* Champs : saisie bougie sur encre, comme le TUI. */
+.crypte-input,
+.crypte-select {
+  font: inherit;
+  color: var(--cry-bone);
+  background: var(--cry-ink);
+  border: 1px solid var(--cry-umber);
+  border-radius: 0.375rem;
+  padding: 0.4rem 0.6rem;
+  caret-color: var(--cry-candle);
+}
+
+.crypte-input::placeholder {
+  color: var(--cry-ash);
+}
+
+.crypte-btn {
+  font: inherit;
+  font-weight: 700;
+  border-radius: 0.375rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--cry-pumpkin-dark);
+  background: var(--cry-pumpkin);
+  color: var(--cry-void);
+}
+
+.crypte-btn:hover {
+  background: var(--cry-candle);
+  border-color: var(--cry-candle);
+}
+
+.crypte-btn.ghost {
+  background: transparent;
+  color: var(--cry-sand);
+  border-color: var(--cry-umber);
+}
+
+.crypte-btn.ghost:hover {
+  color: var(--cry-bone);
+  border-color: var(--cry-sand);
+}
+
+.crypte-btn.danger {
+  background: var(--cry-dried);
+  border-color: var(--cry-blood);
+  color: var(--cry-bone);
+}
+
+/* Compact : sous ~80 colonnes, les hints avec touches disparaissent. */
+@media (max-width: 45rem) {
+  .crypte-main {
+    padding: 0.5rem 0.6rem 0.75rem;
+  }
+}
+
+@media (max-width: 35rem) {
+  body {
+    font-size: 13px;
+  }
+}
+
+/* Mouvement réduit : tout est figé (hub, apparition, frames, flash). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

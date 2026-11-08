@@ -1,156 +1,175 @@
+<!-- Route `/` (ChatPage front-chat) : sidebar cercueils + historique + saisie +
+     colonne droite (apparition + Kiro + hub à venir), fx en fond.
+     Clavier global (keys.ts) : Ctrl+N/W, Ctrl+C, PgUp/PgDn,
+     Shift+↑↓, Fin, Échap. Souris : clics natifs + molette. -->
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { onDestroy, onMount } from "svelte";
+  import ApparitionPanel from "../lib/chat/ApparitionPanel.svelte";
+  import ChatInput from "../lib/chat/ChatInput.svelte";
+  import ChatView from "../lib/chat/ChatView.svelte";
+  import FxOverlay from "../lib/chat/FxOverlay.svelte";
+  import KiroWidget from "../lib/chat/KiroWidget.svelte";
+  import Sidebar from "../lib/chat/Sidebar.svelte";
+  import { keyAction } from "../lib/chat/keys";
+  import {
+    activeIndex,
+    cancelConnect,
+    chats,
+    closeChat,
+    connectFlow,
+    destroyChat,
+    initChat,
+    newChat,
+    stop,
+  } from "../lib/chat/store";
 
-  let name = $state("");
-  let greetMsg = $state("");
+  let ready = $state(false);
+  let loadError = $state<string | null>(null);
+  let scrollCmd = $state<{ seq: number; dir: "up" | "down" | "bottom"; page: boolean } | null>(null);
+  let seq = 0;
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
+  onMount(() => {
+    initChat()
+      .then(() => (ready = true))
+      .catch((e: unknown) => {
+        loadError = e instanceof Error ? e.message : String(e);
+      });
+  });
+
+  onDestroy(destroyChat);
+
+  function inField(target: EventTarget | null): boolean {
+    return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement;
+  }
+
+  async function onKey(e: KeyboardEvent): Promise<void> {
+    // La saisie gère Entrée/Échap elle-même (commit/cancel du flow).
+    if (inField(e.target) && (e.key === "Enter" || e.key === "Escape")) return;
+    const action = keyAction({
+      key: e.key,
+      ctrl: e.ctrlKey || e.metaKey,
+      shift: e.shiftKey,
+      inInput: false,
+    });
+    if (!action) return;
+    if (["new-chat", "close-chat", "scroll-up", "scroll-down", "scroll-bottom"].includes(action)) {
+      e.preventDefault();
+    }
+    await runAction(action, e);
+  }
+
+  async function runAction(
+    action: NonNullable<ReturnType<typeof keyAction>>,
+    e: KeyboardEvent,
+  ): Promise<void> {
+    switch (action) {
+      case "new-chat":
+        await newChat();
+        break;
+      case "close-chat":
+        if ($chats.length > 0) await closeChat($activeIndex);
+        break;
+      case "stop":
+        await stop();
+        break;
+      case "cancel-flow":
+        cancelConnect();
+        break;
+      case "scroll-up":
+      case "scroll-down":
+      case "scroll-bottom":
+        seq += 1;
+        scrollCmd = {
+          seq,
+          dir: action === "scroll-bottom" ? "bottom" : action === "scroll-up" ? "up" : "down",
+          page: e.key === "PageUp" || e.key === "PageDown",
+        };
+        break;
+      case "send":
+        break;
+    }
   }
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+<svelte:window onkeydown={(e) => void onKey(e)} />
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
-  </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
-
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
+<div class="crypte-chat page">
+  <FxOverlay />
+  {#if loadError}
+    <p class="fatal" role="alert">the crypt did not wake: {loadError}</p>
+  {:else if !ready}
+    <p class="fatal">waking the crypt…</p>
+  {:else}
+    <div class="cols">
+      <Sidebar />
+      <main class="center">
+        <ChatView {scrollCmd} />
+        <ChatInput />
+      </main>
+      <div class="right">
+        <ApparitionPanel />
+        <KiroWidget />
+        {#if $connectFlow}
+          <p class="flow-hint">connect flow — Esc cancels</p>
+        {/if}
+      </div>
+    </div>
+  {/if}
+</div>
 
 <style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+  .page {
+    position: relative;
+    height: 100%;
+    min-height: 0;
   }
-
-  a:hover {
-    color: #24c8db;
+  .fatal {
+    position: relative;
+    z-index: 1;
+    color: var(--cry-sand);
+    padding: 2rem;
+    text-align: center;
   }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  .cols {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 15rem 1fr 13rem;
+    gap: 0.6rem;
+    height: 100%;
+    min-height: 0;
+    padding: 0.6rem;
+    box-sizing: border-box;
   }
-  button:active {
-    background-color: #0f0f0f69;
+  .center {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-height: 0;
+    min-width: 0;
   }
-}
-
+  .center :global(.history) {
+    flex: 1;
+  }
+  .right {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .flow-hint {
+    color: var(--cry-umber);
+    font-size: 0.75rem;
+    margin: 0;
+    text-align: center;
+  }
+  @media (max-width: 70rem) {
+    .cols {
+      grid-template-columns: 12rem 1fr;
+    }
+    .right {
+      display: none;
+    }
+  }
 </style>
