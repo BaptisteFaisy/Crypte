@@ -134,6 +134,7 @@ impl App {
             spec_runs: HashMap::new(),
             spec_waiting: None,
             mcp: crate::kiro::mcp_pool::McpState::new(),
+            hooks: crate::kiro::hook_run::HookState::new(),
             chats_path: None,
             events: EventLog::disabled(),
             vps: crate::vps::VpsRuntime::load(),
@@ -143,6 +144,7 @@ impl App {
         };
         app.pin_current();
         app.announce_agents_md();
+        app.hooks_fire_session_start();
         if hint_connect {
             app.push_system(String::from(NOT_CONNECTED));
         }

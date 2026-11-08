@@ -33,6 +33,8 @@ use crate::gfx::ImageBank;
 use crate::ghostty;
 
 use crate::hub::Hub;
+use crate::kiro::hook_exec::HookOutcome;
+use crate::kiro::hook_run::HookState;
 use crate::kiro::mcp_pool::McpState;
 use crate::kiro::spec_run::{SpecGen, SpecRun};
 use crate::mascot::{Mascot, MascotState};
@@ -51,7 +53,8 @@ use crate::web::WebAnswer;
 /// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]),
 /// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]),
 /// génération spec (`chat`, état chaîné, voir [`crate::kiro::spec_run`]),
-/// MCP (`/mcp refresh` terminé, statut à afficher).
+/// MCP (`/mcp refresh` terminé, statut à afficher), hook (commande
+/// terminée, voir [`crate::kiro::hook_run`]).
 pub(crate) enum Incoming {
     Chat(usize, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
@@ -61,6 +64,7 @@ pub(crate) enum Incoming {
     Vps(crate::vps::VpsOutcome),
     SpecNew(usize, SpecGen, Result<Completion>),
     McpRefresh(String),
+    HookDone(HookOutcome),
 }
 
 /// État global de l'application.
@@ -122,6 +126,8 @@ pub struct App {
     pub(crate) spec_waiting: Option<SpecRun>,
     /// Parc MCP (connexions paresseuses, `/mcp`, arrêt à la sortie).
     pub(crate) mcp: McpState,
+    /// Moteur hooks Kiro (file `agent`, récents, gardes, `/hooks`).
+    pub(crate) hooks: HookState,
     /// Fichier de persistance des chats (`None` = off : tests, smoke, demo).
     pub(crate) chats_path: Option<PathBuf>,
     /// Journal d'événements temps réel (`--events-log`, désactivé sinon).
@@ -227,6 +233,7 @@ impl App {
                 Incoming::Vps(outcome) => self.drain_vps(outcome),
                 Incoming::SpecNew(chat, gen, reply) => self.drain_spec_new(chat, gen, reply),
                 Incoming::McpRefresh(text) => self.drain_mcp_refresh(text),
+                Incoming::HookDone(out) => self.drain_hook_done(out),
             }
         }
         routed
