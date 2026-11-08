@@ -150,9 +150,48 @@ fn parse_thinking_model_agent_agents_compact() {
         parse("/agent   "),
         Some(Command::Unknown(String::from("/agent")))
     );
-    assert_eq!(parse("/agents"), Some(Command::Agents { all: false }));
-    assert_eq!(parse("/agents all"), Some(Command::Agents { all: true }));
-    assert_eq!(parse("/agents x"), Some(Command::Agents { all: false }));
+    assert_eq!(
+        parse("/agents"),
+        Some(Command::Agents {
+            all: false,
+            voir: None
+        })
+    );
+    assert_eq!(
+        parse("/agents all"),
+        Some(Command::Agents {
+            all: true,
+            voir: None
+        })
+    );
+    assert_eq!(
+        parse("/agents x"),
+        Some(Command::Agents {
+            all: false,
+            voir: None
+        })
+    );
+    assert_eq!(
+        parse("/agents #3"),
+        Some(Command::Agents {
+            all: false,
+            voir: Some(3)
+        })
+    );
+    assert_eq!(
+        parse("/agents 3"),
+        Some(Command::Agents {
+            all: false,
+            voir: Some(3)
+        })
+    );
+    assert_eq!(
+        parse("/agents #0"),
+        Some(Command::Agents {
+            all: false,
+            voir: None
+        })
+    );
     assert_eq!(parse("/compact"), Some(Command::Compact));
     assert_eq!(parse("/connect"), Some(Command::Connect(None)));
     assert_eq!(

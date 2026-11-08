@@ -177,12 +177,20 @@ fn h_auto_n(dir: &Path) {
     app.spec_agent_done(42);
     app.spec_agent_failed(42);
     assert_eq!(last_text(&app, 0), before);
-    // `y` : tâche suivante lancée via un sous-agent.
+    // `y` : tâche suivante lancée via un sous-agent (parent + enfant niché).
     app.spec_waiting = Some(SpecRun::new("auto", 0, 1, 2));
     app.spec_resolve(true);
     assert_eq!(app.spec_runs.len(), 1);
-    assert!(last_text(&app, 0).contains("task 2/2"));
-    assert!(last_text(&app, 0).contains("agent#1"));
+    let msgs = app.sessions.get(0).unwrap().chat.messages();
+    let n = msgs.len();
+    assert!(msgs[n - 2].text.contains("task 2/2"), "parent spec");
+    assert!(msgs[n - 1].text.contains("agent#1"), "enfant niché");
+    let (_, agent) = app.sessions.find_agent_mut(1).unwrap();
+    assert_eq!(
+        agent.spec.as_ref().map(|s| s.name.as_str()),
+        Some("auto"),
+        "tag workflow posé"
+    );
 }
 
 /// Tâche finie en `yolo` : enchaînée direct ; échec agent = stop.
@@ -197,8 +205,17 @@ fn h_yolo_failed(dir: &Path) {
     app.spec_agent_done(1);
     assert!(app.spec_waiting.is_none());
     assert_eq!(app.spec_runs.len(), 1);
-    assert!(last_text(&app, 0).contains("task 2/2"));
-    assert!(last_text(&app, 0).contains("agent#"));
+    let msgs = app.sessions.get(0).unwrap().chat.messages();
+    let n = msgs.len();
+    assert!(msgs[n - 2].text.contains("task 2/2"), "parent spec");
+    assert!(msgs[n - 1].text.contains("agent#"), "enfant niché");
+    let run_agent = app.spec_runs.values().next().unwrap().agent.unwrap();
+    let (_, agent) = app.sessions.find_agent_mut(run_agent).unwrap();
+    assert_eq!(
+        agent.spec.as_ref().map(|s| s.name.as_str()),
+        Some("yolo"),
+        "tag workflow posé"
+    );
     // Dernière tâche finie : run terminé, message `complete`.
     let id = *app.spec_runs.keys().next().unwrap();
     app.spec_agent_done(id);
