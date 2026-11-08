@@ -22,6 +22,18 @@
   sur les vrais conflits. Secret `AUTOMERGE_PAT` (contenus + PR) requis
   pour commander Mergify, sinon diagnostic seul. Labels
   `mergify/conflit` / `mergify/intervention`, `hold` = sortie de secours.
+- **refresh-prs** (`.github/workflows/refresh-prs.yml` +
+  `.github/hermes/refresh.py`, [REFRESH-AUTO], demande user 2026-11-07) :
+  à chaque push sur `main`, rebase serveur des PR ouvertes en retard
+  (sans conflit), label `hermes/conflit` + commentaire de diagnostic
+  (fichiers en conflit + commandes de fix) sur les PR en conflit, label
+  retiré et commentaire marqué résolu au retour à la fraîcheur. Ne merge
+  jamais (Mergify reste le seul pilote). Le label
+  `hermes/intervention-humaine` suspend le refresh d'une PR. Les runs
+  garés en `action_required` par le push de bot sont approuvés par le
+  script lui-même ([NO-APPROVAL-LOCK]) ; optionnel : secret de dépôt
+  `HERMES_LITE_TOKEN` (PAT) pour des pushes attribués à un humain
+  (déclenchent la CI normalement) au lieu du bot.
 - **ci-budget** (`.github/workflows/ci-budget.yml` +
   `.github/ci-budget/check_timeouts.py`) : garde-fou du budget CI de
   **5 minutes** (règle user 2026-10-24). Chaque job doit déclarer
