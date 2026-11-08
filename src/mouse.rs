@@ -1,10 +1,12 @@
 //! Souris : molette = défilement de l'historique, clic gauche = bouton [+]
 //! (nouveau chat), bouton [×] (fermer le chat), lignes de la sidebar
-//! (choisir le chat), onglets de l'en-tête (changer d'écran).
+//! (choisir le chat), onglets de l'en-tête (changer d'écran), articles
+//! de la boutique (acheter).
 //!
 //! La capture souris est activée par `main` (désactivée en sortie) ;
 //! les rectangles sont mémorisés à chaque frame (`App::plus_btn`,
-//! `App::close_btns`, `App::side_rows`, `App::tab_hits`, `ChatState::area`).
+//! `App::close_btns`, `App::side_rows`, `App::tab_hits`,
+//! `App::shop_rows`, `ChatState::area`).
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Position;
@@ -15,7 +17,7 @@ use crate::chat::SCROLL_STEP;
 impl App {
     /// Molette : défiler le chat ; clic gauche : [+] = nouveau chat,
     /// [×] = fermer le chat, ligne = choisir le chat, onglet = changer
-    /// d'écran (le reste est ignoré).
+    /// d'écran, article = acheter (le reste est ignoré).
     pub(crate) fn on_mouse(&mut self, mev: MouseEvent) {
         match mev.kind {
             MouseEventKind::ScrollUp => return self.wheel(mev, -SCROLL_STEP),
@@ -47,6 +49,12 @@ impl App {
             self.goto_tab(tab);
             return;
         }
+        if self.screen == Screen::Shop {
+            if let Some(idx) = self.shop_rows.iter().position(|r| r.contains(at)) {
+                self.buy_at(idx);
+                return;
+            }
+        }
         if let Some(rows) = self.side_rows {
             if rows.contains(at) {
                 self.sessions.select((at.y - rows.y) as usize);
@@ -67,13 +75,14 @@ impl App {
         chat.scroll.by(delta);
     }
 
-    /// Clic sur un onglet : même effet que sa touche (le hub bascule).
+    /// Clic sur un onglet : même effet que sa touche (hub et boutique basculent).
     fn goto_tab(&mut self, tab: Screen) {
         match tab {
             Screen::Chat => self.screen = Screen::Chat,
             Screen::Hub => self.open_hub(),
             Screen::Settings => self.screen = Screen::Settings,
             Screen::Vps => self.screen = Screen::Vps,
+            Screen::Shop => self.open_shop(),
         }
     }
 }
@@ -250,6 +259,30 @@ mod tests {
         assert_eq!(app.screen, Screen::Hub);
         app.on_mouse(click(70, 0)); // hors onglets → inchangé
         assert_eq!(app.screen, Screen::Hub);
+    }
+
+    #[test]
+    fn clic_onglet_boutique_bascule_comme_f6() {
+        let mut app = test_app();
+        app.tab_hits = vec![(Screen::Shop, Rect::new(50, 0, 11, 1))];
+        app.on_mouse(click(52, 0));
+        assert_eq!(app.screen, Screen::Shop);
+        app.on_mouse(click(52, 0)); // Déjà dessus : retour au chat.
+        assert_eq!(app.screen, Screen::Chat);
+    }
+
+    #[test]
+    fn clic_article_achete_si_solvable() {
+        let mut app = test_app();
+        app.screen = Screen::Shop;
+        app.shop_rows = vec![Rect::new(0, 2, 70, 2), Rect::new(0, 4, 70, 2)];
+        app.on_mouse(click(10, 2)); // 0 pièce : refusé, rien débité.
+        assert_eq!(app.shop.wallet().spent(), 0);
+        app.sessions.current_mut().ledger.record(500, 500, 1.0); // 1000 gagnées.
+        app.on_mouse(click(10, 4)); // Bougie apaisante, 300 pièces.
+        assert_eq!(app.shop.wallet().spent(), 300);
+        app.on_mouse(click(10, 20)); // Hors articles : inchangé.
+        assert_eq!(app.shop.wallet().spent(), 300);
     }
 
     #[test]

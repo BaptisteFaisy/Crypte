@@ -36,6 +36,7 @@ mod provider;
 mod scroll;
 mod sessions;
 mod settings;
+mod shop;
 mod sidebar;
 #[cfg(test)]
 mod test_env;
@@ -74,7 +75,7 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 3 screens (120x36 + 70x17, offline) as ANSI
+        --preview <file>  Write the 4 screens (120x36 + 70x17, offline) as ANSI
         --demo            Offline demo crypt, opened on the spirit hub (F7)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
 
@@ -109,6 +110,7 @@ AGENTS.MD (system context, read once at first send):
 KEYS (terminal >= 70x17):
     Enter  send    q  quit    F5  scare
     Ctrl+N or click [+]  new chat    F7  hub
+    F6 or tab click  shop (1 token consumed = 1 coin)    click item  buy
 
 ALMANAC (tokens per day, local date, shown by /usage):
     File: $XDG_DATA_HOME/kiro-horror-tui/almanac.json
@@ -344,14 +346,14 @@ fn render(app: &mut App, screen: Screen, w: u16, h: u16) -> Result<Buffer> {
 }
 
 /// Controle headless : frames 80x24 (chat + settings) + 70x17
-/// (minimum, 3 écrans), sans reseau ni cle API. Echec = `Err`.
+/// (minimum, 4 écrans), sans reseau ni cle API. Echec = `Err`.
 fn smoke() -> Result<()> {
     let mut app = demo_app()?;
     let buf = render(&mut app, Screen::Chat, 80, 24)?;
     let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
     anyhow::ensure!(filled > 100, "check frame almost empty ({filled} cells)");
     println!("smoke OK: 80x24 frame, {filled} cells filled");
-    for screen in [Screen::Chat, Screen::Hub, Screen::Settings] {
+    for screen in [Screen::Chat, Screen::Hub, Screen::Settings, Screen::Shop] {
         let buf = render(&mut app, screen, 70, 17)?;
         let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
         anyhow::ensure!(
@@ -364,7 +366,7 @@ fn smoke() -> Result<()> {
             "header missing at 70x17 ({screen:?})"
         );
     }
-    println!("smoke OK: 70x17 frames, 3 screens");
+    println!("smoke OK: 70x17 frames, 4 screens");
     let buf = render(&mut app, Screen::Settings, 80, 24)?;
     let text: String = buf.content.iter().map(|c| c.symbol()).collect();
     anyhow::ensure!(text.contains("SETTINGS"), "settings frame has no title");
@@ -377,7 +379,7 @@ fn smoke() -> Result<()> {
     Ok(())
 }
 
-/// Écrit les 6 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
+/// Écrit les 8 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
 /// `cat <fichier>` dans Ghostty montre l'UI sans clé ni réseau.
 fn apercu(path: &str) -> Result<()> {
     let mut app = demo_app()?;
@@ -386,16 +388,18 @@ fn apercu(path: &str) -> Result<()> {
         (Screen::Chat, 120, 36),
         (Screen::Hub, 120, 36),
         (Screen::Settings, 120, 36),
+        (Screen::Shop, 120, 36),
         (Screen::Chat, 70, 17),
         (Screen::Hub, 70, 17),
         (Screen::Settings, 70, 17),
+        (Screen::Shop, 70, 17),
     ] {
         out.push_str(&format!("=== {screen:?} {w}x{h} ===\n"));
         out.push_str(&to_ansi(&render(&mut app, screen, w, h)?));
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (120x36 + 70x17, 3 screens)");
+    println!("preview: {path} (120x36 + 70x17, 4 screens)");
     Ok(())
 }
 
@@ -432,11 +436,15 @@ mod tests {
 
     #[test]
     fn helps_ne_mentionnent_plus_les_ecrans_supprimes() {
+        // F6 a été réattribuée à la boutique (l'ancien bestiaire F6
+        // est parti vers `/bestiary`) ; F8 reste sans écran.
         for help in [HELP, crate::texts::help_text()] {
             assert!(!help.contains("grimoire"));
             assert!(!help.contains("F2"));
-            assert!(!help.contains("F6"));
             assert!(!help.contains("F8"));
+        }
+        for help in [HELP, crate::texts::help_text()] {
+            assert!(help.contains("F6"), "boutique F6 absente : {help:?}");
         }
     }
 }

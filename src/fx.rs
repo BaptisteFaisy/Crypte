@@ -45,6 +45,18 @@ impl Fx {
         }
     }
 
+    /// Apaise la crypte : la peur chute de `amount` (plancher 0).
+    /// Effet de boutique (bougie apaisante, eau bénite).
+    pub fn calm(&mut self, amount: u8) {
+        self.fear = self.fear.saturating_sub(amount);
+    }
+
+    /// Éclair immédiat, comme au premier tick d'un effroi.
+    /// Effet de boutique.
+    pub fn flash(&mut self) {
+        self.flash = FLASH_FRAMES;
+    }
+
     /// Un tick. En effroi la peur monte vers 100 et un éclair part au
     /// premier tick ; au calme la peur redescend.
     pub fn tick(&mut self, spooked: bool) {
@@ -184,6 +196,21 @@ mod tests {
             fx.tick(false);
         }
         assert_eq!(fx.fear, 0);
+    }
+
+    #[test]
+    fn boutique_calm_et_flash() {
+        let mut fx = Fx::new();
+        for _ in 0..10 {
+            fx.tick(true);
+        }
+        assert!(fx.fear > 30);
+        fx.calm(30);
+        let after = fx.fear;
+        fx.calm(100);
+        assert_eq!(fx.fear, 0, "eau bénite : peur à zéro (était {after})");
+        fx.flash();
+        assert_eq!(fx.flash, FLASH_FRAMES);
     }
 
     #[test]

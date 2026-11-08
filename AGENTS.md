@@ -14,7 +14,7 @@ cargo test                       # tous les tests doivent être verts
 cargo fmt --check                # formatage propre exigé
 ./target/debug/kiro-horror-tui --smoke   # headless 80x24, sans réseau ni clé
 ./target/debug/kiro-horror-tui --planche docs/bestiaire.png  # après retouche d'un sprite
-./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 2 écrans × 2 tailles en ANSI
+./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 4 écrans × 2 tailles en ANSI
 ./target/debug/kiro-horror-tui --muse-auth --once "Reply with exactly: OK"
 cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
@@ -26,7 +26,8 @@ ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
 `app/ctors.rs` (constructeurs), `app/model.rs` (modèle effectif + thinking),
 `bus.rs` (adressage, files, liens auto, plafond 8 relais),
 `mouse.rs` (molette = défilement de l'historique ; clics : [+] = nouveau
-chat, [×] = fermer, lignes sidebar = choisir, onglets = écrans),
+chat, [×] = fermer, lignes sidebar = choisir, onglets = écrans,
+articles boutique = acheter),
 `scroll.rs` (défilement : décalage depuis le bas + fenêtre visible),
 `drain.rs` (routage réponses async + pompes + retransmissions),
 `events.rs` (flux JSONL temps réel `--events-log`/`KH_EVENTS_LOG` :
@@ -59,6 +60,8 @@ unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
 crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 `font.rs` police 3×5, `social.rs` orbes et bavardages), `app/esprits.rs`
 (écran + touches du hub). Sprites du hub : `assets/hub/*.txt`.
+`shop.rs` (boutique F6 + onglet : portefeuille 1 token = 1 pièce,
+5 bonus d'ambiance, clic ou ↑↓ + Entrée).
 `almanac.rs` (tokens par jour, bloc `/usage`) + `almanac/disk.rs`
 (JSON `~/.local/share/kiro-horror-tui/`, relu avant chaque écriture,
 jamais réécrit s'il est illisible).

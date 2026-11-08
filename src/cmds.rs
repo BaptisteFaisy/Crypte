@@ -83,6 +83,14 @@ impl App {
         ));
         let (flight, cap) = (self.pool.in_flight(), self.pool.cap());
         msg.push_str(&format!("\npool: {flight}/{cap} llm in flight"));
+        let earned = self.sessions.grand_total();
+        let wallet = self.shop.wallet();
+        msg.push_str(&format!(
+            "\nwallet: {} coins ({} earned, {} spent)",
+            wallet.balance(earned),
+            earned,
+            wallet.spent()
+        ));
         msg.push('\n');
         msg.push_str(&self.almanac.usage_block(crate::almanac::today()));
         self.push_system(msg);
