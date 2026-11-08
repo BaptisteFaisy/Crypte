@@ -90,13 +90,14 @@ pub fn save_to(path: &Path, sessions: &Sessions) -> std::io::Result<()> {
 }
 
 /// Loads `path`: `Missing` when absent, `Corrupt` (backed up, previous
-/// backup overwritten) when unreadable or unknown version, else restored.
+/// backup overwritten) when unreadable or unknown version, else restored
+/// (empty chats = all closed: fresh « Chat 1 », silent, via `from_chats`).
 pub fn load_from(path: &Path) -> Load {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return Load::Missing;
     };
     let state: SavedState = match serde_json::from_str::<SavedState>(&raw) {
-        Ok(state) if state.version == STATE_VERSION && !state.chats.is_empty() => state,
+        Ok(state) if state.version == STATE_VERSION => state,
         _ => {
             let _ = std::fs::write(backup_path(path), raw);
             return Load::Corrupt;
@@ -330,6 +331,22 @@ mod tests {
         let msgs = after.get(0).unwrap().chat.messages();
         assert_eq!(msgs.len(), 200);
         assert_eq!(msgs[0].text, "m50");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn charge_vide_restaure_un_chat_neuf_sans_erreur() {
+        let dir = tmp_dir("vide");
+        let path = dir.join("chats.json");
+        let mut s = Sessions::new();
+        s.close(0); // tout fermé, puis quit
+        save_to(&path, &s).unwrap();
+        let Load::Restored(restored) = load_from(&path) else {
+            panic!("un vide valide doit se restaurer, pas être Corrupt");
+        };
+        assert_eq!(restored.count(), 1);
+        assert_eq!(restored.current().name, "Chat 1");
+        assert!(!backup_path(&path).exists(), "pas de .corrupt pour un vide");
         std::fs::remove_dir_all(&dir).ok();
     }
 

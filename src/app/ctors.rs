@@ -186,6 +186,9 @@ impl App {
         if self.agents_tried {
             return;
         }
+        if self.sessions.count() == 0 {
+            return; // aucun chat : réessayé au prochain envoi (pas marqué)
+        }
         self.agents_tried = true;
         let merged = agents::load_merged_in(
             self.agents_file.as_deref(),
@@ -203,15 +206,15 @@ impl App {
         }
     }
 
-    /// Ferme le chat `idx` (clic [×], Ctrl+W) : liens bus re-pointés
-    /// (coupés sans décalage si c'était le dernier, remplacé par un
-    /// chat neuf), événement émis, refus motivé sinon (vol, inconnu).
+    /// Ferme le chat `idx` (clic [×], Ctrl+W) : liens bus re-pointés,
+    /// fantôme banni aussitôt, événement émis, refus motivé sinon
+    /// (vol, inconnu). Le dernier fermé laisse la liste vide (`[+]`).
     pub(crate) fn close_chat(&mut self, idx: usize) {
         let name = self.sessions.get(idx).map(|c| c.name.clone());
         match self.sessions.close(idx) {
-            CloseOutcome::Closed => crate::sessions::shift_bus_links(&mut self.bus, idx),
-            CloseOutcome::Reset => {
-                crate::sessions::unlink_chat(&mut self.bus, &self.sessions, idx);
+            CloseOutcome::Closed => {
+                crate::sessions::shift_bus_links(&mut self.bus, idx);
+                self.hub.sync(&self.sessions);
             }
             CloseOutcome::Busy => {
                 self.push_system(String::from("cannot close: a reply is in flight"));

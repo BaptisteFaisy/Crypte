@@ -92,6 +92,22 @@ fn closing_a_chat_banishes_its_ghosts_on_next_sync() {
 }
 
 #[test]
+fn closing_the_last_chat_banishes_its_ghost_on_next_sync() {
+    let mut s = Sessions::new();
+    let mut hub = hub_for(&s);
+    assert!(hub.pos(Key::Agent(0)).is_some());
+    assert_eq!(s.close(0), CloseOutcome::Closed);
+    hub.sync(&s);
+    assert!(
+        hub.pos(Key::Agent(0)).is_none(),
+        "le fantôme du dernier chat reste affiché"
+    );
+    assert!(hub.spectres.is_empty(), "la crypte devrait être vide");
+    assert!(hub.orbs.is_empty());
+    assert!(hub.bubbles.is_empty());
+}
+
+#[test]
 fn everyone_stays_inside_the_crypt_even_in_panic() {
     let s = crypt();
     let mut hub = hub_for(&s);

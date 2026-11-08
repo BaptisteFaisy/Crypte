@@ -13,6 +13,9 @@ impl App {
     /// Un chat sans message user prend le nom du premier message
     /// (ignore le system pinné : historique non vide mais sans user).
     pub(super) fn send(&mut self) {
+        if self.sessions.count() == 0 {
+            return; // aucun chat : [+] / Ctrl+N pour recommencer
+        }
         let id = self.sessions.index();
         let text = self.sessions.current().chat.input.trim().to_string();
         if text.is_empty() {

@@ -5,6 +5,7 @@
 mod critic;
 mod ctors;
 mod esprits;
+mod feedback;
 mod haunt;
 mod keys;
 mod model;
@@ -26,7 +27,6 @@ use tokio::sync::mpsc;
 use crate::almanac::Almanac;
 use crate::apparition::Apparition;
 use crate::bus::Bus;
-use crate::chat::Role;
 use crate::connect::ConnectFlow;
 use crate::events::EventLog;
 use crate::fx::Fx;
@@ -217,16 +217,6 @@ impl App {
         Ok(())
     }
 
-    /// Barre de progression Ghostty : suit l'attente du chat courant.
-    fn sync_progress(&mut self) -> Result<()> {
-        let busy = self.sessions.current().sending;
-        if busy != self.busy {
-            self.busy = busy;
-            ghostty::progress(busy)?;
-        }
-        Ok(())
-    }
-
     /// F5 : une créature surgit (jump scare + éclair), le hub panique et
     /// Kiro (en balade) prend peur.
     pub(crate) fn spook(&mut self) {
@@ -266,11 +256,6 @@ impl App {
             }
         }
         routed
-    }
-
-    /// Ajoute un message système au chat courant.
-    pub(crate) fn push_system(&mut self, msg: String) {
-        self.sessions.current_mut().chat.push(Role::System, msg);
     }
 
     /// Fait avancer les animations (apparitions, hub, effets).
