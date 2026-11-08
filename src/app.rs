@@ -9,15 +9,14 @@ mod feedback;
 mod haunt;
 mod keys;
 mod model;
+mod picker;
 mod send;
 mod ui;
 
 pub use self::ui::Screen;
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 use crossterm::event::{self, Event};

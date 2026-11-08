@@ -3,8 +3,9 @@
 //! The AI asks a multiple-choice question by writing a ` ```question `
 //! block (2 to 4 short options, one question per reply). The TUI detects
 //! it and shows it rendered (`render_display`), then remembers the
-//! pending question: the chat pill turns candle yellow and the user
-//! answers with the digit (`resolve_answer`) or in free words — any
+//! pending question: the chat pill turns candle yellow, a choice panel
+//! opens (`app::picker`, zerocode style) and the user answers with
+//! ↑↓ + Enter, the digit (`resolve_answer`) or in free words — any
 //! sent message answers. `QUESTION_SYSTEM` teaches the format to the
 //! model (injected into every request, see `history`).
 
@@ -24,6 +25,22 @@ const MAX_OPTIONS: usize = 6;
 pub struct PendingQuestion {
     pub question: String,
     pub options: Vec<String>,
+    /// Highlighted option in the panel (zerocode style).
+    pub cursor: usize,
+}
+
+impl PendingQuestion {
+    /// Moves the cursor by `delta` options (clamped, zerocode style).
+    pub fn step(&mut self, delta: isize) {
+        let last = self.options.len().saturating_sub(1) as isize;
+        let at = self.cursor as isize + delta;
+        self.cursor = at.clamp(0, last.max(0)) as usize;
+    }
+
+    /// Label of the highlighted option (`""` when none).
+    pub fn selected(&self) -> &str {
+        self.options.get(self.cursor).map_or("", String::as_str)
+    }
 }
 
 /// Display text (first valid block replaced by its render) +
@@ -60,7 +77,7 @@ pub fn render(q: &PendingQuestion) -> String {
     for (i, opt) in q.options.iter().enumerate() {
         out.push_str(&format!("  {}) {}\n", i + 1, opt));
     }
-    out.push_str("  (reply with the number or in your own words)");
+    out.push_str("  (↑↓ + Enter, number or words)");
     out
 }
 
@@ -107,7 +124,11 @@ fn parse_block(content: &str) -> Option<PendingQuestion> {
     if question.is_empty() || !(MIN_OPTIONS..=MAX_OPTIONS).contains(&options.len()) {
         return None;
     }
-    Some(PendingQuestion { question, options })
+    Some(PendingQuestion {
+        question,
+        options,
+        cursor: 0,
+    })
 }
 
 /// Tolerated JSON variant: `question` (string) + `options`/`choices`.
@@ -130,6 +151,7 @@ fn parse_json(content: &str) -> Option<PendingQuestion> {
     Some(PendingQuestion {
         question: question.to_string(),
         options,
+        cursor: 0,
     })
 }
 
@@ -180,6 +202,7 @@ mod tests {
         PendingQuestion {
             question: String::from("Shall we go on?"),
             options: vec![String::from("Yes"), String::from("No")],
+            cursor: 0,
         }
     }
 
@@ -217,6 +240,7 @@ mod tests {
             PendingQuestion {
                 question: String::from("J?"),
                 options: vec![String::from("x"), String::from("y")],
+                cursor: 0,
             }
         );
         let seven = (1..=7)
@@ -252,6 +276,20 @@ mod tests {
         assert!(resolve_answer(&q, "3").is_none());
         assert!(resolve_answer(&q, "maybe tomorrow").is_none());
         assert!(resolve_answer(&q, "").is_none());
+    }
+
+    #[test]
+    fn cursor_clamped_and_selection_follows() {
+        let mut q = sample();
+        assert_eq!(q.selected(), "Yes");
+        q.step(-1);
+        assert_eq!(q.cursor, 0, "up at top: clamped");
+        q.step(1);
+        assert_eq!(q.selected(), "No");
+        q.step(9);
+        assert_eq!(q.cursor, 1, "down at bottom: clamped");
+        q.step(-9);
+        assert_eq!(q.cursor, 0);
     }
 
     #[test]

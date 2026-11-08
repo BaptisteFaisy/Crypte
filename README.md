@@ -580,11 +580,12 @@ Agent replies delivered to a chat are also versed into its context
 The AI (chats and sub-agents) can ask you a real multiple-choice
 question by writing a ```question block (2 to 4 options); the TUI
 detects it, shows it rendered (`— the crypt asks you: …` + numbered
-options) and the chat pill turns candle yellow (`?` marker in the
-sidebar, adapted input hint). Reply with the digit (`2`) or in your
-own words — any sent message answers (`/` commands don't). The format
-instructions are injected into every request (chats + `/agent`,
-never into `/compact` or `--once`).
+options) and opens a choice panel (`↑↓` to move, empty `Enter` to
+answer with the highlight, `Esc` to dismiss). The chat pill turns
+candle yellow (`?` marker in the sidebar, adapted input hint). Reply
+with the digit (`2`) or in your own words — any sent message answers
+(`/` commands don't). The format instructions are injected into every
+request (chats + `/agent`, never into `/compact` or `--once`).
 
 ## Compact
 
