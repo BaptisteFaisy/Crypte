@@ -25,12 +25,19 @@ dressed-up Ghostty window (theme + shader, builds release if needed):
 KH_API_KEY=... KH_MODEL=... ghostty/crypte
 ghostty/crypte --muse-auth
 ghostty/crypte --window --no-shader --muse-auth   # force the window
+ghostty/crypte rebuild --muse-auth                # latest origin/main, built apart, then launch
 ```
 
 `--window` forces the Ghostty window; print-only modes (`--help`,
 `--smoke`, `--once`, `--sheet`, `--preview`) always run in place. If your
 terminal renders truecolor without advertising it, `export
-COLORTERM=truecolor` opts it in.
+COLORTERM=truecolor` opts it in. `rebuild` (first arg) syncs the latest
+`origin/main` into a dedicated worktree next to the checkout
+(`<name>-latest`), forces a release build there, then launches it with
+the remaining args. The current checkout is never touched — a dirty
+tree does not block the rebuild (only a dirty managed worktree
+refuses). Once rebuilt, a plain launch opens that latest build when
+it exists, else the checkout's own build.
 
 In the current terminal:
 

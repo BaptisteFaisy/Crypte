@@ -2,11 +2,14 @@
 # Focused test for the ghostty/crypte dispatcher: in-place launch on a
 # compatible terminal (interactive TTY, truecolor, at least 80x24),
 # Ghostty window otherwise. Print-only modes always run in place.
+# Rebuild mode (first arg) syncs origin/main + forces a release build.
 #
 #   ghostty/crypte-test.sh
 #
-# Self-contained (Linux): stubs the release binary (CRYPTE_BIN) and ghostty
-# (PATH), fakes TTYs with script(1). No build, no window, no network.
+# Self-contained (Linux): stubs the release binary (CRYPTE_BIN), ghostty
+# and cargo (PATH), fakes TTYs with script(1), fakes the git remote with
+# a local-path clone and redirects the managed worktree
+# (CRYPTE_LATEST_ROOT). No real build, no window, no network.
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 launcher="$here/crypte"
@@ -142,6 +145,94 @@ absent "place-flags-stripped-passthrough" "--no-shader" "$out"
 
 out=$(on_pty 30 100 TERM=xterm-256color COLORTERM=truecolor -- --muse-auth --window)
 expect "place-late-window-flag-ignored" 'PLACE --muse-auth --window$' "$out"
+
+# zero <name> <rc> / nonzero <name> <rc>
+zero() {
+    count=$((count + 1))
+    if [ "$2" -eq 0 ]; then
+        printf 'ok %s\n' "$1"
+    else
+        fails=$((fails + 1))
+        printf 'FAIL %s: expected exit 0, got %s\n' "$1" "$2"
+    fi
+}
+
+nonzero() {
+    count=$((count + 1))
+    if [ "$2" -ne 0 ]; then
+        printf 'ok %s\n' "$1"
+    else
+        fails=$((fails + 1))
+        printf 'FAIL %s: expected non-zero exit\n' "$1"
+    fi
+}
+
+# rebuild anywhere but first is app args, like a late --window.
+out=$(no_tty TERM=dumb -- --muse-auth rebuild)
+expect "window-late-rebuild-passthrough" "WINDOW" "$out"
+present "window-late-rebuild-passthrough" "--muse-auth rebuild" "$out"
+
+# Rebuild fixtures: origin repo + clone carrying a copy of the launcher.
+printf '#!/bin/sh\necho "CARGO $*"\n' >"$tmp/cargo"
+chmod +x "$tmp/cargo"
+fx="$tmp/fx"
+git_init() {
+    git init -q "$1"
+    git -C "$1" config user.email rebuild@test
+    git -C "$1" config user.name rebuild
+    git -C "$1" checkout -q -b main
+}
+git_init "$fx/origin"
+echo v1 >"$fx/origin/version.txt"
+mkdir -p "$fx/origin/ghostty"
+cp "$launcher" "$fx/origin/ghostty/crypte"
+git -C "$fx/origin" add version.txt ghostty/crypte
+git -C "$fx/origin" commit -qm v1
+git clone -q "$fx/origin" "$fx/root" 2>/dev/null
+fxlauncher="$fx/root/ghostty/crypte"
+
+# Origin moved ahead, main checkout dirty: rebuild still works — the
+# checkout is never touched, latest goes to the managed worktree.
+echo v2 >"$fx/origin/version.txt"
+git -C "$fx/origin" commit -qam v2
+echo dirty >"$fx/root/dirty.txt"
+out=$(CRYPTE_LATEST_ROOT="$fx/latest" "$fxlauncher" rebuild --smoke </dev/null 2>&1)
+rc=$?
+present "rebuild-builds-release" "CARGO build --release --manifest-path $fx/latest/Cargo.toml" "$out"
+present "rebuild-launches-fresh" "PLACE --smoke" "$out"
+present "rebuild-announces" "rebuilt " "$out"
+zero "rebuild-exit" "$rc"
+if [ "$(git -C "$fx/latest" rev-parse HEAD 2>/dev/null)" = "$(git -C "$fx/origin" rev-parse HEAD)" ]; then
+    pass "rebuild-syncs-origin-main"
+else
+    fail "rebuild-syncs-origin-main" "worktree HEAD != origin HEAD" "$(git -C "$fx/latest" log --oneline -2 2>/dev/null)"
+fi
+if grep -q v2 "$fx/latest/version.txt" 2>/dev/null && grep -q dirty "$fx/root/dirty.txt"; then
+    pass "rebuild-leaves-checkout-alone"
+else
+    fail "rebuild-leaves-checkout-alone" "worktree not latest or checkout touched" "$(cat "$fx/latest/version.txt" 2>/dev/null; ls "$fx/root")"
+fi
+
+# Plain launch prefers the managed build when there is one.
+mkdir -p "$fx/latest/target/release"
+printf '#!/bin/sh\necho "LATEST $*"\n' >"$fx/latest/target/release/kiro-horror-tui"
+chmod +x "$fx/latest/target/release/kiro-horror-tui"
+out=$(env -u CRYPTE_BIN CRYPTE_LATEST_ROOT="$fx/latest" "$fxlauncher" --smoke </dev/null 2>&1)
+rc=$?
+present "place-prefers-latest-build" "LATEST --smoke" "$out"
+absent "place-prefers-latest-build" "PLACE" "$out"
+zero "place-prefers-latest-exit" "$rc"
+rm -rf "$fx/latest/target"
+
+# Dirty managed worktree: rebuild refuses, nothing rebuilds or launches.
+echo messy >"$fx/latest/messy.txt"
+out=$(CRYPTE_LATEST_ROOT="$fx/latest" "$fxlauncher" rebuild </dev/null 2>&1)
+rc=$?
+present "rebuild-dirty-refused" "dirty" "$out"
+absent "rebuild-dirty-refused" "PLACE" "$out"
+absent "rebuild-dirty-refused" "WINDOW" "$out"
+absent "rebuild-dirty-refused" "CARGO" "$out"
+nonzero "rebuild-dirty-exit" "$rc"
 
 printf '%s/%s passed\n' "$((count - fails))" "$count"
 if [ "$fails" -eq 0 ]; then
