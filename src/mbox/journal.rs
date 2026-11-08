@@ -52,6 +52,10 @@ pub fn creer_ordre(
     texte: &str,
 ) -> Result<String, String> {
     let (dest_p, ttl_h, src_p, texte_p) = valider_nouvel_ordre(dest, ttl_texte, src, texte)?;
+    let (corps, mut ext) = Extensions::extraire(&texte_p);
+    ext.hash = Some(super::ordres::empreinte(&corps));
+    let suf = ext.suffixe();
+    let texte_p = format!("{corps} {suf}").trim_start().to_string();
     let cible = dirs.ordres();
     let verrou = chemin_verrou(&cible);
     let ajoute = avec_verrou(&verrou, ATTENTE_VERROU_SECS, || {

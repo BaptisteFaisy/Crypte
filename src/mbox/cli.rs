@@ -46,6 +46,7 @@ const AIDE: &str = "bcast 2.0 — broadcast user + bus inter-agents
   bcast bus -t phone|gpu|file|divers [--from ID] -- <msg>
   bcast tail [-n N] [--bus t] [--all] | bcast digest | bcast rotate [--keep-days 7]
   bcast hb <nom> <état...> | bcast hb list | bcast ordre new|list|revoque|ack|pull | bcast doctor
+  bcast metriques [--agent ID] | bcast fantome rejouer|diff|etat|purge | bcast --fantome <cmd...>
   bcast jeton new [--ttl H] <nom> | bcast jeton revoque <nom> | bcast jeton list | bcast jeton purge
 Inbox : P0 popup+son, P1 popup, P2 log seul. Throttle : dedup 30 min, 6 msg/h.
 Sorties : 0 ok (throttled:/same-state inclus), 1 exécution, 2 usage, 3 déjà-en-cours.
@@ -73,6 +74,9 @@ pub fn exec(args: &[String], dir: &Path) -> i32 {
         "ordre" => cmd_ordre(&dir, reste),
         "doctor" => cmd_doctor(&dir, reste),
         "jeton" => cmd_jeton(&dir, reste),
+        "metriques" => super::metriques::cmd_metriques(&dir, reste),
+        "fantome" => super::fantome::cmd_fantome(&dir, reste),
+        "--fantome" => super::fantome::exec_fantome(&dir, reste),
         "version" => {
             println!("bcast {VERSION}");
             Sortie::Ok
@@ -179,16 +183,24 @@ fn cmd_send(dir: &BcastDir, args: &[String]) -> Sortie {
     let _ = dir.init();
     let saute_dedup = match passe_etat(dir, &exp, opt(&opts, "state")) {
         Ok(saute) => saute,
-        Err(sortie) => return sortie,
+        Err(sortie) => {
+            if sortie == Sortie::Ok {
+                super::metriques::incremente(dir, "send_same");
+            }
+            return sortie;
+        }
     };
     if !force {
         if let Err(motif) = garde_inbox(dir, &exp, &corps, saute_dedup) {
+            super::metriques::incremente_motif(dir, motif.verdict());
             println!("throttled:{}", motif.verdict());
             return Sortie::Ok;
         }
     }
     match append_verrouille(&dir.boite(), &enveloppe(&exp, pri, &dest, &corps)) {
         Ok(()) => {
+            super::metriques::incremente(dir, "send_ok");
+            super::metriques::incremente_agent(dir, &exp, "send_ok");
             println!("sent");
             Sortie::Ok
         }
@@ -213,6 +225,7 @@ fn cmd_bus(dir: &BcastDir, args: &[String]) -> Sortie {
     let _ = dir.init();
     let corps = msg.join(" ");
     if !garde_bus(dir, &exp, sujet, &corps) {
+        super::metriques::incremente(dir, "bus_dup");
         println!("throttled:dup");
         return Sortie::Ok;
     }
@@ -221,6 +234,8 @@ fn cmd_bus(dir: &BcastDir, args: &[String]) -> Sortie {
         &enveloppe(&exp, Priorite::P2, &format!("@{sujet}"), &corps),
     ) {
         Ok(()) => {
+            super::metriques::incremente(dir, "bus_ok");
+            super::metriques::incremente_agent(dir, &exp, "bus_ok");
             println!("sent");
             Sortie::Ok
         }
@@ -313,6 +328,7 @@ fn cmd_hb(dir: &BcastDir, args: &[String]) -> Sortie {
     let contenu = format!("{} {} {}\n", epoque(), maintenant(), etat.join(" "));
     match std::fs::write(dir.hb(nom), contenu) {
         Ok(()) => {
+            super::metriques::incremente(dir, "hb_ok");
             println!("ok");
             Sortie::Ok
         }

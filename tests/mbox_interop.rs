@@ -196,6 +196,62 @@ fn ordre_revoque_et_refus_mauvais_jeton() {
 }
 
 #[test]
+fn metriques_persistent_et_affichent() {
+    let (bcast, home) = bac("metriques");
+    let (code, out, _) = rust(&bcast, &home, &["send", "--from", "t-m", "--", "un"]);
+    assert_eq!((code, out.trim()), (0, "sent"));
+    let (code, out, _) = rust(&bcast, &home, &["send", "--from", "t-m", "--", "un"]);
+    assert_eq!((code, out.trim()), (0, "throttled:dup"));
+    let (code, out, _) = rust(&bcast, &home, &["metriques"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("send_ok=1"), "compteurs : {out}");
+    assert!(out.contains("send_dup=1"), "compteurs : {out}");
+    assert!(out.contains("integrite ordres:"), "intégrité : {out}");
+    let brut = std::fs::read_to_string(bcast.join(".state/metriques")).expect("persisté");
+    assert!(brut.contains("send_ok=1"), "fichier : {brut}");
+    let (code, out, _) = rust(&bcast, &home, &["doctor"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("metriques send="), "doctor : {out}");
+    nettoie(&bcast);
+}
+
+#[test]
+fn fantome_miroir_sans_ecriture_prod() {
+    let (bcast, home) = bac("fantome");
+    let (code, _, _) = rust(&bcast, &home, &["send", "--from", "t-f", "--", "prod"]);
+    assert_eq!(code, 0);
+    let avant = std::fs::read_to_string(bcast.join("BOITE-USER.md")).expect("prod");
+    let (code, out, _) = rust(
+        &bcast,
+        &home,
+        &["--fantome", "send", "--from", "t-f", "--", "ombre"],
+    );
+    assert_eq!(code, 0);
+    assert!(out.contains("miroir seul"), "fantôme : {out}");
+    let apres = std::fs::read_to_string(bcast.join("BOITE-USER.md")).expect("prod intacte");
+    assert_eq!(avant, apres, "la prod ne bouge pas");
+    let miroir = std::fs::read_to_string(bcast.join(".fantome/BOITE-USER.md")).expect("miroir");
+    assert!(miroir.contains("ombre"), "miroir : {miroir}");
+    let corpus = bcast.join("corpus.txt");
+    std::fs::write(
+        &corpus,
+        "# essai\nbus -t gpu --from t-f -- chaud\njeton new x\n",
+    )
+    .expect("corpus");
+    let (code, out, _) = rust(
+        &bcast,
+        &home,
+        &["fantome", "rejouer", corpus.to_str().unwrap()],
+    );
+    assert_eq!(code, 0);
+    assert!(out.contains("refuse"), "garde typée : {out}");
+    assert_eq!(rust(&bcast, &home, &["fantome", "diff"]).0, 0);
+    assert_eq!(rust(&bcast, &home, &["fantome", "purge"]).0, 0);
+    assert!(!bcast.join(".fantome").exists());
+    nettoie(&bcast);
+}
+
+#[test]
 fn usages_et_doctor() {
     let (bcast, home) = bac("doctor");
     assert_eq!(rust(&bcast, &home, &["nope"]).0, 2);

@@ -227,6 +227,7 @@ fn ordre_nouveau(dir: &BcastDir, args: &[String]) -> Sortie {
         &texte,
     ) {
         Ok(id) => {
+            super::metriques::incremente(dir, "ordre_new");
             println!("ordre={id}");
             Sortie::Ok
         }
@@ -267,6 +268,7 @@ fn ordre_revoque(dir: &BcastDir, args: &[String]) -> Sortie {
     }
     match revoquer(dir, id, &motif, token.as_deref().unwrap_or("")) {
         Ok(()) => {
+            super::metriques::incremente(dir, "ordre_revoque");
             println!("revoque={id}");
             Sortie::Ok
         }
@@ -308,6 +310,8 @@ fn ordre_accuse(dir: &BcastDir, args: &[String]) -> Sortie {
         token.as_deref().unwrap_or(""),
     ) {
         Ok(()) => {
+            super::metriques::incremente(dir, "ack_ok");
+            super::metriques::incremente_agent(dir, &exp, "ack_ok");
             println!("ack={} {}", args[0], args[1]); // Verdict tapé (bcast:261).
             Sortie::Ok
         }

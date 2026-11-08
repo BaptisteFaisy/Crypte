@@ -92,7 +92,7 @@ OPTIONS:
         --haunt-shot <png>  Write 4 frames of the haunt game (x2) as PNG
         --demo            Offline demo crypt (populated chats + agents)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
-        --mbox <cmd...>  Broadcast agents (send/bus/tail/rotate/digest/hb/ordre/jeton/doctor)
+        --mbox <cmd...>  Broadcast agents (send/bus/tail/rotate/digest/hb/ordre/jeton/doctor/metriques/fantome)
             BCAST_DIR overrides the root (else the machine broadcast dir); --token nom:secret for new/revoque/ack
 
 SETTINGS (/settings):

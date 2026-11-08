@@ -29,6 +29,7 @@ pub(crate) fn cmd_doctor(dir: &BcastDir, _args: &[String]) -> Sortie {
         println!("ERR dossier non inscriptible");
     }
     let alertes = verif_inbox(dir) + verif_canaux(dir) + verif_systemd(dir);
+    println!("OK {}", super::metriques::resume(dir));
     match append_verrouille(&dir.tailles(), &[format!("{} doctor ok", epoque())]) {
         Ok(()) => println!("OK écriture verrouillée"),
         Err(_) => {
