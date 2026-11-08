@@ -152,68 +152,6 @@ impl App {
         }
     }
 
-    /// `/agent [@<n>] <texte>` : sous-agent (agents.md préfixé si chargé,
-    /// sans historique) ; réponse livrée au chat n si ciblé, sinon ici.
-    /// `<nom-custom>` en tête (voir `agents_md`) = prompt custom en système.
-    /// Déconnecté → hint `/connect`, sans créer d'agent.
-    fn cmd_agent(&mut self, target: Option<usize>, prompt: String) {
-        let Some(provider) = self.provider.clone() else {
-            self.push_system(String::from(NOT_CONNECTED));
-            return;
-        };
-        let id = self.sessions.index();
-        let Some(deliver) = self.resolve_agent_deliver(target, id) else {
-            return;
-        };
-        // Premier envoi réel : lecture unique d'agents.md (pin + annonce).
-        self.ensure_agents_loaded();
-        let (messages, prompt) =
-            crate::kiro::agents_md::spawn_messages(self, self.agents_md.as_deref(), &prompt);
-        let used = crate::tokens::context_estimate(&messages);
-        if used > self.context_limit() {
-            self.push_system(format!(
-                "agent context full ({}), agent not started",
-                crate::tokens::fmt_context(used, self.context_limit())
-            ));
-            return;
-        }
-        let exchange = vec![(String::from("user"), prompt.clone())];
-        let Some(agent_id) = self.sessions.add_agent(id, &prompt, exchange) else {
-            return;
-        };
-        self.sessions
-            .attach_workspace(agent_id, crate::workspace::base().as_deref());
-        self.events
-            .emit(&Event::agent_spawned(agent_id, id, deliver, &prompt));
-        self.hooks_fire_agent_spawn(id, &prompt);
-        if deliver == id {
-            self.push_system(format!("agent#{agent_id} started"));
-        } else {
-            self.push_system(format!("agent#{agent_id} started → Chat {}", deliver + 1));
-        }
-        let model = self.effective_model();
-        let effort = self.thinking.clone();
-        let tx = self.tx.clone();
-        self.pool.spawn(async move {
-            let reply = provider
-                .complete_full(&messages, &model, effort.as_deref())
-                .await;
-            let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply)).await;
-        });
-    }
-
-    /// Chat de livraison `/agent` (`None` + note si cible inconnue).
-    fn resolve_agent_deliver(&mut self, target: Option<usize>, id: usize) -> Option<usize> {
-        match target {
-            None => Some(id),
-            Some(n) if self.sessions.get(n - 1).is_some() => Some(n - 1),
-            Some(n) => {
-                self.push_system(format!("chat {n} not found"));
-                None
-            }
-        }
-    }
-
     /// `/agents [all]` : sous-agents du chat courant, ou de tous les
     /// chats (`all`, préfixés `Chat k`) ; file d'attente entre crochets ;
     /// customs `.kiro/agents/` listés à la suite (`custom <nom>`).
