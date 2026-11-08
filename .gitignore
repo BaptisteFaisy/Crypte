@@ -1,3 +1,4 @@
+# Scaffold Tauri v2 + Svelte (create-tauri-app, merge du .gitignore racine TUI)
 /target/
 *.swp
 .DS_Store
@@ -5,3 +6,12 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+node_modules
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
