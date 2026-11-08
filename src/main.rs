@@ -110,6 +110,7 @@ KEYS (terminal >= 70x17):
     Enter  send    q  quit    F5  scare
     Ctrl+N or click [+]  new chat
     F6 or tab click  shop (1 token consumed = 1 coin)    click item  buy
+    Drag sidebar right edge  resize the coffins column
 
 ALMANAC (tokens per day, local date, shown by /usage):
     File: $XDG_DATA_HOME/kiro-horror-tui/almanac.json

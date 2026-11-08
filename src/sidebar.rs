@@ -119,6 +119,48 @@ fn plus_rect(area: Rect, chats: usize) -> Option<Rect> {
     }
 }
 
+/// Sidebar : 10 cellules min (noms encore lisibles).
+const SIDEBAR_MIN: u16 = 10;
+
+/// Largeur auto de la sidebar : 22 si ≥ 110 col., 18 sinon, 14 compact.
+pub fn side_auto(total: u16, compact: bool) -> u16 {
+    if compact {
+        14
+    } else if total >= 110 {
+        22
+    } else {
+        18
+    }
+}
+
+/// Largeur de la sidebar : auto + delta du drag, clampée (≥ 10, chat
+/// ≥ 30/36 et colonne droite ≥ 16 préservés, miroir de `right_width`).
+pub fn side_width(total: u16, delta: i16, compact: bool) -> u16 {
+    let keep = if compact { 30 } else { 36 + 16 };
+    let max = total.saturating_sub(keep).max(SIDEBAR_MIN);
+    let tuned = (side_auto(total, compact) as i16 + delta).clamp(SIDEBAR_MIN as i16, 80) as u16;
+    tuned.min(max)
+}
+
+/// Poignée de redimensionnement : 3 crans `┃` sur le bord droit de la
+/// sidebar, citrouille si active (survol/drag), ombre sinon.
+pub fn draw_side_grip(frame: &mut Frame, side: Rect, active: bool) {
+    if side.height < 5 {
+        return;
+    }
+    let x = side.x + side.width.saturating_sub(1);
+    let mid = side.y + side.height / 2;
+    let fg = if active { theme::PUMPKIN } else { theme::UMBER };
+    for dy in 0..3 {
+        let y = mid + dy - 1;
+        if y > side.y && y < side.y + side.height - 1 {
+            if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+                cell.set_symbol("┃").set_fg(fg);
+            }
+        }
+    }
+}
+
 /// Ligne bouton : `[+]` citrouille gras + `new chat` sable.
 /// Sidebar étroite (< 8) : `[+]` seul, sinon emprunté, jamais copié.
 fn plus_line(width: usize) -> Line<'static> {
@@ -329,6 +371,30 @@ mod tests {
         })
         .unwrap();
         assert_eq!(hits.unwrap().closes, vec![None, None]);
+    }
+
+    #[test]
+    fn largeur_auto_delta_et_clamp() {
+        assert_eq!(side_width(120, 0, false), 22);
+        assert_eq!(side_width(100, 0, false), 18);
+        assert_eq!(side_width(70, 0, true), 14);
+        assert_eq!(side_width(120, 10, false), 32); // drag élargit
+        assert_eq!(side_width(120, -4, false), 18); // drag rétrécit
+        assert_eq!(side_width(120, -64, false), 10); // plancher
+                                                     // Plafond : chat 36 + droit 16 préservés (120 − 52 = 68).
+        assert_eq!(side_width(120, 64, false), 68);
+        // Compact : chat 30 préservé (70 − 30 = 40).
+        assert_eq!(side_width(70, 64, true), 40);
+        // Poignée : 3 crans sur le bord droit, citrouille si active.
+        use ratatui::{backend::TestBackend, Terminal};
+        let mut term = Terminal::new(TestBackend::new(30, 10)).unwrap();
+        term.draw(|f| draw_side_grip(f, Rect::new(0, 0, 20, 10), true))
+            .unwrap();
+        let buf = term.backend().buffer();
+        for y in 4..=6 {
+            assert_eq!(buf[(19, y)].symbol(), "┃", "cran manquant en y={y}");
+            assert_eq!(buf[(19, y)].fg, theme::PUMPKIN);
+        }
     }
 
     #[test]

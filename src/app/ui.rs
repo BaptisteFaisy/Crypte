@@ -17,6 +17,7 @@ use super::App;
 use crate::bestiary::Creature;
 use crate::chat::ChatView;
 use crate::gfx::ImageBank;
+use crate::sidebar::{draw_side_grip, side_auto, side_width};
 use crate::theme::{self, ASH, BLOOD, BONE, CANDLE, PUMPKIN, SAND, UMBER, VOID};
 use crate::tokens::{fmt_tps, short_model};
 
@@ -51,6 +52,7 @@ impl App {
         let area = frame.area();
         self.plus_btn = None;
         self.side_rows = None;
+        self.side_area = None;
         self.close_btns.clear();
         self.tab_hits.clear();
         self.shop_rows.clear();
@@ -85,11 +87,12 @@ impl App {
 
     /// Corps chat : cercueils | discussion | hub + apparition.
     /// Sous 80 colonnes : cercueils réduits | discussion (droit masqué).
+    /// Sidebar redimensionnable : drag de sa poignée (bord droit).
     fn draw_chat(&mut self, frame: &mut Frame, area: Rect) {
         if area.width < COMPACT_W {
             return self.draw_chat_compact(frame, area);
         }
-        let side_w = if area.width >= 110 { 22 } else { 18 };
+        let side_w = side_width(area.width, self.side_delta, false);
         let [side, chat, right] = Layout::horizontal([
             Constraint::Length(side_w),
             Constraint::Min(36),
@@ -100,6 +103,9 @@ impl App {
         self.side_rows = hits.chats;
         self.plus_btn = hits.plus;
         self.close_btns = hits.closes;
+        self.side_area = Some(side);
+        self.side_auto = side_auto(area.width, false);
+        draw_side_grip(frame, side, self.side_active());
         let sess = self.sessions.current_mut();
         let view = ChatView {
             title: &sess.name,
@@ -124,12 +130,16 @@ impl App {
     /// Corps compact (< 80 col.) : sidebar 14 + discussion au reste.
     /// Panneau droit masqué : le chat reste pleinement utilisable.
     fn draw_chat_compact(&mut self, frame: &mut Frame, area: Rect) {
+        let side_w = side_width(area.width, self.side_delta, true);
         let [side, chat] =
-            Layout::horizontal([Constraint::Length(14), Constraint::Min(30)]).areas(area);
+            Layout::horizontal([Constraint::Length(side_w), Constraint::Min(30)]).areas(area);
         let hits = self.sessions.draw_sidebar(frame, side);
         self.side_rows = hits.chats;
         self.plus_btn = hits.plus;
         self.close_btns = hits.closes;
+        self.side_area = Some(side);
+        self.side_auto = side_auto(area.width, true);
+        draw_side_grip(frame, side, self.side_active());
         let sess = self.sessions.current_mut();
         let view = ChatView {
             title: &sess.name,
@@ -137,6 +147,11 @@ impl App {
             sending: sess.sending,
         };
         sess.chat.draw(frame, chat, view);
+    }
+
+    /// Poignée sidebar « chaude » : survolée ou en cours de drag.
+    fn side_active(&self) -> bool {
+        self.side_hot || self.resizing_side.is_some()
     }
 
     /// En-tête : titre en dégradé, onglets (cliquables, voir `mouse`),

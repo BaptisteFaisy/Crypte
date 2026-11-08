@@ -85,6 +85,16 @@ pub struct App {
     pub(crate) screen: Screen,
     /// Ajustement manuel de la colonne droite (Ctrl+←/→, 0 = auto).
     pub(crate) right_delta: i16,
+    /// Ajustement manuel de la sidebar (drag souris, 0 = auto).
+    pub(crate) side_delta: i16,
+    /// Rectangle de la sidebar (mémorisé au rendu, `None` hors chat).
+    pub(crate) side_area: Option<Rect>,
+    /// Largeur auto de la sidebar au dernier rendu (base du delta).
+    pub(crate) side_auto: u16,
+    /// Drag sidebar en cours : décalage souris → bord droit (anti-saut).
+    pub(crate) resizing_side: Option<i16>,
+    /// Poignée sidebar survolée (mise en relief).
+    pub(crate) side_hot: bool,
     /// Rectangle du bouton [+] (mémorisé au rendu, `None` hors sidebar).
     pub(crate) plus_btn: Option<Rect>,
     /// Bloc des lignes de chats de la sidebar (mémorisé au rendu, une
