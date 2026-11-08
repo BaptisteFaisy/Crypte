@@ -3,7 +3,7 @@
 //! chat), bouton [×] (fermer le chat), lignes de la sidebar (choisir le
 //! chat), onglets de l'en-tête (changer d'écran), articles de la
 //! boutique (acheter), drag du bord droit de la sidebar (redimensionner
-//! la colonne).
+//! la colonne), drag dans l'historique (sélection = copie, voir `clip`).
 //!
 //! La capture souris est activée par `main` (désactivée en sortie) ;
 //! les rectangles sont mémorisés à chaque frame (`App::plus_btn`,
@@ -18,8 +18,9 @@ use crate::chat::SCROLL_STEP;
 
 impl App {
     /// Molette : défiler le chat ; pression gauche : poignée sidebar
-    /// (drag) ou clic ; drag : redimensionner la sidebar ; release :
-    /// fin du drag ; mouvement : éclairer la poignée survolée.
+    /// (drag), sélection historique ou clic ; drag : redimensionner ou
+    /// étendre la sélection ; release : fin du drag + copie ; mouvement :
+    /// éclairer la poignée survolée.
     /// Clic : Kiro = le frapper (bulle = la taire), [+] = nouveau chat,
     /// [×] = fermer, ligne = choisir, onglet = écran, article = acheter
     /// (le reste est ignoré).
@@ -28,8 +29,14 @@ impl App {
             MouseEventKind::ScrollUp => return self.wheel(mev, -SCROLL_STEP),
             MouseEventKind::ScrollDown => return self.wheel(mev, SCROLL_STEP),
             MouseEventKind::Down(MouseButton::Left) => self.press(mev.column, mev.row),
-            MouseEventKind::Drag(MouseButton::Left) => self.drag_to(mev.column),
-            MouseEventKind::Up(MouseButton::Left) => self.resizing_side = None,
+            MouseEventKind::Drag(MouseButton::Left) => {
+                self.drag_to(mev.column);
+                self.sel_drag(mev.column, mev.row);
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                self.resizing_side = None;
+                self.sel_release();
+            }
             MouseEventKind::Moved => self.hover(mev.column, mev.row),
             _ => {}
         }
@@ -47,6 +54,7 @@ impl App {
             return;
         }
         self.resizing_side = None;
+        self.sel_press(column, row);
         self.click(Position::new(column, row));
     }
 

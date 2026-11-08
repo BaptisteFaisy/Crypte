@@ -144,6 +144,7 @@ impl App {
             side_auto: 18,
             resizing_side: None,
             side_hot: false,
+            clip_last: String::new(),
             plus_btn: None,
             side_rows: None,
             close_btns: Vec::new(),

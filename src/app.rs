@@ -117,6 +117,8 @@ pub struct App {
     pub(crate) resizing_side: Option<i16>,
     /// Poignée sidebar survolée (mise en relief).
     pub(crate) side_hot: bool,
+    /// Dernière sélection copiée (repli si le presse-papiers système est illisible).
+    pub(crate) clip_last: String,
     /// Rectangle du bouton [+] (mémorisé au rendu, `None` hors sidebar).
     pub(crate) plus_btn: Option<Rect>,
     /// Bloc des lignes de chats de la sidebar (mémorisé au rendu, une
@@ -196,6 +198,7 @@ impl App {
                             }
                         }
                         Event::Mouse(mev) => self.on_mouse(mev),
+                        Event::Paste(text) => self.on_paste(text),
                         _ => {}
                     }
                     dirty |= self.screen != Screen::Haunt;

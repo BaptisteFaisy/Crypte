@@ -47,6 +47,7 @@ impl App {
             KeyCode::Char('q') if !ctrl && empty => false,
             KeyCode::Char('n' | 'N') if ctrl => self.cmd(|s| s.add_chat()),
             KeyCode::Char('w' | 'W') if ctrl => self.cmd(|s| s.close_chat(s.sessions.index())),
+            KeyCode::Char('v' | 'V') if ctrl => self.cmd(|s| s.paste_clip()),
             KeyCode::Char(c) if !ctrl => self.cmd(|s| s.type_char(c)),
             KeyCode::Backspace => self.cmd(|s| s.backspace()),
             KeyCode::Enter => self.cmd(|s| s.send()),
@@ -115,6 +116,16 @@ mod tests {
             model: String::from("factice"),
         })
         .unwrap()
+    }
+
+    #[test]
+    fn ctrl_v_colle_dans_la_barre_de_saisie() {
+        let mut app = test_app();
+        app.clip_last = String::from("collé");
+        let attendu = crate::clip::resolve_paste("collé");
+        let ctrl_v = KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL);
+        assert!(app.on_key(ctrl_v));
+        assert_eq!(app.sessions.current().chat.input, attendu);
     }
 
     #[test]
