@@ -435,6 +435,12 @@ mod tests {
     #[tokio::test]
     async fn boucle_shell_execute_livre_et_libere() {
         let mut app = test_app();
+        // Config vide injectée : hermétique au .kiro/ réel du dépôt (pas de spawn MCP).
+        let vide = std::env::temp_dir().join(format!("kh-flow-{}", std::process::id()));
+        std::fs::create_dir_all(&vide).unwrap();
+        app.t5.kiro_project = vide.clone();
+        app.t5.kiro_global = None;
+        app.mcp = crate::kiro::mcp_pool::McpState::for_config(crate::kiro::mcp::Config::default());
         app.permissions = Mode::Yolo;
         app.sessions
             .current_mut()
@@ -462,6 +468,7 @@ mod tests {
         assert!(app.tool_run.is_none());
         assert!(!app.sessions.get(0).unwrap().sending);
         assert!(last_text(&app, 0).starts_with("error:"));
+        std::fs::remove_dir_all(&vide).ok();
     }
 
     #[test]
