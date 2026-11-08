@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "cargo-test-green",
+      "trigger": "PostTaskExecution",
+      "timeout": 120,
+      "action": {
+        "type": "command",
+        "command": "out=$(cargo test --quiet 2>&1); code=$?; printf '%s\\n' \"$out\" | tail -30; exit $code"
+      }
+    }
+  ]
+}

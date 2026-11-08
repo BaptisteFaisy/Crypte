@@ -1,0 +1,25 @@
+# Crypte (.kiroignore) — syntaxe gitignore, lue par Kiro ET Crypte.
+# `**/` = toute profondeur des deux côtés (`*` seul ne traverse pas
+# `/` côté Crypte, contrairement à gitignore).
+
+# Build Rust : régénéré par cargo, volumineux, jamais utile en contexte
+target/
+
+# Bytecode Python (un .pyc est même commité sous .github/hermes/)
+**/__pycache__/
+**/*.pyc
+
+# Secrets : jamais dans le contexte agent
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.p12
+**/credentials/
+
+# Rebuts locaux (previews --preview, logs, swap, macOS)
+**/*.ans
+**/*.log
+**/*.swp
+**/.DS_Store

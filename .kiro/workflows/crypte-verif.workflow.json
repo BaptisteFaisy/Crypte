@@ -1,0 +1,24 @@
+{
+  "name": "crypte-verif",
+  "description": "Verifie la Crypte : build 0 warning, fmt, tests, smoke headless, puis relecture 500/30.",
+  "steps": [
+    {
+      "type": "step",
+      "id": "build",
+      "agent": "wf-coder",
+      "prompt": "Dans ce depot Rust (kiro-horror-tui), lance `cargo build` puis `cargo fmt --check`. Corrige les warnings et le formatage si besoin. Termine par send_message severity success avec le resume : warnings restants (0 exige) et resultat fmt. Reponds en francais."
+    },
+    {
+      "type": "step",
+      "id": "test",
+      "agent": "wf-coder",
+      "prompt": "Resultat du build :\n\n{{build.output}}\n\nLance `cargo test` puis `./target/debug/kiro-horror-tui --smoke` (rendu headless 80x24, sans reseau ni cle). Si un test echoue, diagnostique et corrige, puis relance. Termine par send_message severity success avec : tests (x/y verts), smoke OK/KO. Reponds en francais."
+    },
+    {
+      "type": "step",
+      "id": "relecture",
+      "agent": "crypte-relecteur",
+      "prompt": "Build :\n\n{{build.output}}\n\nTests :\n\n{{test.output}}\n\nApplique ta grille de relecture sur les fichiers modifies (git diff --name-only contre origin/main) : 500 lignes et 30 fonctions max par fichier, fonction < 50 lignes, zero duplication, couleurs via theme.rs, UI en anglais, pas de cle logguee. Tu es en lecture seule : rends le tableau fichier/lignes/fns/verdict + les commandes relancees. Termine par send_message severity success avec ton verdict final."
+    }
+  ]
+}
