@@ -166,7 +166,6 @@ mod tests {
         app.tool_run = Some(crate::tools::flow::ToolRun {
             chat: 0,
             wire: Vec::new(),
-            rounds: 1,
             queue: VecDeque::from([call.clone()]),
             confirming: false,
         });
