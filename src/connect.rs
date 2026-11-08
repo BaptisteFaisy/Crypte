@@ -115,7 +115,10 @@ impl App {
     /// Échap annule (le reste — F5, Ctrl+N… — est ignoré, pas de quit).
     pub(crate) fn on_flow_key(&mut self, key: KeyEvent) -> bool {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            return true;
+            return match key.code {
+                KeyCode::Char('v' | 'V') => self.cmd(|s| s.paste_flow_ctrl_v()),
+                _ => true,
+            };
         }
         match key.code {
             KeyCode::Esc => self.cmd(|s| s.cancel_flow()),
@@ -157,6 +160,24 @@ impl App {
             flow.buffer.pop();
         }
         self.sync_flow_prompt();
+    }
+
+    /// Colle un texte assaini dans le buffer (Ctrl+V, collage terminal).
+    pub(crate) fn paste_flow_text(&mut self, raw: &str) {
+        let clean = crate::clip::sanitize_paste(raw);
+        if clean.is_empty() {
+            return;
+        }
+        if let Some(flow) = self.connect_flow.as_mut() {
+            flow.buffer.push_str(&clean);
+        }
+        self.sync_flow_prompt();
+    }
+
+    /// Ctrl+V pendant le flow : système (repli : dernière copie) → buffer.
+    fn paste_flow_ctrl_v(&mut self) {
+        let text = crate::clip::resolve_paste(&self.clip_last);
+        self.paste_flow_text(&text);
     }
 
     /// Buffer du flow trimmé (vide si pas de flow).
@@ -294,6 +315,17 @@ mod tests {
         app.flow_push('x'); // sync_flow_prompt : sans panique
         app.cancel_flow(); // restore_prompt + push_system : sans panique
         assert!(app.connect_flow.is_none());
+    }
+
+    #[test]
+    fn ctrl_v_colle_dans_le_buffer_du_flow() {
+        let (mut app, _dir) = app_with_vault("flow-paste");
+        app.start_connect_flow("openai");
+        app.clip_last = String::from("sk-test");
+        let attendu = crate::clip::resolve_paste("sk-test");
+        let ctrl_v = KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL);
+        assert!(app.on_flow_key(ctrl_v));
+        assert_eq!(app.connect_flow.as_ref().unwrap().buffer, attendu);
     }
 
     #[test]

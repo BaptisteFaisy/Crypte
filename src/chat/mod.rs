@@ -23,9 +23,9 @@ use crate::theme::{self, ASH, BONE, CANDLE, PUMPKIN, SAND, UMBER};
 /// Historique borné (les plus vieux sortent au-delà du cap).
 const MAX_MESSAGES: usize = 200;
 /// Hauteur fixe (bordures incluses) de la zone de saisie.
-const INPUT_HEIGHT: u16 = 3;
+pub(crate) const INPUT_HEIGHT: u16 = 3;
 /// Gouttière : barre colorée + espace devant chaque ligne.
-const GUTTER: &str = "▍ ";
+pub(crate) const GUTTER: &str = "▍ ";
 /// Lignes par cran de molette.
 pub const SCROLL_STEP: isize = 3;
 /// Lignes par page clavier (PgUp/PgDn).
@@ -73,6 +73,8 @@ pub struct ChatState {
     wrap_version: u64,
     /// Lignes wrappées : (version, largeur, lignes), `None` = à calculer.
     wrap_cache: Option<(u64, usize, Vec<Line<'static>>)>,
+    /// Sélection souris en cours (copiée au relâchement, `None` sinon).
+    pub(crate) select: Option<crate::clip::Selection>,
 }
 
 impl ChatState {
@@ -146,6 +148,29 @@ impl ChatState {
     /// Efface le dernier caractère du brouillon.
     pub fn input_pop(&mut self) {
         self.input.pop();
+    }
+
+    /// Colle `s` (déjà assaini) à la fin du brouillon.
+    pub fn input_insert(&mut self, s: &str) {
+        self.input.push_str(s);
+    }
+
+    /// Lignes visibles en texte brut (gouttière retirée) pour la sélection.
+    pub(crate) fn visible_plain(&mut self, sending: bool) -> Vec<String> {
+        let inner = crate::clip::history_inner(self.area.get());
+        if inner.width == 0 || inner.height == 0 {
+            return Vec::new();
+        }
+        let width = inner.width as usize;
+        let extra = usize::from(sending) * 2;
+        let total = self.wrapped_lines(width).len().saturating_add(extra);
+        let (skip, _) = self.scroll.viewport(total, inner.height as usize);
+        self.wrapped_lines(width)
+            .iter()
+            .skip(skip)
+            .take(inner.height as usize)
+            .map(crate::clip::plain_text)
+            .collect()
     }
 
     /// Prend le brouillon (le vide) pour l'envoyer.
@@ -228,6 +253,7 @@ impl ChatState {
         }
         let width = inner.width as usize;
         let extra = usize::from(view.sending) * 2;
+        let sel = self.select;
         let total = self.wrapped_lines(width).len().saturating_add(extra);
         let (skip, scrolled) = self.scroll.viewport(total, inner.height as usize);
         // Second appel = hit (calculé ci-dessus), pour libérer `scroll`.
@@ -237,6 +263,15 @@ impl ChatState {
             let tail = [Line::raw(""), murmur_line(view.tick)];
             let drop = skip.saturating_sub(base.len()).min(2);
             visible.extend(tail.into_iter().skip(drop));
+        }
+        if let Some(sel) = &sel {
+            let lens: Vec<usize> = base
+                .iter()
+                .skip(skip)
+                .take(visible.len())
+                .map(|l| crate::clip::plain_text(l).chars().count())
+                .collect();
+            crate::clip::highlight(&mut visible, &lens, inner, sel);
         }
         let block = if scrolled == 0 {
             block

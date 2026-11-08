@@ -15,6 +15,7 @@ mod bestiary;
 mod bus;
 mod canvas;
 mod chat;
+mod clip;
 mod cmds;
 mod cmds_agent;
 mod cmds_link;
@@ -57,7 +58,9 @@ mod workspace;
 use std::{io, path::PathBuf};
 
 use anyhow::{Context, Result};
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::event::{
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+};
 use crossterm::execute;
 use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
 
@@ -119,6 +122,7 @@ KEYS (terminal >= 70x17):
     Ctrl+N or click [+]  new chat
     F6 or tab click  shop (1 token consumed = 1 coin)    click item  buy
     Drag sidebar right edge  resize the coffins column
+    Drag in history  copy    Ctrl+V  paste in the input bar
     F9 or tab click  haunt (platform game)
 
 HAUNT (F9, platform game, level 1 — very hard):
@@ -332,13 +336,13 @@ async fn async_main() -> Result<()> {
         app.populate_hub_demo();
     }
     let mut terminal = ratatui::init();
-    let _ = execute!(io::stdout(), EnableMouseCapture);
+    let _ = execute!(io::stdout(), EnableMouseCapture, EnableBracketedPaste);
     let result = match app.attach_terminal() {
         Ok(()) => app.run(&mut terminal).await,
         Err(err) => Err(err),
     };
     let _ = crate::ghostty::leave();
-    let _ = execute!(io::stdout(), DisableMouseCapture);
+    let _ = execute!(io::stdout(), DisableMouseCapture, DisableBracketedPaste);
     ratatui::restore();
     result
 }
