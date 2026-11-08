@@ -12,6 +12,15 @@ use std::process::Command;
 /// `bcast` shell de référence (interop lecture/écriture à l'identique).
 const BCAST_SHELL: &str = "/home/baptiste/Bureau/.scratch/broadcast/bin/bcast";
 
+/// Chemin du shell (`MBOX_BCAST_SHELL` prime, pour CI/portabilité).
+fn bcast_shell() -> PathBuf {
+    std::env::var_os("MBOX_BCAST_SHELL")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(BCAST_SHELL))
+}
+
+// Garde tests shell : `if !bcast_shell().is_file() { return; }` en tête (skip si absent).
+
 /// Binaire sous test (construit par cargo avant les tests d'intégration).
 fn binaire() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_kiro-horror-tui"))
@@ -56,12 +65,9 @@ fn rust(bcast: &Path, home: &Path, args: &[&str]) -> (i32, String, String) {
 }
 
 /// Exécute le `bcast` shell de référence (code, stdout, stderr).
+/// Garder `if !bcast_shell().is_file() { return; }` en tête des appelants.
 fn shell(bcast: &Path, args: &[&str]) -> (i32, String, String) {
-    assert!(
-        Path::new(BCAST_SHELL).is_file(),
-        "shell {BCAST_SHELL} absent"
-    );
-    let sortie = Command::new(BCAST_SHELL)
+    let sortie = Command::new(bcast_shell())
         .args(args)
         .env("BCAST_DIR", bcast)
         .output()
@@ -75,6 +81,9 @@ fn shell(bcast: &Path, args: &[&str]) -> (i32, String, String) {
 
 #[test]
 fn roundtrip_rust_shell_inbox() {
+    if !bcast_shell().is_file() {
+        return;
+    }
     let (bcast, home) = bac("inbox");
     let (code, out, _) = rust(
         &bcast,
@@ -101,6 +110,9 @@ fn roundtrip_rust_shell_inbox() {
 
 #[test]
 fn bus_et_dedup_partages() {
+    if !bcast_shell().is_file() {
+        return;
+    }
     let (bcast, home) = bac("bus");
     let (code, out, _) = rust(
         &bcast,
@@ -209,6 +221,9 @@ fn emet_jeton_et_ordre(bcast: &Path, home: &Path, agent: &str, texte: &str) -> (
 
 #[test]
 fn jeton_ordre_ack_bout_en_bout() {
+    if !bcast_shell().is_file() {
+        return;
+    }
     let (bcast, home) = bac("ordres-ack");
     let (jeton, id) = emet_jeton_et_ordre(&bcast, &home, "agent-i", "relire le plan");
     let (code, out, _) = shell(&bcast, &["ordre", "list"]);

@@ -46,7 +46,7 @@ use super::journal::creer_ordre;
 use super::ordres::Extensions;
 use super::ordres::{Ordre, StatutOrdre, VerifieJeton, TTL_DEFAUT_HEURES};
 use super::outils::{porte_jeton, usg};
-use super::{sha1_hex, BcastDir, Sortie};
+use super::{sans_retours, sha1_hex, BcastDir, Sortie};
 
 /// Pièces jointes max par transfert (allowliste explicite, D3).
 pub const MAX_PIECES: usize = 8;
@@ -113,7 +113,7 @@ pub fn analyser_demande(
         return Err("bcast: identifiant d'ordre invalide".to_string());
     }
     let destinataire = valider_destinataire(destinataire)?;
-    let resume = resume.replace('\n', " ").replace('\r', " ");
+    let resume = sans_retours(resume);
     if resume.trim().is_empty() {
         return Err("bcast: résumé de délégation vide".to_string());
     }
@@ -380,7 +380,7 @@ mod tests {
         std::fs::write(&petit, "bonjour").expect("piece");
         let chemin = petit.to_string_lossy().to_string();
         // Absolu refusé : portée minimale = chemins relatifs explicites.
-        assert!(controler_pieces(&[chemin.clone()]).is_err());
+        assert!(controler_pieces(std::slice::from_ref(&chemin)).is_err());
         assert!(controler_pieces(&["../echappe.txt".to_string()]).is_err());
         assert!(controler_pieces(&["a|b".to_string()]).is_err());
         assert!(controler_pieces(&["n-existe-pas-xyz.txt".to_string()]).is_err());
@@ -388,7 +388,7 @@ mod tests {
         let relatif = format!("target/mbox-deleg-rel-{}.txt", std::process::id());
         std::fs::create_dir_all("target").ok();
         std::fs::write(&relatif, "bonjour").expect("relatif");
-        let scellees = controler_pieces(&[relatif.clone()]).expect("scelle");
+        let scellees = controler_pieces(std::slice::from_ref(&relatif)).expect("scelle");
         assert_eq!(scellees.len(), 1);
         assert_eq!(scellees[0].octets, 7);
         assert_eq!(scellees[0].sha1, sha1_hex(b"bonjour"));
@@ -396,7 +396,7 @@ mod tests {
         // Plafond : 64 Kio + 1 refusé par le contrôleur lui-même.
         let gros = format!("target/mbox-deleg-gros-{}.bin", std::process::id());
         std::fs::write(&gros, vec![0u8; TAILLE_MAX_PIECE as usize + 1]).expect("gros");
-        assert!(controler_pieces(&[gros.clone()]).is_err());
+        assert!(controler_pieces(std::slice::from_ref(&gros)).is_err());
         let _ = std::fs::remove_file(&gros);
         let _ = std::fs::remove_dir_all(&dir);
     }

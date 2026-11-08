@@ -97,8 +97,7 @@ fn mettre_a_jour(
             etats[i] = Bloque;
         }
     }
-    let coince =
-        lance == 0 && etats.iter().any(|e| *e == Attente) && !etats.iter().any(|e| *e == Cours);
+    let coince = lance == 0 && etats.contains(&Attente) && !etats.contains(&Cours);
     if coince {
         for e in etats.iter_mut().filter(|e| **e == Attente) {
             *e = Bloque;

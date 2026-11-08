@@ -175,6 +175,7 @@ mod tests {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(&lock)
             .expect("lock");
         prendre_verrou(&garde, 5).expect("premier");

@@ -301,6 +301,17 @@ pub fn tampon() -> String {
 /// les lignes vides. Deux messages identiques à dates différentes partagent
 /// la même forme — le shell hache le corps brut, cette passe est le point
 /// unique côté Rust et ne doit être réimplémentée nulle part ailleurs.
+/// Une seule ligne : `\n`/`\r` → espace (point unique : `ack`, `delegation`).
+pub fn sans_retours(texte: &str) -> String {
+    texte
+        .chars()
+        .map(|c| match c {
+            '\n' | '\r' => ' ',
+            _ => c,
+        })
+        .collect()
+}
+
 pub fn normalise(corps: &str) -> String {
     let chiffres = |octets: &[u8], debut: usize, n: usize| -> bool {
         octets.len() >= debut + n && octets[debut..debut + n].iter().all(u8::is_ascii_digit)

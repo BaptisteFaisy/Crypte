@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use super::fichier::{append_verrouille, epoque_fichier, hb_perime, lire_lignes, tail_n};
 use super::format::{epoque, est_message, est_suite, BcastDir, Sortie, SUJETS_BUS};
+use super::BCAST_DIR_DEFAUT;
 
 /// Alerte quand l'inbox dépasse ce nombre de lignes (bcast:278).
 const INBOX_ALERTE_LIGNES: usize = 2000;
@@ -128,9 +129,11 @@ fn verif_canaux(dir: &BcastDir) -> u32 {
     alertes
 }
 
-/// Contrôle systemd, seulement sur le dossier mono-user (bcast:290-295).
+/// Contrôle systemd, seulement sur le dossier prod réel (bcast:290-295).
+/// Hermétique : `defaut()` suit `BCAST_DIR`, donc tout dossier explicite
+/// (tests, Tauri) saute ce contrôle au lieu de sonder la machine hôte.
 fn verif_systemd(dir: &BcastDir) -> u32 {
-    if dir.boite() != BcastDir::defaut().boite() {
+    if dir.racine() != std::path::Path::new(BCAST_DIR_DEFAUT) {
         return 0;
     }
     let mut alertes = 0;

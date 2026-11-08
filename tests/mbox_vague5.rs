@@ -72,6 +72,7 @@ fn json_valide(texte: &str) -> bool {
         .expect("python3 requis pour valider le JSON (oracle json.tool)");
     if let Some(entree) = enfant.stdin.as_mut() {
         if entree.write_all(texte.as_bytes()).is_err() {
+            let _ = enfant.wait();
             return false;
         }
     }

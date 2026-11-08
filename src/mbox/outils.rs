@@ -16,12 +16,12 @@ pub(crate) fn usg(message: &str) -> Sortie {
     Sortie::Usage
 }
 
+/// Options `(nom, valeur)` + messages positionnels (`decoupage`).
+pub(crate) type Decoupage = (Vec<(String, String)>, Vec<String>);
+
 /// Découpe options et messages : `specs` = `(nom sans tirets, prend_valeur)`.
 /// `--` ou premier positionnel : tout le reste est message (`*) msg=("$@")`).
-pub(crate) fn decoupage(
-    args: &[String],
-    specs: &[(&str, bool)],
-) -> Result<(Vec<(String, String)>, Vec<String>), Sortie> {
+pub(crate) fn decoupage(args: &[String], specs: &[(&str, bool)]) -> Result<Decoupage, Sortie> {
     let (mut opts, mut msg) = (Vec::new(), Vec::new());
     let mut i = 0;
     while i < args.len() {

@@ -26,7 +26,7 @@
 //! `ordre_new` shell), défini une seule fois dans `super::format` et
 //! réexporté ici (tranche assembleur : fin des doublons `TTL-SOCLE`).
 
-use super::{normalise, sha1_hex};
+use super::{normalise, sans_retours, sha1_hex};
 
 pub use super::format::{analyser_ttl, est_expire, TTL_DEFAUT_HEURES};
 
@@ -195,10 +195,7 @@ pub fn valider_nouvel_ordre(
     } else {
         analyser_ttl(ttl_texte)?
     };
-    let propre = texte
-        .replace('|', "/")
-        .replace('\n', " ")
-        .replace('\r', " ");
+    let propre = sans_retours(&texte.replace('|', "/"));
     if propre.trim().is_empty() {
         return Err("bcast: texte d'ordre vide".to_string());
     }

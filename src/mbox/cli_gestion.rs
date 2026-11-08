@@ -277,7 +277,7 @@ fn ordre_revoque(dir: &BcastDir, args: &[String]) -> Sortie {
     let Some(id) = args.first() else {
         return usg("usage : bcast ordre revoque <id> [motif]");
     };
-    let Ok((token, reste)) = extrait_option(&args[1..].to_vec(), "token") else {
+    let Ok((token, reste)) = extrait_option(&args[1..], "token") else {
         return Sortie::Usage;
     };
     let motif = reste.join(" ");
@@ -305,7 +305,7 @@ fn ordre_accuse(dir: &BcastDir, args: &[String]) -> Sortie {
             "usage : bcast ordre ack <id> <lu|applique|refuse> [motif] [--from ID] [--token T]",
         );
     }
-    let Ok((from, reste)) = extrait_option(&args[2..].to_vec(), "from") else {
+    let Ok((from, reste)) = extrait_option(&args[2..], "from") else {
         return Sortie::Usage;
     };
     let Ok((token, reste)) = extrait_option(&reste, "token") else {

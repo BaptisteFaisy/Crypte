@@ -16,6 +16,7 @@
 //! `revoque` est réservé au système (ligne écrite lors d'une révocation).
 
 use super::ordres::{empreinte, Extensions, Ordre, StatutOrdre, VerifieJeton};
+use super::sans_retours;
 
 /// Verdict d'ACK (colonne 4 de `ORDRES-ACK.log`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,10 +144,7 @@ pub fn valider_ack(
         epoch,
         expediteur: expediteur.replace('|', "/"),
         verdict,
-        motif: motif
-            .replace('|', "/")
-            .replace('\n', " ")
-            .replace('\r', " "),
+        motif: sans_retours(&motif.replace('|', "/")),
     })
 }
 

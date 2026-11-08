@@ -16,21 +16,20 @@
 //! `--json` = drapeau sans valeur : `extrait_option` (`cli_gestion.rs:247-266`) exige une valeur → variante drapeau ici
 //! (`est_drapeau_json` + `sans_json`, même patron, positionnels préservés), AVANT `decoupage` (`outils.rs:40`, inconnu = rc 2).
 //! `cli_gestion.rs` (452 L) `ordre list` +3 L : `let j = est_drapeau_json(&args[1..]); let f = sans_json(&args[1..]);`
-//! + `let tout = f.first().is_some_and(|a| a == "--all");` (`--all` sur épurées, sémantique `$1` gardée)
-//! + `if j { println!("{}", liste_ordres_json(dir, tout)); } else { print!("{}", lister(dir, tout)); }`.
+//! → `let tout = f.first().is_some_and(|a| a == "--all");` (`--all` sur épurées, sémantique `$1` gardée)
+//! → `if j { println!("{}", liste_ordres_json(dir, tout)); } else { print!("{}", lister(dir, tout)); }`.
 //! `cli_gestion.rs` `ordre pull` +3 L : `let j` + `let f`, `f.first()` au lieu de `args.first()` (même `usg`),
-//! + `if j { println!("{}", pull_json(dir, agent)); } else { print!("{}", tirer(dir, agent)); }`.
+//! → `if j { println!("{}", pull_json(dir, agent)); } else { print!("{}", tirer(dir, agent)); }`.
 //! `metriques.rs` (240 L) +3 L, `piste.rs` (361 L) +3 L : fantôme 2 L en tête (`let j = …;` + `let args = sans_json(args);`
-//! + `let args: &[String] = &args;`, suite inchangée) puis 1 L après `decoupage` (métriques, `opt agent` brut, `sanitize`
+//! → `let args: &[String] = &args;`, suite inchangée) puis 1 L après `decoupage` (métriques, `opt agent` brut, `sanitize`
 //! dedans) ou après les `filtre_…` (piste, déjà normalisés, `champ` privé) : `if j { println!("{}", metriques_json(dir,`
 //! `opt(&opts,"agent"))); return Sortie::Ok; }` (piste : `piste_json(dir, filtre_ordre.as_deref(), filtre_agent.as_deref())`).
 //! `cli.rs` (492 L, +6 MAX) `cmd_tail` +3 L → 495 : même fantôme 2 L, puis après le parse de `n` (erreurs intactes) :
 //! `if j { if let Some(t) = tail_json(dir, n, opt(&opts,"bus"), flag(&opts,"all")) { println!("{t}"); return Sortie::Ok; } }`
 //! (`None` = topic inconnu : retombe sur l'`usg` existant, rc 2, zéro duplication du message).
-//! Interop : NOUVEAU `tests/mbox_vague5.rs` (std seul, `interop` saturé 482 L/22 fn) : (1) chaque `--json` rc 0 + `python3 -m
-//! json.tool` (via `Command`, stdin pipé) rc 0 ; (2) `"`, `\`, emoji → `\"`, `\\`, tel quel + parse OK ; (3) `list`/`pull`
-//! contiennent `"to":"ALL","ttl":24`, `"hash":"<40hexa>"` ; (4) secret `nom:SECRET_XYZ` utilisé : absent des JSON ;
-//! (5) `tail --bus nope --json` → 2, `ordre pull --json` → 2, `metriques --json --nope` → 2.
+//! Interop : NOUVEAU `tests/mbox_vague5.rs` (std seul) : chaque `--json` rc 0 et parsé par `python3 -m json.tool`
+//! (via `Command`, stdin pipé) ; échappement `"`, `\`, emoji vérifié ; clés `to`/`ttl`/`hash` présentes ; secret
+//! utilisé absent des JSON ; topics et options inconnus → rc 2.
 //! Zéro duplication : `Ordre::parse_ligne`, `Extensions::extraire`, `pendants_pour`, `expirer_journal`, `rendre_vue`,
 //! `tail_n`, `est_message`, `est_suite`, `priorite_ligne`, `sanitize`, `lire`/`verifie_integrite`, `compte_journal`, `piste::lire`.
 
