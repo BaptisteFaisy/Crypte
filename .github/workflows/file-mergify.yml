@@ -20,9 +20,10 @@ name: File Mergify (balayeur)
 #   - manuel, avec numero de PR optionnel.
 # Pas de `pull_request synchronize` : il arrive avant les checks (lecon isee).
 #
-# Secret `AUTOMERGE_PAT` : signe les commandes Mergify (un ordre poste par
-# un bot est ignore) et les commentaires. Sans lui : diagnostic + marche a
-# suivre seulement. Lectures avec le jeton de l'installation (quota propre).
+# Secret `AUTOMERGE_PAT` (fin : contenus + demandes + tickets en ecriture) :
+# signe les seules commandes Mergify (un ordre poste par un bot est ignore).
+# Guidance, labels et lectures : jeton de l'installation (quota propre).
+# Sans PAT : diagnostic + marche a suivre seulement.
 # Pas de push, pas de rebase : `contents: read` suffit.
 
 on:
