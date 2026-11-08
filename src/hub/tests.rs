@@ -1,5 +1,5 @@
 use super::*;
-use crate::sessions::Sessions;
+use crate::sessions::{CloseOutcome, Sessions};
 use ratatui::{buffer::Buffer, layout::Rect};
 
 /// 2 chats ; chat 0 : un sous-agent en cours + un terminé ; chat 1 : un échoué.
@@ -55,6 +55,39 @@ fn sync_maps_chats_to_white_and_subagents_to_black_ghosts() {
             .unwrap()
             .owner,
         1
+    );
+}
+
+#[test]
+fn closing_a_chat_banishes_its_ghosts_on_next_sync() {
+    let mut s = Sessions::new();
+    s.add();
+    s.add();
+    let sub = s.add_agent(0, "fouiller", Vec::new()).unwrap();
+    s.find_agent_mut(sub).unwrap().1.status = AgentStatus::Done;
+    let mut hub = hub_for(&s);
+    assert!(hub.pos(Key::Agent(2)).is_some());
+    assert!(hub.pos(Key::Sub(sub)).is_some());
+    hub.signal(Signal::Tell { from: 1, to: 2 });
+    hub.signal(Signal::Reply { chat: 2 });
+    assert_eq!(s.close(0), CloseOutcome::Closed);
+    hub.sync(&s);
+    assert!(
+        hub.pos(Key::Agent(2)).is_none(),
+        "le fantôme du chat fermé reste affiché"
+    );
+    assert!(
+        hub.pos(Key::Sub(sub)).is_none(),
+        "le sous-agent du chat fermé reste affiché"
+    );
+    assert!(hub.orbs.is_empty(), "orbe vers le chat fermé");
+    assert!(hub.bubbles.is_empty(), "bulle sur le chat fermé");
+    assert_eq!(
+        hub.spectres
+            .iter()
+            .filter(|x| matches!(x.key, Key::Agent(_)))
+            .count(),
+        2
     );
 }
 

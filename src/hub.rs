@@ -158,7 +158,8 @@ impl Hub {
     }
 
     /// Aligne les esprits sur l'état réel : un agent par chat, un
-    /// sous-agent par `/agent` ; les nouveaux apparaissent en fondu.
+    /// sous-agent par `/agent` ; les nouveaux apparaissent en fondu,
+    /// ceux des chats fermés sont bannis (voir [`Hub::prune`]).
     pub fn sync(&mut self, sessions: &Sessions) {
         for (i, chat) in sessions.iter().enumerate() {
             let mood = if chat.sending {
@@ -178,10 +179,27 @@ impl Hub {
                 self.upsert(Key::Sub(agent.id), i, mood, home);
             }
         }
+        self.prune(sessions);
     }
 
-    /// Crée l'esprit `key` à `at` s'il manque, sinon met son humeur à jour
-    /// (un sous-agent qui échoue lève une alerte).
+    /// Bannit les esprits des chats fermés : sans ça, `sync` ne faisait
+    /// qu'ajouter et les fantômes restaient affichés. Les orbes et
+    /// bulles orphelins partent aussi (après le décalage des index,
+    /// leurs clés désigneraient un autre chat).
+    fn prune(&mut self, sessions: &Sessions) {
+        let live = |key: Key| match key {
+            Key::Agent(i) => i < sessions.count(),
+            Key::Sub(id) => sessions.iter().any(|c| c.agents.iter().any(|a| a.id == id)),
+        };
+        self.spectres.retain(|s| live(s.key));
+        self.orbs.retain(|o| live(o.to));
+        self.bubbles.retain(|b| live(b.key));
+    }
+
+    /// Crée l'esprit `key` à `at` s'il manque, sinon met son humeur
+    /// et son propriétaire à jour (un sous-agent qui échoue lève une
+    /// alerte ; le propriétaire suit le décalage des index à la
+    /// fermeture d'un chat).
     fn upsert(&mut self, key: Key, owner: usize, mood: Mood, at: (f32, f32)) {
         if let Some(s) = self.spectres.iter_mut().find(|s| s.key == key) {
             if s.mood != mood && mood == Mood::Failed {
@@ -192,6 +210,7 @@ impl Hub {
                 });
             }
             s.mood = mood;
+            s.owner = owner;
             return;
         }
         self.spectres.push(Spectre {
