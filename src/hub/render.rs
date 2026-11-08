@@ -179,25 +179,14 @@ fn anchor(hub: &Hub, room: &Room, s: &Spectre) -> (i64, i64, i64) {
     )
 }
 
-/// Ombre, anneau de sélection, corps, repère citrouille.
+/// Ombre, corps, repère citrouille.
 fn spectre(cv: &mut RgbaImage, hub: &Hub, room: &Room, s: &Spectre) {
     let img = sprite(hub, s);
     let (x, y, lift) = anchor(hub, room, s);
     let rx = i64::from(img.width() / 2);
     shadow(cv, x, y, rx, (rx / 3).max(1));
-    let selected = s.key == Key::Agent(hub.selected);
-    if selected {
-        ring(cv, x, y, rx + 3, rx / 2 + 1, px(theme::PUMPKIN));
-    }
     let top = y - lift - i64::from(img.height());
     blit(cv, img, x - rx, top, Ink::alpha(f32::from(s.fade) / 8.0));
-    if selected {
-        let c = px(theme::PUMPKIN);
-        for dx in -1..=1 {
-            put(cv, x + dx, top - 4, c);
-        }
-        put(cv, x, top - 3, c);
-    }
 }
 
 /// Ombre ovale au sol (assombrit ce qui est dessous).
@@ -214,20 +203,6 @@ fn shadow(cv: &mut RgbaImage, cx: i64, cy: i64, rx: i64, ry: i64) {
             let k = |c: u8| (f32::from(c) * 0.5) as u8;
             cv.put_pixel(x as u32, y as u32, Rgba([k(p[0]), k(p[1]), k(p[2]), 255]));
         }
-    }
-}
-
-/// Anneau ovale (sélection).
-fn ring(cv: &mut RgbaImage, cx: i64, cy: i64, rx: i64, ry: i64, c: Rgba<u8>) {
-    let steps = (rx * 8).max(16);
-    for i in 0..steps {
-        let a = i as f32 / steps as f32 * std::f32::consts::TAU;
-        put(
-            cv,
-            cx + (a.cos() * rx as f32).round() as i64,
-            cy + (a.sin() * ry as f32).round() as i64,
-            c,
-        );
     }
 }
 
@@ -351,12 +326,7 @@ fn name_tag(cv: &mut RgbaImage, hub: &Hub, sessions: &Sessions, room: &Room, s: 
                     &c.name[..end]
                 })
                 .unwrap_or("");
-            let colour = if i == hub.selected {
-                theme::PUMPKIN
-            } else {
-                theme::BONE
-            };
-            font::label(cv, x, y + 3, name, px(colour), px(theme::VOID));
+            font::label(cv, x, y + 3, name, px(theme::BONE), px(theme::VOID));
         }
         Key::Sub(id) => {
             let colour = if s.mood == Mood::Running {

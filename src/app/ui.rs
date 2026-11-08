@@ -1,4 +1,4 @@
-//! Mise en page de la crypte : fond à la bougie, en-tête (onglets + jauge
+//! Mise en page de la crypte : fond chaud, en-tête (onglets + jauge
 //! de peur), corps selon l'écran, barre d'état powerline, overlay d'effets.
 //!
 //! Pensé pour Ghostty : truecolor partout, séparateurs powerline et blocs
@@ -17,8 +17,8 @@ use super::App;
 use crate::bestiary::Creature;
 use crate::chat::ChatView;
 use crate::gfx::ImageBank;
-use crate::mascot::MascotState;
-use crate::theme::{self, ASH, BLOOD, BONE, CANDLE, ECTO, PUMPKIN, SAND, SPECTRE, UMBER, VOID};
+use crate::sidebar::{draw_side_grip, side_auto, side_width};
+use crate::theme::{self, ASH, BLOOD, BONE, CANDLE, PUMPKIN, SAND, UMBER, VOID};
 use crate::tokens::{fmt_tps, short_model};
 
 /// Écran affiché dans la zone principale.
@@ -26,7 +26,9 @@ use crate::tokens::{fmt_tps, short_model};
 pub enum Screen {
     #[default]
     Chat,
-    Hub,
+    Settings,
+    Vps,
+    Shop,
     Haunt,
 }
 
@@ -42,7 +44,7 @@ const COMPACT_W: u16 = 80;
 /// Onglets de l'en-tête : écran, libellé, touche.
 const TABS: [(Screen, &str, &str); 3] = [
     (Screen::Chat, "chat", ""),
-    (Screen::Hub, "hub", "F7"),
+    (Screen::Shop, "shop", "F6"),
     (Screen::Haunt, "haunt", "F9"),
 ];
 /// Coiffes powerline arrondies (sprites internes de Ghostty).
@@ -55,7 +57,10 @@ impl App {
         let area = frame.area();
         self.plus_btn = None;
         self.side_rows = None;
+        self.side_area = None;
+        self.close_btns.clear();
         self.tab_hits.clear();
+        self.shop_rows.clear();
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
         if area.width < MIN_W || area.height < MIN_H {
@@ -73,20 +78,27 @@ impl App {
         self.draw_header(frame, head);
         match self.screen {
             Screen::Chat => self.draw_chat(frame, body),
-            Screen::Hub => self.draw_hub(frame, body),
+            Screen::Settings => self.settings.draw(frame, body),
+            Screen::Vps => self.draw_vps(frame, body),
+            Screen::Shop => {
+                let earned = self.sessions.grand_total();
+                let rows = self.shop.draw(frame, body, earned);
+                self.shop_rows = rows;
+            }
             Screen::Haunt => self.draw_haunt(frame, body),
         }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
     }
 
-    /// Corps chat : cercueils | discussion | Kiro + apparition.
+    /// Corps chat : cercueils | discussion | hub + apparition.
     /// Sous 80 colonnes : cercueils réduits | discussion (droit masqué).
+    /// Sidebar redimensionnable : drag de sa poignée (bord droit).
     fn draw_chat(&mut self, frame: &mut Frame, area: Rect) {
         if area.width < COMPACT_W {
             return self.draw_chat_compact(frame, area);
         }
-        let side_w = if area.width >= 110 { 22 } else { 18 };
+        let side_w = side_width(area.width, self.side_delta, false);
         let [side, chat, right] = Layout::horizontal([
             Constraint::Length(side_w),
             Constraint::Min(36),
@@ -96,6 +108,10 @@ impl App {
         let hits = self.sessions.draw_sidebar(frame, side);
         self.side_rows = hits.chats;
         self.plus_btn = hits.plus;
+        self.close_btns = hits.closes;
+        self.side_area = Some(side);
+        self.side_auto = side_auto(area.width, false);
+        draw_side_grip(frame, side, self.side_active());
         let sess = self.sessions.current_mut();
         let view = ChatView {
             title: &sess.name,
@@ -105,9 +121,9 @@ impl App {
         sess.chat.draw(frame, chat, view);
         let sending = sess.sending;
         let agents = self.sessions.running_agents(self.sessions.index());
-        let [kiro, omen] =
+        let [esprits, omen] =
             Layout::vertical([Constraint::Percentage(45), Constraint::Min(6)]).areas(right);
-        self.draw_kiro(frame, kiro);
+        self.draw_hub(frame, esprits);
         let creature = self.apparition.current(sending, agents);
         let accent = if self.apparition.scaring() {
             BLOOD
@@ -118,13 +134,18 @@ impl App {
     }
 
     /// Corps compact (< 80 col.) : sidebar 14 + discussion au reste.
-    /// Kiro et apparitions masqués : le chat reste pleinement utilisable.
+    /// Panneau droit masqué : le chat reste pleinement utilisable.
     fn draw_chat_compact(&mut self, frame: &mut Frame, area: Rect) {
+        let side_w = side_width(area.width, self.side_delta, true);
         let [side, chat] =
-            Layout::horizontal([Constraint::Length(14), Constraint::Min(30)]).areas(area);
+            Layout::horizontal([Constraint::Length(side_w), Constraint::Min(30)]).areas(area);
         let hits = self.sessions.draw_sidebar(frame, side);
         self.side_rows = hits.chats;
         self.plus_btn = hits.plus;
+        self.close_btns = hits.closes;
+        self.side_area = Some(side);
+        self.side_auto = side_auto(area.width, true);
+        draw_side_grip(frame, side, self.side_active());
         let sess = self.sessions.current_mut();
         let view = ChatView {
             title: &sess.name,
@@ -134,20 +155,9 @@ impl App {
         sess.chat.draw(frame, chat, view);
     }
 
-    /// Panneau de Kiro : spectre au repos, ectoplasme quand il a peur.
-    fn draw_kiro(&mut self, frame: &mut Frame, area: Rect) {
-        let colour = match self.mascot.state() {
-            MascotState::Idle => theme::lerp(UMBER, SPECTRE, 0.45),
-            MascotState::Spook => ECTO,
-        };
-        let block = Block::new()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(colour))
-            .title(theme::title("keeper", SPECTRE, BONE));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        self.mascot.draw(frame, inner, &mut self.bank);
+    /// Poignée sidebar « chaude » : survolée ou en cours de drag.
+    fn side_active(&self) -> bool {
+        self.side_hot || self.resizing_side.is_some()
     }
 
     /// En-tête : titre en dégradé, onglets (cliquables, voir `mouse`),
@@ -171,7 +181,7 @@ impl App {
         frame.render_widget(gauge, area);
     }
 
-    /// Onglets d'écran ; sans les touches (F7…) s'ils ne tiennent pas
+    /// Onglets d'écran ; sans les touches s'ils ne tiennent pas
     /// dans `room` colonnes (la jauge fear reste entière à 80 colonnes).
     /// Enregistre leurs rectangles (`tab_hits`, clic = écran, voir `mouse`).
     fn tabs(&mut self, room: usize, at: Position) -> Vec<Span<'static>> {
@@ -348,12 +358,16 @@ fn fear_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
 fn key_hints(short: bool, game: bool) -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
     if short {
-        return vec![Span::styled(if game { "Esc F9" } else { "F5 F7" }, key)];
+        return vec![Span::styled(if game { "Esc F9" } else { "F5" }, key)];
     }
     let word = Style::new().fg(ASH);
     let mut spans = Vec::with_capacity(6);
     let hints: [(&'static str, &'static str); 3] = if game {
-        [("F5", " thunder  "), ("Esc/F9", " back  "), ("F7", " hub  ")]
+        [
+            ("F5", " thunder  "),
+            ("Esc/F9", " back  "),
+            ("F7", " hub  "),
+        ]
     } else {
         [
             ("F5", " scare  "),
@@ -417,17 +431,30 @@ mod tests {
             term.draw(|f| app.draw(f)).unwrap();
             let buf = term.backend().buffer();
             let head: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
-            for word in ["chat", "hub", "fear"] {
+            for word in ["chat", "shop", "fear"] {
                 assert!(head.contains(word), "{w} cols: {word} missing in {head:?}");
             }
             assert!(!head.contains("grimoire"), "{w} cols: {head:?}");
             assert!(!head.contains("almanac"), "{w} cols: {head:?}");
             assert!(!head.contains("bestiary"), "{w} cols: {head:?}");
-            // 2 onglets : la touche (F7) tient dès 80 colonnes.
+            // 2 onglets : la touche (F6) tient dès 80 colonnes.
             if w >= 80 {
-                assert!(head.contains("F7"), "{w} cols: {head:?}");
+                assert!(head.contains("F6"), "{w} cols: {head:?}");
             }
+            assert!(!head.contains("hub"), "{w} cols: {head:?}");
         }
+    }
+
+    #[test]
+    fn chat_montre_le_hub_dans_le_slot_keeper() {
+        let mut app = App::offline().unwrap();
+        app.populate_hub_demo();
+        let mut term = Terminal::new(TestBackend::new(120, 36)).unwrap();
+        term.draw(|f| app.draw(f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let text: String = buf.content.iter().map(|c| c.symbol()).collect();
+        assert!(text.contains("spirit hub"), "hub absent de l'écran chat");
+        assert!(!text.contains("keeper"), "panneau keeper encore là");
     }
 
     #[test]
@@ -439,7 +466,7 @@ mod tests {
             .push(Role::Assistant, "les os craquent sous la lune");
         for (w, h) in [(70, 17), (80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [Screen::Chat, Screen::Hub, Screen::Haunt] {
+            for screen in [Screen::Chat, Screen::Settings, Screen::Shop, Screen::Haunt] {
                 app.screen = screen;
                 app.spook();
                 app.tick();
@@ -451,7 +478,7 @@ mod tests {
     #[test]
     fn minimum_70x17_shows_ui_not_too_small() {
         let mut app = App::offline().unwrap();
-        for screen in [Screen::Chat, Screen::Hub, Screen::Haunt] {
+        for screen in [Screen::Chat, Screen::Settings, Screen::Shop, Screen::Haunt] {
             app.screen = screen;
             let mut term = Terminal::new(TestBackend::new(70, 17)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();

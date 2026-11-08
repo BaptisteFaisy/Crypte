@@ -2,9 +2,9 @@
 
 LLM chat in a haunted crypt, built for **Ghostty**: a bestiary of
 33 pixel-art creatures (real images via the Kitty graphics
-protocol), Kiro the motionless ghost mascot (scared via F5),
-apparitions that react to the chat, horror effects (candlelit
-vignette, fog, lightning), a header **fear
+protocol), the spirit hub (every agent as a ghost in an isometric
+crypt, top of the right panel), apparitions that react to the chat,
+horror effects (warm vignette, fog, lightning), a header **fear
 gauge** (`fear`, % of the model's context window), and a **global**
 token counter (status bar: current chat + session total, all
 chats and sub-agents included; `/usage` details the current chat),
@@ -89,6 +89,10 @@ Environment variables (prioritary):
 With `--muse-auth`, defaults become base `https://api.meta.ai/v1`
 + model `muse-spark-1.3-contributor` (key read from `auth.json`).
 
+Or the provider saved with `/connect` or `/settings` (the last one
+connected is remembered and reused at startup and by `--once`) — the
+environment and `--config` still win over it.
+
 Or a TOML file via `--config <file>` (flat keys or `[provider]`
 section, overridden by the environment):
 
@@ -105,6 +109,8 @@ or `--muse-auth`, the TUI starts disconnected and sends
 answer `not connected: /connect openai|muse`.
 
 - `/connect` — status (provider + model, or not connected + usage).
+- A key stored with `/settings` is used first: `/connect fireworks`
+  connects without asking anything.
 - `/connect openai` — asks for the API key (input masked with `•`),
   then the model (empty Enter = `gpt-4o`).
 - `/connect muse` — reads the `~/.config/muse/auth.json` store if
@@ -112,8 +118,40 @@ answer `not connected: /connect openai|muse`.
   unreadable, manual input`, default model
   `muse-spark-1.3-contributor`).
 - `Esc` cancels the flow (`connection cancelled`), the draft is kept.
+- Connecting stores the key encrypted in the vault (`key saved for
+  {provider} (encrypted)`) and reconnects it at the next startup;
+  `d` in `/settings` erases it.
 - The key is never displayed, logged or pushed into the chat:
   only the `connected to {provider} ({model})` confirmation shows.
+
+## /settings (providers + stored API keys)
+
+`/settings` opens a full-screen table of every provider (openai, muse,
+fireworks, deepseek, openrouter, groq, mistral, xai, cerebras, together,
+inferhub, local) plus any custom endpoint you added.
+
+- `Enter` — store the API key of the selected provider (input masked with `•`).
+- `m` / `b` — edit the model / the base URL.
+- `c` — connect with the stored key (goes back to the chat).
+- `d` — erase the stored key (the row stays).
+- `/settings <name>` — open the screen on that provider, key input ready.
+- `/settings add <name> <base_url> [model]` — add a custom endpoint.
+- `q` / `Esc` — close (the last message goes to the chat).
+
+The keys live in an encrypted vault, never in the config or the chat:
+
+| item | path / value |
+| ---- | ------------ |
+| vault | `$XDG_DATA_HOME/kiro-horror-tui/providers.enc` (else `~/.local/share/kiro-horror-tui/`), mode `0600` |
+| cipher | ChaCha20-Poly1305 (AEAD), random nonce per write, atomic rename |
+| master key | `master.key` next to the vault (32 bytes, `0600`, created once) |
+| override | `KH_SETTINGS_KEY` = 64 hex chars (keeps the key off this disk) |
+
+A wrong key or a tampered file fails authentication (`vault unreadable:
+wrong master key or altered file`) — nothing is decrypted. Once a key is
+stored, `/connect <provider>`, `--once` and the TUI startup reuse it
+(environment variables and `--config` still win); the last connected
+provider is remembered in the vault.
 
 ## Fear gauge
 
@@ -135,9 +173,13 @@ exempt, stays the remedy).
 | `q` (empty input) | quit |
 | Ctrl+N | new chat |
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
-| F5 | scare: Kiro scared 2s, jump scare, lightning flash |
-| F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
-| F9 | toggle chat / Haunt, the platform game (see below) |
+| Click `[×]` (sidebar) | close that chat (refused if a reply is in flight) |
+| Drag sidebar right edge | resize the coffins column (min 10, chat kept ≥ 30) |
+| Ctrl+W | close the current chat |
+| F5 | scare: jump scare 2s, lightning flash, hub panic |
+| F6 | shop: consumed tokens become coins (↑↓ + Enter to buy) |
+| F9 | Haunt, the platform game (see below) |
+| Click tab / shop item | switch screen / buy in the shop |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
 | Wheel (over the chat) | scroll the history, 3 lines per notch |
 | PgUp / PgDn | scroll up / down one page (10 lines) |
@@ -149,8 +191,9 @@ marks the bottom border while you are away from the end. Sending a
 message (or `End`) snaps the view back down, and each chat keeps its
 own scroll position.
 
-On narrow terminals the header tabs drop their key hint (F7) so
+On narrow terminals the header tabs drop their key hint (F6) so
 the `fear` gauge always fits.
+
 
 ## Ghostty
 
@@ -158,7 +201,7 @@ What the crypt uses from Ghostty (and degrades cleanly elsewhere):
 
 - **Kitty graphics protocol** (Unicode placeholders): pixel art is
   a real image, detected at startup. Elsewhere: truecolor halfblocks.
-- **Truecolor** everywhere: candlelit vignette, fog, gradients, flash.
+- **Truecolor** everywhere: warm vignette, fog, gradients, flash.
 - **Built-in sprites**: rounded powerline separators, blocks, braille
   drawn pixel-perfect; embedded Nerd Font icons.
 - **OSC 11** (window background, padding included), **OSC 2** (title,
@@ -166,14 +209,15 @@ What the crypt uses from Ghostty (and degrades cleanly elsewhere):
   reply simmers, Ghostty only), **mode 2026** (synced rendering,
   tear-free animations).
 - `ghostty/crypte.conf` (palette, extended padding, 120x36) +
-  `ghostty/crypte.glsl` (vignette, flame, grain — no blur: every
+  `ghostty/crypte.glsl` (static vignette — no blur: every
   pixel is read at its own place).
 
 No sound: no bell, no notification.
 
-## Spirit hub (F7)
+## Spirit hub
 
-Every agent lives in a crypt drawn in **isometric** pixel art:
+Every agent lives in a crypt drawn in **isometric** pixel art,
+shown display-only at the top of the right panel:
 
 - **white ghost** = an agent (a chat); it wanders, meets the others and
   chats (bubbles "…", heart); while waiting for the LLM it hovers in place;
@@ -184,9 +228,6 @@ Every agent lives in a crypt drawn in **isometric** pixel art:
   `/msg`, `/ask`, auto links, a sub-agent's delivery; the receiver jumps ("!");
 - F5: everybody flees.
 
-Right panel: each agent, its sub-agents and their state. Arrows select
-(pumpkin ring on the floor), Enter opens that chat.
-
 In Ghostty the scene is a Kitty image re-sent every frame under the same
 id (PNG, ×2–×6 nearest neighbour, crisp); elsewhere, half-blocks.
 Offline demo, no key needed:
@@ -195,6 +236,14 @@ Offline demo, no key needed:
 ./target/debug/kiro-horror-tui --demo
 ```
 
+## Shop (F6)
+
+Every consumed token (all chats and sub-agents included) credits the
+wallet: 1 token = 1 coin, for the current session. The shop (F6 or tab
+click) sells 5 ambiance perks: lightning flash (200), soothing candle
+(fear −30, 300), Kiro's cry (scare + flash, 500), apparition rite (new
+creature, 700), holy water (fear to zero, 900). Click an item (or ↑↓ +
+Enter) to buy; `/usage` shows the balance (earned, spent).
 ## Haunt (F9)
 
 An original side-scrolling platform shooter drawn in the bestiary style.
@@ -279,10 +328,10 @@ creature in `assets/pixel/<slug>.txt`: 32 lines of 32 letters,
 Crisp rendering guaranteed: **integer** nearest-neighbour upscale on
 a canvas of the exact pixel size of the area (1 image pixel = 1
 screen pixel in Kitty, = 1 half-cell in halfblocks). The right panel
-shows Kiro and an apparition: cauldron during a reply, spider during
-sub-agents, grave hand on error, coffin after `/compact`, slow
-rotation otherwise. `/bestiary` reveals a random creature there
-(announced in the chat with its name and lore).
+shows the spirit hub and an apparition: cauldron during a reply,
+spider during sub-agents, grave hand on error, coffin after
+`/compact`, slow rotation otherwise. `/bestiary` reveals a random
+creature there (announced in the chat with its name and lore).
 
 ## Model
 
@@ -306,6 +355,11 @@ Mode for the agent tools (see below). `/permissions` shows the mode,
 `/permissions yolo` runs everything without asking, `/permissions auto`
 (default) asks confirmation before every change. The choice is persisted
 in `~/.config/kiro-horror-tui/permissions` and reloaded at startup.
+Per-tool rules refine the mode: `/permissions <tool> <allow|ask|deny>`
+(exact name or `prefix_*`, longest match wins),
+`/permissions list` shows them, `/permissions reset` clears them
+(persisted in `~/.config/kiro-horror-tui/permissions-rules`).
+`deny` refuses without asking and tells the model.
 
 ## Tools (browser, desktop, shell)
 
@@ -339,13 +393,52 @@ global `~/.kiro/`), so a project moves back and forth between both:
 
 - **Steering** (`.kiro/steering/*.md`, 4 inclusion modes) : `always`
   files join the pinned AGENTS.md context at first send.
-- **Specs** (`.kiro/specs/<name>/`) : requirements, design and tasks
-  checklists are read (execution comes next).
-- **Hooks** (`.kiro/hooks/*.json`, v1) and **MCP**
-(`.kiro/settings/mcp.json`, stdio + remote) : parsed, engines next.
-- **Ignore** (`.kiroignore`) : loaded, enforced with hooks.
+- **Specs** (`.kiro/specs/<name>/`) : `/spec new <name> <idea>` drafts
+  requirements, design and tasks in 3 chained LLM calls (progress shown,
+  existing specs never overwritten); `/spec <name>` shows status (docs,
+  tasks x/y, next task); `/spec <name> run` executes open tasks one by
+  one via sub-agents (requirements + design in context), checking each
+  off in `tasks.md` (`y/n` between tasks in `auto` mode, chained in
+  `yolo`; a failed task stops the run, nothing is re-tried).
+- **Hooks** (`.kiro/hooks/*.json`, v1) : live engine — trigger
+  + regex `matcher` + `.kiroignore` (file triggers); `command`
+  runs async `sh -c` (30 s timeout, truncated output, announced
+  on completion), `agent` queues a prompt prefixed to the next
+  user send; triggers wired: send, tools, spec files, spec tasks,
+  agents, boot (single-fire, no re-trigger); `/hooks` shows
+  loaded hooks by trigger + recent firings.
+- **MCP** (`.kiro/settings/mcp.json`, stdio + remote) : live client
+  (tools only, no resources/prompts) — servers connect on first
+  tool-using send, tools show as `mcp_<server>_<tool>`, `autoApprove`
+  skips confirmation ; `/mcp` shows servers + tools, `/mcp refresh`
+  reconnects.
+- **Custom agents** (`.kiro/agents/*.md`, our own format: frontmatter
+  `name`/`description`/`system`, body = system prompt, `system`
+  prefixed when present) : `/agents` lists them, `/agent <name>
+  <text>` spawns with the custom prompt.
+- **Skills** (`.kiro/skills/*/SKILL.md`, Claude-compatible frontmatter
+  `name`/`description`, body = instructions) : `/skills` lists them,
+  `/skill <name> [text]` prefixes the skill to the current draft
+  (transient, announced). Skills cover reusable prompts (no separate
+  system).
+- **Memory** (`.kiro/MEMORY.md` project + `~/.kiro/MEMORY.md`
+  global) : pinned after steering at first send
+  (agents.md → steering → memory) ; `/remember <text>` appends to
+  the project file (created if missing, checkpointed).
+- **Ignore** (`.kiroignore`) : loaded, enforced on file hooks
+  (last matching pattern wins, `!` re-includes, `dir/` = subtree).
 
-`/kiro` shows what was loaded (steering, specs, hooks, servers).
+`/kiro` shows what was loaded (steering, specs, hooks, servers);
+`/hooks` shows hooks by trigger, queued agent prompts and recent firings.
+
+## Checkpoints
+
+Writes through `write_tracked` snapshot the previous content first
+(ring of 20, in `~/.local/share/kiro-horror-tui/checkpoints/`).
+`/checkpoints` lists snapshots (newest first), `/rewind <n|name>`
+restores one (`n` = shown rank, `name` = exact basename or fragment
+of the original path). `/remember` snapshots `MEMORY.md` before
+appending; spec writes follow.
 
 ## History
 
@@ -366,7 +459,10 @@ if delivered elsewhere via `@<n>`) and the status shows in the sidebar
 used, queue in brackets). `/ask #<id> <text>` continues the
 conversation with an agent (exchange kept, 20 messages max, `system`
 head kept); if it is running, queued and triggered once free.
-`/agents all` lists the agents of every chat. Each launch also
+`/agents all` lists the agents of every chat (custom
+`.kiro/agents/` agents listed after, as `custom <name>`).
+`/agent <name> <text>` spawns with the custom system prompt when
+`<name>` is known, else the text is sent as-is. Each launch also
 creates the agent's disk workspace
 `~/.config/kiro-horror-tui/workspaces/<session>/agent-<id>/`
 (pure code, zero LLM tokens), for future tools (`<session>` =
@@ -425,16 +521,19 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 ## Modules (`src/`)
 
 `main.rs` (CLI + bootstrap), `app.rs` (state + 100ms loop),
-`mouse.rs` ([+] click = new chat),
+`mouse.rs` ([+] click = new chat, [×] click = close chat, edge drag = sidebar width),
 `drain.rs` (routing async replies to chats),
-`chat.rs` (history + input + maskable custom prompt), `mascot.rs` (ghost),
+`chat.rs` (history + input + maskable custom prompt),
 `fx.rs` (horror overlay), `tokens.rs` (tiktoken counter),
 `provider.rs` (OpenAI-compatible client, 60s timeout),
-`sessions.rs` (multi-chats + sub-agents),
-`sidebar.rs` (coffins column + [+] new-chat button),
+`sessions.rs` (multi-chats + sub-agents + `sessions/close.rs` closing),
+`sidebar.rs` (coffins column + [+] new-chat button + [×] close),
 `commands.rs` (parsing `/…` commands), `texts.rs` (help + usage texts),
 `cmds.rs` (handlers `/model` `/thinking` `/agent` `/agents` `/ask` `/tell`
-`/compact` `/connect` `/web`), `connect.rs` (`/connect` handlers + flow: masked key → model),
+`/compact` `/connect` `/web` `/settings`),
+`connect.rs` (`/connect` handlers + flow: masked key → model),
+`settings.rs` + `settings/` (`/settings`: `known.rs` provider table,
+`store.rs` encrypted vault, `ui.rs` screen, `keys.rs` key handling),
 `web/` (`/web`: backends → fetch → cache → synthesis),
 `tools/` (agent tools: `wire.rs` OpenAI types, `browser.rs`/`desktop.rs`
 argv, `exec.rs` runner, `flow.rs` loop + y/n confirms, `log.rs` JSONL),
@@ -445,10 +544,11 @@ scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
 (right-panel creature, `/bestiary` reveals),
 `ghostty.rs` (OSC, progress, synced rendering),
 `history.rs` (send window + chat naming),
-`hub.rs` + `hub/` (F7 spirit hub: tile-based simulation, `iso.rs`
+`hub.rs` + `hub/` (spirit hub: tile-based simulation, `iso.rs`
 isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
 `font.rs` 3×5 pixel font, `social.rs` orbs and chatter),
-`app/esprits.rs` (hub screen + keys), `app/keys.rs` (dispatch + scroll + resize),
+`app/esprits.rs` (hub panel), `app/keys.rs` (dispatch + scroll + resize),
+`shop.rs` (F6 shop: wallet, 1 token = 1 coin, 5 ambiance perks),
 `canvas.rs` (shared RGBA painting: theme pixels, sprite blit with
 alpha / tint / clip), `haunt.rs` + `haunt/` (F9 game: `level.rs` text
 grid, `body.rs` tile physics, `player.rs` Kiro, `foes.rs` creatures,

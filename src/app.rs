@@ -1,6 +1,6 @@
 //! État global + boucle TUI (crossterm + tokio, tick 100 ms).
 //! Les constructeurs vivent dans `app/ctors.rs`, le rendu dans `app/ui.rs`
-//! (mise en page de la crypte), le hub des esprits dans `app/esprits.rs`.
+//! (mise en page de la crypte), le panneau hub dans `app/esprits.rs`.
 
 mod ctors;
 mod esprits;
@@ -12,6 +12,7 @@ mod ui;
 
 pub use self::ui::Screen;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -33,11 +34,16 @@ use crate::ghostty;
 
 use crate::haunt::Haunt;
 use crate::hub::Hub;
-use crate::mascot::{Mascot, MascotState};
+use crate::kiro::hook_exec::HookOutcome;
+use crate::kiro::hook_run::HookState;
+use crate::kiro::mcp_pool::McpState;
+use crate::kiro::spec_run::{SpecGen, SpecRun};
 use crate::permissions::Mode;
 use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
+use crate::settings::Settings;
+use crate::shop::Shop;
 use crate::tools::flow::Delivery;
 use crate::tools::flow::ToolRun;
 use crate::web::WebAnswer;
@@ -45,31 +51,32 @@ use crate::web::WebAnswer;
 /// Message async d'une tâche provider : chat (`idx`), agent
 /// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
 /// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]),
-/// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]).
+/// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]),
+/// génération spec (`chat`, état chaîné, voir [`crate::kiro::spec_run`]),
+/// MCP (`/mcp refresh` terminé, statut à afficher), hook (commande
+/// terminée, voir [`crate::kiro::hook_run`]).
 pub(crate) enum Incoming {
     Chat(usize, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
     Compact(usize, Result<Completion>),
     Web(usize, Result<WebAnswer>),
     ToolDone(usize, Vec<Delivery>),
+    Vps(crate::vps::VpsOutcome),
+    SpecNew(usize, SpecGen, Result<Completion>),
+    McpRefresh(String),
+    HookDone(HookOutcome),
 }
 
 /// État global de l'application.
 pub struct App {
-    mascot: Mascot,
-    fx: Fx,
+    pub(crate) fx: Fx,
     bank: ImageBank,
     pub(crate) apparition: Apparition,
     pub(crate) hub: Hub,
-    /// Jeu Haunt (F9), en pause hors de son écran.
+    pub(crate) shop: Shop,
+    /// Jeu Haunt (F9, pause hors écran) et son clavier (`app/haunt.rs`).
     pub(crate) haunt: Haunt,
-    /// Terminal réel branché (`attach_terminal`) : jamais d'écriture
-    /// brute vers stdout sans lui (tests, `--smoke`).
-    pub(crate) live_terminal: bool,
-    /// Protocole clavier Kitty géré (interrogé à la 1re entrée en jeu).
-    pub(crate) releases_ok: Option<bool>,
-    /// Protocole clavier Kitty empilé (pendant le jeu).
-    pub(crate) releases_on: bool,
+    pub(crate) keyboard: haunt::Keyboard,
     tick: u64,
     busy: bool,
     /// Jauge contexte mise en cache (tokens estimés + fenêtre modèle),
@@ -82,6 +89,8 @@ pub struct App {
     /// `main` n'ouvre pas le fichier.
     pub(crate) almanac: Almanac,
     pub(crate) bus: Bus,
+    /// Providers + API keys (`/settings`): encrypted vault, masked input.
+    pub(crate) settings: Settings,
     pub(crate) provider: Option<Arc<Provider>>,
     pub(crate) connect_flow: Option<ConnectFlow>,
     pub(crate) agents_md: Option<String>,
@@ -92,26 +101,54 @@ pub struct App {
     pub(crate) screen: Screen,
     /// Ajustement manuel de la colonne droite (Ctrl+←/→, 0 = auto).
     pub(crate) right_delta: i16,
+    /// Ajustement manuel de la sidebar (drag souris, 0 = auto).
+    pub(crate) side_delta: i16,
+    /// Rectangle de la sidebar (mémorisé au rendu, `None` hors chat).
+    pub(crate) side_area: Option<Rect>,
+    /// Largeur auto de la sidebar au dernier rendu (base du delta).
+    pub(crate) side_auto: u16,
+    /// Drag sidebar en cours : décalage souris → bord droit (anti-saut).
+    pub(crate) resizing_side: Option<i16>,
+    /// Poignée sidebar survolée (mise en relief).
+    pub(crate) side_hot: bool,
     /// Rectangle du bouton [+] (mémorisé au rendu, `None` hors sidebar).
     pub(crate) plus_btn: Option<Rect>,
     /// Bloc des lignes de chats de la sidebar (mémorisé au rendu, une
     /// ligne par chat, `None` hors écran chat) : clic = choisir le chat.
     pub(crate) side_rows: Option<Rect>,
+    /// Boutons [×] des chats (mémorisés au rendu, un par chat, `None` si
+    /// masqué) : clic = fermer le chat (vide hors écran chat).
+    pub(crate) close_btns: Vec<Option<Rect>>,
     /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
-    /// clic = aller à l'écran (chat, hub).
+    /// clic = aller à l'écran (chat, boutique).
     pub(crate) tab_hits: Vec<(Screen, Rect)>,
+    /// Lignes des articles de la boutique (mémorisées au rendu) :
+    /// clic = acheter (vide hors écran boutique).
+    pub(crate) shop_rows: Vec<Rect>,
     pub(crate) thinking: Option<String>,
     pub(crate) permissions: Mode,
     /// Fichier de persistance du mode (`None` si `HOME` manquant).
     pub(crate) permissions_path: Option<PathBuf>,
+    /// État T5 : règles fines + chemins Kiro résolus à la construction.
+    pub(crate) t5: crate::permissions::T5State,
     /// Envois outillés (`/tools on`, défaut) ; boucle agent dans `tool_run`.
     pub(crate) tools_on: bool,
     /// Boucle agent en cours (`None` = aucun envoi outillé actif).
     pub(crate) tool_run: Option<ToolRun>,
+    /// Runs `/spec run` par agent porteur (retiré à sa tombée).
+    pub(crate) spec_runs: HashMap<usize, SpecRun>,
+    /// Run en attente de `y/n` (mode `auto`, un seul à la fois).
+    pub(crate) spec_waiting: Option<SpecRun>,
+    /// Parc MCP (connexions paresseuses, `/mcp`, arrêt à la sortie).
+    pub(crate) mcp: McpState,
+    /// Moteur hooks Kiro (file `agent`, récents, gardes, `/hooks`).
+    pub(crate) hooks: HookState,
     /// Fichier de persistance des chats (`None` = off : tests, smoke, demo).
     pub(crate) chats_path: Option<PathBuf>,
     /// Journal d'événements temps réel (`--events-log`, désactivé sinon).
     pub(crate) events: EventLog,
+    /// VPS : profils nommés + statuts distants (`/vps`).
+    pub(crate) vps: crate::vps::VpsRuntime,
     pub(crate) tx: mpsc::Sender<Incoming>,
     pub(crate) rx: mpsc::Receiver<Incoming>,
     /// Pool borné d'appels LLM (plafond `CRYPTE_MAX_FLIGHT`, défaut 4).
@@ -123,7 +160,7 @@ impl App {
     /// d'images (Kitty dans Ghostty) + habillage de la fenêtre.
     pub fn attach_terminal(&mut self) -> Result<()> {
         self.bank = ImageBank::detect();
-        self.live_terminal = true;
+        self.keyboard.live = true;
         ghostty::enter()?;
         Ok(())
     }
@@ -131,7 +168,7 @@ impl App {
     /// Boucle principale : scrute les touches et les réponses toutes les
     /// 10 ms (routage quasi instantané), ne rend que si besoin (touche,
     /// réponse, tick 100 ms pour les animations). Sur l'écran Haunt, le
-    /// jeu tourne à 30 Hz et seules ses frames déclenchent le rendu.
+    /// jeu tourne à 240 Hz et seules ses frames déclenchent le rendu.
     pub async fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let mut last_tick = Instant::now();
         let mut last_pump = Instant::now();
@@ -143,9 +180,7 @@ impl App {
             }
             dirty |= self.drain_replies();
             self.sync_progress()?;
-            // Jeu à l'écran : on scrute toutes les 1 ms (240 images/s).
-            let wait = if self.screen == Screen::Haunt { 1 } else { 10 };
-            if event::poll(Duration::from_millis(wait))? {
+            if event::poll(self.poll_wait())? {
                 // Rafale : vide la file d'attente (frappe rapide sans retard).
                 loop {
                     match event::read()? {
@@ -168,10 +203,10 @@ impl App {
                 self.tick();
                 dirty |= self.screen != Screen::Haunt;
             }
-            dirty |= self.pump_haunt(last_pump.elapsed());
-            last_pump = Instant::now();
+            dirty |= self.pump_haunt(&mut last_pump);
         }
         self.release_keys();
+        self.mcp.shutdown().await;
         self.save_now();
         Ok(())
     }
@@ -186,9 +221,8 @@ impl App {
         Ok(())
     }
 
-    /// F5 : Kiro s'effraie et une créature surgit (jump scare + éclair).
+    /// F5 : une créature surgit (jump scare + éclair) et le hub panique.
     pub(crate) fn spook(&mut self) {
-        self.mascot.spook();
         self.apparition.scare();
         self.hub.scare();
     }
@@ -216,6 +250,10 @@ impl App {
                 Incoming::Compact(id, reply) => self.drain_compact(id, reply),
                 Incoming::Web(id, reply) => self.drain_web(id, reply),
                 Incoming::ToolDone(id, deliveries) => self.drain_tool_done(id, deliveries),
+                Incoming::Vps(outcome) => self.drain_vps(outcome),
+                Incoming::SpecNew(chat, gen, reply) => self.drain_spec_new(chat, gen, reply),
+                Incoming::McpRefresh(text) => self.drain_mcp_refresh(text),
+                Incoming::HookDone(out) => self.drain_hook_done(out),
             }
         }
         routed
@@ -226,15 +264,14 @@ impl App {
         self.sessions.current_mut().chat.push(Role::System, msg);
     }
 
-    /// Fait avancer les animations (mascotte, apparitions, effets).
+    /// Fait avancer les animations (apparitions, hub, effets).
     pub(crate) fn tick(&mut self) {
         self.tick = self.tick.wrapping_add(1);
         self.autosave_if_due(self.tick);
-        self.mascot.tick();
         self.apparition.tick();
         self.hub.sync(&self.sessions);
         self.hub.step();
-        self.fx.tick(self.mascot.state() == MascotState::Spook);
+        self.fx.tick(self.apparition.scaring());
         if self.tick % 10 == 0 {
             self.refresh_ctx_cache();
         }
@@ -287,6 +324,17 @@ mod tests {
         assert_eq!(app.right_delta, 2);
         assert!(app.on_key(key(KeyCode::Right)));
         assert_eq!(app.right_delta, 0);
+    }
+
+    #[test]
+    fn ctrl_w_ferme_le_chat_courant() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.add_chat();
+        let key = KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL);
+        assert!(app.on_key(key));
+        assert_eq!(app.sessions.count(), 1);
+        assert_eq!(app.sessions.current().name, "Chat 1");
     }
 
     #[test]

@@ -29,18 +29,26 @@ pub fn load_from_dir(dir: &Path) -> Option<String> {
         .find_map(|name| read_non_empty(&dir.join(name)))
 }
 
-/// Contexte fusionné : agents.md + steering Kiro `always`.
+/// Contexte fusionné : agents.md + steering Kiro `always` + mémoire.
 pub struct Merged {
     pub text: Option<String>,
     pub agents: bool,
     pub steering: usize,
+    pub memory: usize,
 }
 
-/// Charge agents.md (`explicit` prime) + steering `always` (projet +
-/// global), joints par `\n\n` (steering taggés par nom).
-pub fn load_merged(explicit: Option<&str>) -> Merged {
-    let agents = load(explicit);
-    let picked = crate::kiro::steering::combined(&crate::kiro::steering::load_all(), &[]);
+/// Charge agents.md (`explicit` prime, `None` = `project`) + steering
+/// `always` + mémoire (projet + global injectés), joints par `\n\n`
+/// (steering taggés par nom, mémoire taggée par portée) ; ordre :
+/// agents.md → steering → mémoire.
+pub fn load_merged_in(explicit: Option<&str>, project: &Path, global: Option<&Path>) -> Merged {
+    let agents = match explicit {
+        Some(_) => load(explicit),
+        None => load_from_dir(project),
+    };
+    let files = crate::kiro::steering::load_all_in(project, global);
+    let picked = crate::kiro::steering::combined(&files, &[]);
+    let memos = crate::kiro::memory::load_all_in(project, global);
     let has_agents = agents.is_some();
     let mut parts = Vec::new();
     if let Some(content) = agents {
@@ -48,6 +56,9 @@ pub fn load_merged(explicit: Option<&str>) -> Merged {
     }
     for (name, body) in &picked {
         parts.push(format!("<!-- steering: {name} -->\n{body}"));
+    }
+    for memo in &memos {
+        parts.push(format!("<!-- memory: {} -->\n{}", memo.scope, memo.body));
     }
     Merged {
         text: if parts.is_empty() {
@@ -57,13 +68,14 @@ pub fn load_merged(explicit: Option<&str>) -> Merged {
         },
         agents: has_agents,
         steering: picked.len(),
+        memory: memos.len(),
     }
 }
 
-/// Annonce honnête (agents.md et/ou steering, `None` si rien).
+/// Annonce honnête (agents.md et/ou steering et/ou mémoire, `None` si rien).
 pub fn merged_message(merged: &Merged) -> Option<String> {
     let content = merged.text.as_ref()?;
-    if merged.agents && merged.steering == 0 {
+    if merged.agents && merged.steering == 0 && merged.memory == 0 {
         return Some(loaded_message(content));
     }
     let (lines, toks) = stats_fast(content);
@@ -73,6 +85,9 @@ pub fn merged_message(merged: &Merged) -> Option<String> {
     }
     if merged.steering > 0 {
         bits.push(format!("{} kiro steering", merged.steering));
+    }
+    if merged.memory > 0 {
+        bits.push(String::from("memory"));
     }
     Some(format!(
         "{} loaded ({lines} lines, ~{toks} tokens)",
@@ -172,21 +187,9 @@ mod tests {
         std::fs::write(dir.join(".kiro/steering/a.md"), "règle A").unwrap();
         let agents_path = dir.join("AGENTS.md");
         std::fs::write(&agents_path, "agents").unwrap();
-        let saved_project = std::env::var("KH_KIRO_PROJECT").ok();
-        let saved_global = std::env::var("KH_KIRO_GLOBAL").ok();
         let empty = dir.join("empty");
         std::fs::create_dir_all(&empty).unwrap();
-        std::env::set_var("KH_KIRO_PROJECT", &dir);
-        std::env::set_var("KH_KIRO_GLOBAL", &empty);
-        let merged = load_merged(Some(agents_path.to_str().unwrap()));
-        match saved_project {
-            Some(v) => std::env::set_var("KH_KIRO_PROJECT", v),
-            None => std::env::remove_var("KH_KIRO_PROJECT"),
-        }
-        match saved_global {
-            Some(v) => std::env::set_var("KH_KIRO_GLOBAL", v),
-            None => std::env::remove_var("KH_KIRO_GLOBAL"),
-        }
+        let merged = load_merged_in(Some(agents_path.to_str().unwrap()), &dir, Some(&empty));
         assert!(merged.agents);
         assert_eq!(merged.steering, 1);
         let text = merged.text.as_ref().unwrap();
@@ -198,9 +201,37 @@ mod tests {
         assert!(merged_message(&Merged {
             text: None,
             agents: false,
-            steering: 0
+            steering: 0,
+            memory: 0
         })
         .is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn merged_memoire_apres_steering_taggee_par_portee() {
+        let dir = tmp_dir("memory");
+        let global = dir.join("home/.kiro");
+        std::fs::create_dir_all(dir.join(".kiro/steering")).unwrap();
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(dir.join(".kiro/steering/a.md"), "règle A").unwrap();
+        std::fs::write(dir.join(".kiro/MEMORY.md"), "fait projet").unwrap();
+        std::fs::write(global.join("MEMORY.md"), "fait global").unwrap();
+        let agents_path = dir.join("AGENTS.md");
+        std::fs::write(&agents_path, "agents").unwrap();
+        let merged = load_merged_in(Some(agents_path.to_str().unwrap()), &dir, Some(&global));
+        assert_eq!(merged.memory, 2);
+        let text = merged.text.as_ref().unwrap();
+        let pos = |needle: &str| text.find(needle).expect(needle);
+        assert!(pos("agents") < pos("<!-- steering: a -->"));
+        assert!(pos("<!-- steering: a -->") < pos("<!-- memory: global -->"));
+        assert!(pos("<!-- memory: global -->") < pos("<!-- memory: project -->"));
+        assert!(text.contains("fait projet") && text.contains("fait global"));
+        let msg = merged_message(&merged).unwrap();
+        assert!(
+            msg.contains("AGENTS.md + 1 kiro steering + memory"),
+            "{msg}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

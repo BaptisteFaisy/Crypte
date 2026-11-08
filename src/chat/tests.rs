@@ -113,3 +113,29 @@ fn prompt_masked_hides_key_length_only() {
     assert_eq!(chat.prompt_label, None);
     assert!(!chat.mask_input);
 }
+
+#[test]
+fn curseur_saisie_fixe_ne_clignote_pas() {
+    use ratatui::{backend::TestBackend, Terminal};
+    let mut chat = ChatState::new();
+    chat.input.push_str("bonsoir");
+    let dump = |chat: &mut ChatState, tick: u64| {
+        let view = ChatView {
+            title: "test",
+            tick,
+            sending: false,
+        };
+        let mut term = Terminal::new(TestBackend::new(40, 14)).unwrap();
+        term.draw(|f| chat.draw(f, f.area(), view)).unwrap();
+        let buf = term.backend().buffer().clone();
+        (0..14)
+            .map(|y| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    // Deux phases opposées de l'ancien clignotement : rendu identique.
+    let a = dump(&mut chat, 0);
+    let b = dump(&mut chat, 5);
+    assert_eq!(a, b);
+    assert!(a.contains('▌'), "curseur fixe absent : {a}");
+}

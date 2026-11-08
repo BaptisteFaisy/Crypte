@@ -40,6 +40,25 @@ impl Ignore {
     pub fn is_empty(&self) -> bool {
         self.patterns.is_empty()
     }
+
+    /// Vrai si `path` (relatif projet, `/`) est ignoré : dernier motif
+    /// qui matche gagne (`!` = ré-inclut). `dir/` vaut `dir/**`.
+    pub fn is_ignored(&self, path: &str) -> bool {
+        let mut ignored = false;
+        for (negated, pattern) in &self.patterns {
+            let full;
+            let candidate = if pattern.ends_with('/') {
+                full = format!("{pattern}**");
+                full.as_str()
+            } else {
+                pattern.as_str()
+            };
+            if super::glob::matches(candidate, path) {
+                ignored = !negated;
+            }
+        }
+        ignored
+    }
 }
 
 #[cfg(test)]
@@ -59,6 +78,21 @@ mod tests {
         assert_eq!(ignore.len(), 2);
         assert!(!ignore.is_empty());
         assert!(load(&dir.join("absent")).is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn is_ignored_dernier_motif_gagne_negation_reinclut() {
+        let dir = std::env::temp_dir().join(format!("kh-kiro-ignore-{}-hit", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&dir.join(".kiroignore"), "target/\n*.log\n!keep.log\n").unwrap();
+        let ignore = load(&dir);
+        assert!(ignore.is_ignored("target/out.rs"));
+        assert!(ignore.is_ignored("target/nested/deep.txt"));
+        assert!(ignore.is_ignored("debug.log"));
+        assert!(!ignore.is_ignored("keep.log"));
+        assert!(!ignore.is_ignored("src/main.rs"));
+        assert!(!ignore.is_ignored("src/target.rs"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

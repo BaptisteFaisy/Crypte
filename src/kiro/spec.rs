@@ -3,7 +3,7 @@
 //! Lecture seule en T1 (workflow d'exécution = T2) : liste les specs,
 //! parse les cases `tasks.md` (`- [ ]` / `- [x]`).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Tâche (`- [ ] texte` / `- [x] texte`, `-` ou `*`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,6 +92,60 @@ pub fn load_all(specs_dir: &Path) -> Vec<Spec> {
     dirs.into_iter().filter_map(|dir| load(&dir)).collect()
 }
 
+/// Nom de spec valide pour la création (`/spec new`) : 1 à 64 signes,
+/// alphanum ASCII + `-`/`_` (aucun séparateur, aucun échappement).
+pub fn valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Nom sûr pour lire une spec existante : pas d'échappement hors
+/// `.kiro/specs/` (Kiro a pu créer des noms hors `valid_name`).
+pub fn safe_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains('/') && !name.contains('\\') && !name.contains("..")
+}
+
+/// Dossier d'une spec (`<projet>/.kiro/specs/<nom>`).
+pub fn spec_dir(project: &Path, name: &str) -> PathBuf {
+    project.join(".kiro/specs").join(name)
+}
+
+/// Coche la tâche d'index `index` (ordre de `parse_tasks`) : `[ ]` →
+/// `[x]`, le reste du fichier inchangé à l'octet près. `None` si
+/// l'index est hors bornes (fichier édité entre-temps).
+pub fn check_task(md: &str, index: usize) -> Option<String> {
+    let mut seen = 0usize;
+    let mut out = String::with_capacity(md.len());
+    for chunk in md.split_inclusive('\n') {
+        if parse_task_line(chunk).is_some() {
+            if seen == index {
+                out.push_str(&check_line(chunk));
+            } else {
+                out.push_str(chunk);
+            }
+            seen += 1;
+        } else {
+            out.push_str(chunk);
+        }
+    }
+    (seen > index).then_some(out)
+}
+
+/// Coche la case d'une ligne déjà validée : la marque devient `x`
+/// (idempotent si déjà cochée). Le premier `[` est la case (devant :
+/// blancs + `-`/`*` + blancs, voir `parse_task_line`), la marque un
+/// signe ASCII (` `, `x`, `X`) : `pos + 1..pos + 2` est sain.
+fn check_line(line: &str) -> String {
+    let mut out = line.to_string();
+    if let Some(pos) = out.find('[') {
+        out.replace_range(pos + 1..pos + 2, "x");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,5 +185,37 @@ mod tests {
         assert_eq!(progress(&all[0].tasks), (1, 2));
         assert!(load_all(&dir.join("absent")).is_empty());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn noms_valides_surs_et_dossier() {
+        assert!(valid_name("auth"));
+        assert!(valid_name("a_b-1"));
+        assert!(!valid_name(""));
+        assert!(!valid_name("a b"));
+        assert!(!valid_name("a/b"));
+        assert!(!valid_name(".."));
+        assert!(!valid_name(&"a".repeat(65)));
+        assert!(valid_name(&"a".repeat(64)));
+        assert!(safe_name("a.b"));
+        assert!(!safe_name(""));
+        assert!(!safe_name("../x"));
+        assert!(!safe_name("a\\b"));
+        assert_eq!(
+            spec_dir(Path::new("/p"), "auth"),
+            PathBuf::from("/p/.kiro/specs/auth")
+        );
+    }
+
+    #[test]
+    fn check_task_coche_par_index_sans_toucher_le_reste() {
+        let md = "# Tasks\n- [ ] code\n- [ ] test\n\nDone.\n";
+        let out = check_task(md, 1).unwrap();
+        assert_eq!(out, "# Tasks\n- [ ] code\n- [x] test\n\nDone.\n");
+        assert!(check_task(md, 2).is_none());
+        assert!(check_task("", 0).is_none());
+        // Idempotent + absence de `\n` final préservée telle quelle.
+        assert_eq!(check_task("- [x] done", 0).as_deref(), Some("- [x] done"));
+        assert_eq!(check_task("- [ ] a", 0).as_deref(), Some("- [x] a"));
     }
 }

@@ -4,9 +4,11 @@
 //! colonne gauche vit dans `sidebar` (`Sessions::draw_sidebar`).
 
 mod chat;
+mod close;
 mod subagents;
 
 pub use chat::ChatSession;
+pub use close::{shift_bus_links, CloseOutcome};
 pub use subagents::{AgentStatus, AskError, SubAgent};
 
 use std::path::Path;

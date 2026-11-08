@@ -1,4 +1,4 @@
-//! Effets horreur en overlay : vignette à la bougie, brume, éclair
+//! Effets horreur en overlay : vignette chaude fixe, brume, éclair
 //! d'effroi, niveau de peur.
 //!
 //! Tout est en truecolor (Ghostty). La brume ne teinte que le fond, et
@@ -32,7 +32,6 @@ pub struct Fx {
     fear: u8,
     flash: u8,
     spooked: bool,
-    candle: f32,
 }
 
 impl Fx {
@@ -43,8 +42,19 @@ impl Fx {
             fear: 0,
             flash: 0,
             spooked: false,
-            candle: 1.0,
         }
+    }
+
+    /// Apaise la crypte : la peur chute de `amount` (plancher 0).
+    /// Effet de boutique (bougie apaisante, eau bénite).
+    pub fn calm(&mut self, amount: u8) {
+        self.fear = self.fear.saturating_sub(amount);
+    }
+
+    /// Éclair immédiat, comme au premier tick d'un effroi.
+    /// Effet de boutique.
+    pub fn flash(&mut self) {
+        self.flash = FLASH_FRAMES;
     }
 
     /// Un tick. En effroi la peur monte vers 100 et un éclair part au
@@ -62,19 +72,10 @@ impl Fx {
         } else {
             self.fear.saturating_sub(FEAR_DOWN)
         };
-        self.flicker();
     }
 
-    /// Flamme de bougie : la lumière change de palier de temps en temps.
-    fn flicker(&mut self) {
-        let roll: u64 = rand::random();
-        if roll % 100 < 18 {
-            self.candle = [0.86, 0.93, 1.0, 1.0][(roll >> 8) as usize % 4];
-        }
-    }
-
-    /// Fond de la crypte : vignette chaude centrée en haut, à la bougie ;
-    /// rougit avec la peur. À appeler **avant** les widgets.
+    /// Fond de la crypte : vignette chaude fixe centrée en haut ; rougit
+    /// avec la peur. À appeler **avant** les widgets.
     pub fn paint_background(&self, area: Rect, buf: &mut Buffer) {
         let glow = theme::lerp(CRYPT, DRIED, f32::from(self.fear) / 160.0);
         let (cx, cy) = (f32::from(area.width) * 0.5, f32::from(area.height) * 0.3);
@@ -84,7 +85,7 @@ impl Fx {
                 let dx = f32::from(x - area.x) - cx;
                 let dy = (f32::from(y - area.y) - cy) * 2.0;
                 let d = ((dx * dx + dy * dy).sqrt() / reach).min(1.0);
-                let light = ((1.0 - d * d) * self.candle * LIGHT_STEPS).round() / LIGHT_STEPS;
+                let light = ((1.0 - d * d) * LIGHT_STEPS).round() / LIGHT_STEPS;
                 if let Some(cell) = buf.cell_mut((x, y)) {
                     cell.set_bg(theme::lerp(VOID, glow, light));
                 }
@@ -195,6 +196,21 @@ mod tests {
             fx.tick(false);
         }
         assert_eq!(fx.fear, 0);
+    }
+
+    #[test]
+    fn boutique_calm_et_flash() {
+        let mut fx = Fx::new();
+        for _ in 0..10 {
+            fx.tick(true);
+        }
+        assert!(fx.fear > 30);
+        fx.calm(30);
+        let after = fx.fear;
+        fx.calm(100);
+        assert_eq!(fx.fear, 0, "eau bénite : peur à zéro (était {after})");
+        fx.flash();
+        assert_eq!(fx.flash, FLASH_FRAMES);
     }
 
     #[test]

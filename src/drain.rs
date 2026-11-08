@@ -26,8 +26,14 @@ impl Incoming {
     /// recherche web brute (aucun appel LLM).
     pub(crate) fn usage(&self) -> Option<(u64, u64)> {
         let billed = match self {
-            Incoming::ToolDone(..) => return None,
-            Incoming::Chat(_, r) | Incoming::Compact(_, r) | Incoming::Agent(_, _, _, r) => {
+            Incoming::ToolDone(..)
+            | Incoming::Vps(..)
+            | Incoming::McpRefresh(..)
+            | Incoming::HookDone(..) => return None,
+            Incoming::Chat(_, r)
+            | Incoming::Compact(_, r)
+            | Incoming::Agent(_, _, _, r)
+            | Incoming::SpecNew(_, _, r) => {
                 let done = r.as_ref().ok()?;
                 (done.prompt_tokens, done.completion_tokens)
             }
@@ -108,6 +114,7 @@ impl App {
         deliver: usize,
         reply: Result<Completion>,
     ) {
+        self.hooks_fire_agent_stop(owner, agent_id, deliver);
         let tag = agent_tag(owner, deliver, agent_id);
         let done = match reply {
             Ok(done) => done,
@@ -122,6 +129,7 @@ impl App {
                         .push(Role::System, format!("{tag} error: {error}"));
                 }
                 self.pump_agent_inbox(agent_id);
+                self.spec_agent_failed(agent_id);
                 return;
             }
         };
@@ -156,6 +164,7 @@ impl App {
         }
         self.pump_agent_inbox(agent_id);
         self.fire_agent_links(agent_id, &done.text);
+        self.spec_agent_done(agent_id);
     }
 
     /// Marque un agent échoué sur son chat propriétaire (réponse en erreur).
@@ -173,6 +182,7 @@ impl App {
         let Some(sess) = self.sessions.get_mut(id) else {
             return;
         };
+        sess.waiting = false;
         match reply {
             Ok(done) => {
                 sess.ledger
@@ -354,7 +364,7 @@ impl App {
 
     /// Tell automatique (lien) : déposé aussitôt dans le chat cible
     /// (déclenché ou enfilé, voir `deliver_tell`). Cible inconnue
-    /// (chats jamais supprimés) : ignoré.
+    /// (chat fermé entre-temps) : ignoré.
     fn auto_tell(&mut self, idx: usize, from: LinkEnd, text: &str, hops: u8) {
         if self.sessions.get(idx).is_none() {
             return;
@@ -417,6 +427,7 @@ impl App {
         let Some(sess) = self.sessions.get_mut(id) else {
             return;
         };
+        sess.waiting = false;
         match reply {
             Ok(done) => {
                 if done.prompt_tokens != 0 || done.completion_tokens != 0 {

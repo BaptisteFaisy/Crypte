@@ -2,8 +2,8 @@
 //!
 //! Priorité : réponse en cours (chaudron), puis sous-agents actifs
 //! (araignée), puis présage récent (erreur, compaction, effroi), puis
-//! rotation lente du bestiaire. Kiro (le fantôme) a son propre panneau
-//! et n'apparaît pas ici.
+//! rotation lente du bestiaire. Kiro (le fantôme)
+//! n'apparaît pas ici.
 
 use std::time::{Duration, Instant};
 
@@ -13,7 +13,7 @@ use crate::bestiary::{self, Creature, BESTIARY};
 const ROTATION: Duration = Duration::from_secs(20);
 /// Durée d'affichage d'un présage.
 const OMEN: Duration = Duration::from_secs(6);
-/// Durée d'un jump scare (F5), calée sur l'effroi de Kiro.
+/// Durée d'un jump scare (F5).
 const SCARE: Duration = Duration::from_secs(2);
 /// Créatures tirées pour un jump scare.
 const SCARY: [&str; 8] = [

@@ -92,7 +92,7 @@ pub const BESTIARY: [Creature; 33] = [
     creature!("momie-course", "Hurried Mummy", "It runs faster than you."),
 ];
 
-/// Kiro effrayé (F5) : hors bestiaire, réservé à la mascotte.
+/// Kiro effrayé : hors bestiaire, planche seule.
 pub const KIRO_SPOOKED: Creature = creature!("kiro-effroi", "Kiro", "Something scared it!");
 
 /// Créature par identifiant (bestiaire puis Kiro effrayé).

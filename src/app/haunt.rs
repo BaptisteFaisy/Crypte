@@ -4,9 +4,9 @@
 //!
 //! Touches : `a`/`d` (ou ←/→) gauche/droite, `w` (ou ↑) saut, `s` (ou ↓)
 //! s'enfoncer, Espace = envoyer un token, Entrée = commencer, `p` pause,
-//! Échap/F9 = retour au chat, F7 = hub, F5 = éclair.
+//! Échap/F9 = retour au chat, F6 = boutique, F5 = éclair.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
@@ -22,7 +22,23 @@ use crate::ghostty;
 use crate::haunt::{self, Act};
 use crate::theme::{self, ASH, BLOOD, BONE, CANDLE, PUMPKIN, UMBER};
 
+/// Clavier du jeu : terminal réel branché (jamais d'écriture brute vers
+/// stdout sans lui : tests, `--smoke`), protocole Kitty géré (interrogé
+/// à la première entrée en jeu) et empilé (pendant le jeu).
+#[derive(Debug, Default)]
+pub(crate) struct Keyboard {
+    pub(crate) live: bool,
+    ok: Option<bool>,
+    on: bool,
+}
+
 impl App {
+    /// Attente maximale des événements : 1 ms en jeu (240 images/s),
+    /// 10 ms ailleurs.
+    pub(crate) fn poll_wait(&self) -> Duration {
+        Duration::from_millis(if self.screen == Screen::Haunt { 1 } else { 10 })
+    }
+
     /// F9 : ouvre le jeu, ou revient au chat.
     pub(crate) fn open_haunt(&mut self) {
         let next = if self.screen == Screen::Haunt {
@@ -51,7 +67,7 @@ impl App {
         let press = key.kind == KeyEventKind::Press;
         match key.code {
             KeyCode::Esc | KeyCode::F(9) if press => self.show(Screen::Chat),
-            KeyCode::F(7) if press => self.open_hub(),
+            KeyCode::F(6) if press => self.show(Screen::Shop),
             KeyCode::F(5) if press => {
                 self.spook();
                 self.haunt.thunder();
@@ -65,8 +81,11 @@ impl App {
         true
     }
 
-    /// Fait avancer le jeu de `dt` s'il est à l'écran ; vrai = à redessiner.
-    pub(crate) fn pump_haunt(&mut self, dt: Duration) -> bool {
+    /// Fait avancer le jeu du temps écoulé depuis `last` (remis à
+    /// maintenant) s'il est à l'écran ; vrai = frame à redessiner.
+    pub(crate) fn pump_haunt(&mut self, last: &mut Instant) -> bool {
+        let dt = last.elapsed();
+        *last = Instant::now();
         self.screen == Screen::Haunt && self.haunt.pump(dt)
     }
 
@@ -106,18 +125,19 @@ impl App {
     /// Relâchements de touches (protocole Kitty) le temps de jouer, si le
     /// terminal réel le gère (interrogé une fois) ; jamais hors terminal.
     fn key_releases(&mut self, on: bool) {
-        if !self.live_terminal || on == self.releases_on {
+        if !self.keyboard.live || on == self.keyboard.on {
             return;
         }
         let supported = *self
-            .releases_ok
+            .keyboard
+            .ok
             .get_or_insert_with(ghostty::supports_key_releases);
         if !supported {
             self.haunt.set_releases(false);
             return;
         }
         if ghostty::key_releases(on).is_ok() {
-            self.releases_on = on;
+            self.keyboard.on = on;
             self.haunt.set_releases(on);
         }
     }
@@ -203,12 +223,13 @@ mod tests {
         app.show(Screen::Haunt);
         let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
         app.on_key(enter);
-        assert!(app.pump_haunt(Duration::from_millis(40)));
+        let mut last = Instant::now() - Duration::from_millis(40);
+        assert!(app.pump_haunt(&mut last));
         assert_eq!(app.haunt.phase, haunt::Phase::Play);
-        app.show(Screen::Hub);
+        app.show(Screen::Shop);
         assert_eq!(app.haunt.phase, haunt::Phase::Paused);
         assert!(
-            !app.pump_haunt(Duration::from_millis(40)),
+            !app.pump_haunt(&mut (Instant::now() - Duration::from_millis(40))),
             "figé hors écran"
         );
     }

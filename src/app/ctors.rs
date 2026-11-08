@@ -1,11 +1,13 @@
 //! Constructeurs de [`App`] (config env/TOML, déconnecté, hors ligne)
 //! + pin agents.md dans le chat initial.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::sync::mpsc;
 
+use super::haunt::Keyboard;
 use super::{App, Screen};
 use crate::agents;
 use crate::almanac::Almanac;
@@ -18,10 +20,10 @@ use crate::fx::Fx;
 use crate::gfx::ImageBank;
 use crate::haunt::Haunt;
 use crate::hub::Hub;
-use crate::mascot::Mascot;
 use crate::pool::{SpawnPool, INCOMING_CAP};
 use crate::provider::{Provider, ProviderConfig};
-use crate::sessions::Sessions;
+use crate::sessions::{CloseOutcome, Sessions};
+use crate::shop::Shop;
 
 impl App {
     /// Construit l'app (lit la config provider depuis l'environnement).
@@ -99,17 +101,27 @@ impl App {
         lazy: bool,
         hint_connect: bool,
     ) -> Self {
+        let mut app = Self::blank(provider, agents_md, agents_file, lazy);
+        app.finish_boot(hint_connect);
+        app
+    }
+
+    /// État brut (canal + champs, sans pin ni annonce).
+    fn blank(
+        provider: Option<Arc<Provider>>,
+        agents_md: Option<String>,
+        agents_file: Option<String>,
+        lazy: bool,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(INCOMING_CAP);
-        let mut app = Self {
-            mascot: Mascot::new(),
+        let app = Self {
             fx: Fx::new(),
             bank: ImageBank::headless(),
             apparition: Apparition::new(),
             hub: Hub::new(),
+            shop: Shop::new(),
             haunt: Haunt::new(),
-            live_terminal: false,
-            releases_ok: None,
-            releases_on: false,
+            keyboard: Keyboard::default(),
             tick: 0,
             busy: false,
             ctx_used: 0,
@@ -117,6 +129,7 @@ impl App {
             sessions: Sessions::new(),
             almanac: Almanac::memory(),
             bus: Bus::new(),
+            settings: crate::settings::Settings::load(),
             provider,
             connect_flow: None,
             agents_md,
@@ -124,27 +137,45 @@ impl App {
             agents_tried: !lazy,
             screen: Screen::Chat,
             right_delta: 0,
+            side_delta: 0,
+            side_area: None,
+            side_auto: 18,
+            resizing_side: None,
+            side_hot: false,
             plus_btn: None,
             side_rows: None,
+            close_btns: Vec::new(),
             tab_hits: Vec::new(),
+            shop_rows: Vec::new(),
             thinking: None,
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
+            t5: crate::permissions::T5State::load(),
             tools_on: true,
             tool_run: None,
+            spec_runs: HashMap::new(),
+            spec_waiting: None,
+            mcp: crate::kiro::mcp_pool::McpState::new(),
+            hooks: crate::kiro::hook_run::HookState::new(),
             chats_path: None,
             events: EventLog::disabled(),
+            vps: crate::vps::VpsRuntime::load(),
             tx,
             rx,
             pool: SpawnPool::new(),
         };
-        app.pin_current();
-        app.announce_agents_md();
-        if hint_connect {
-            app.push_system(String::from(NOT_CONNECTED));
-        }
-        app.refresh_ctx_cache();
         app
+    }
+
+    /// Fin de construction : pin + annonce + hint + cache contexte.
+    fn finish_boot(&mut self, hint_connect: bool) {
+        self.pin_current();
+        self.announce_agents_md();
+        self.hooks_fire_session_start();
+        if hint_connect {
+            self.push_system(String::from(NOT_CONNECTED));
+        }
+        self.refresh_ctx_cache();
     }
 
     /// Lit agents.md + steering Kiro au premier envoi (une seule tentative),
@@ -154,7 +185,11 @@ impl App {
             return;
         }
         self.agents_tried = true;
-        let merged = agents::load_merged(self.agents_file.as_deref());
+        let merged = agents::load_merged_in(
+            self.agents_file.as_deref(),
+            &self.t5.kiro_project,
+            self.t5.kiro_global.as_deref(),
+        );
         if merged.text.is_none() {
             return;
         }
@@ -163,6 +198,30 @@ impl App {
         self.pin_all_empty();
         if let Some(msg) = msg {
             self.sessions.current_mut().chat.push(Role::System, msg);
+        }
+    }
+
+    /// Ferme le chat `idx` (clic [×], Ctrl+W) : liens bus re-pointés,
+    /// événement émis, refus motivé sinon (dernier, réponse en vol).
+    pub(crate) fn close_chat(&mut self, idx: usize) {
+        let name = self.sessions.get(idx).map(|c| c.name.clone());
+        match self.sessions.close(idx) {
+            CloseOutcome::Closed => {
+                crate::sessions::shift_bus_links(&mut self.bus, idx);
+                if let Some(name) = name {
+                    self.events
+                        .emit(&crate::events::Event::chat_closed(idx, &name));
+                }
+            }
+            CloseOutcome::LastChat => {
+                self.push_system(String::from("cannot close the last chat"));
+            }
+            CloseOutcome::Busy => {
+                self.push_system(String::from("cannot close: a reply is in flight"));
+            }
+            CloseOutcome::Unknown => {
+                self.push_system(format!("chat {} not found", idx + 1));
+            }
         }
     }
 
@@ -222,6 +281,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_env::EnvScope;
 
     /// Fichier temporaire unique par test (contenu écrit, à nettoyer).
     fn tmp_file(name: &str, content: &str) -> std::path::PathBuf {
@@ -243,6 +303,7 @@ mod tests {
 
     #[test]
     fn lazy_ne_lit_rien_avant_le_premier_envoi() {
+        let _env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let path = tmp_file("avant", "contexte v1");
         let app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         assert!(app.agents_md.is_none());
@@ -255,13 +316,7 @@ mod tests {
 
     #[test]
     fn lazy_charge_epingle_et_annonce_une_seule_fois() {
-        // Neutralise le steering Kiro réel (déterministe, voir KH_KIRO_*).
-        let saved_project = std::env::var("KH_KIRO_PROJECT").ok();
-        let saved_global = std::env::var("KH_KIRO_GLOBAL").ok();
-        let empty = std::env::temp_dir().join(format!("kh-lazy-{}-empty", std::process::id()));
-        std::fs::create_dir_all(&empty).unwrap();
-        std::env::set_var("KH_KIRO_PROJECT", &empty);
-        std::env::set_var("KH_KIRO_GLOBAL", &empty);
+        // Hermétique sans env : projet = cwd (sans .kiro), global = None.
         let path = tmp_file("unique", "contexte v1");
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         app.ensure_agents_loaded();
@@ -276,19 +331,11 @@ mod tests {
         app.add_chat();
         assert!(app.sessions.current().pinned_system);
         std::fs::remove_file(&path).ok();
-        match saved_project {
-            Some(v) => std::env::set_var("KH_KIRO_PROJECT", v),
-            None => std::env::remove_var("KH_KIRO_PROJECT"),
-        }
-        match saved_global {
-            Some(v) => std::env::set_var("KH_KIRO_GLOBAL", v),
-            None => std::env::remove_var("KH_KIRO_GLOBAL"),
-        }
-        std::fs::remove_dir_all(&empty).ok();
     }
 
     #[test]
     fn lazy_epingle_les_chats_vides_existants() {
+        let _env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let path = tmp_file("multi", "contexte");
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         app.add_chat();
@@ -301,6 +348,7 @@ mod tests {
 
     #[test]
     fn lazy_absent_sans_bruit_ni_reessai() {
+        let _env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let path = std::env::temp_dir().join(format!("kh-lazy-{}-absent", std::process::id()));
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         app.ensure_agents_loaded();

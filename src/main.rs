@@ -16,7 +16,9 @@ mod bus;
 mod canvas;
 mod chat;
 mod cmds;
+mod cmds_agent;
 mod cmds_link;
+mod cmds_vps;
 mod cmds_web;
 mod commands;
 mod connect;
@@ -29,19 +31,24 @@ mod haunt;
 mod history;
 mod hub;
 mod kiro;
-mod mascot;
 mod mouse;
 mod permissions;
+mod permissions_cmds;
 mod persist;
 mod pool;
 mod provider;
 mod scroll;
 mod sessions;
+mod settings;
+mod shop;
 mod sidebar;
+#[cfg(test)]
+mod test_env;
 mod texts;
 mod theme;
 mod tokens;
 mod tools;
+mod vps;
 mod web;
 mod workspace;
 
@@ -72,10 +79,16 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 3 screens (120x36 + 70x17, offline) as ANSI
+        --preview <file>  Write the 4 screens (120x36 + 70x17, offline) as ANSI
         --haunt-shot <png>  Write 4 frames of the haunt game (x2) as PNG
-        --demo            Offline demo crypt, opened on the spirit hub (F7)
+        --demo            Offline demo crypt (populated chats + agents)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
+
+SETTINGS (/settings):
+    Encrypted provider vault: $XDG_DATA_HOME/kiro-horror-tui/providers.enc
+    (else ~/.local/share/kiro-horror-tui/), ChaCha20-Poly1305, mode 0600
+    Master key: master.key next to the vault, or KH_SETTINGS_KEY (64 hex)
+    Lists every provider, stores API keys — a key is never shown or logged
 
 CONFIG (environment, wins over --config):
     KH_BASE_URL   OpenAI-compatible base (default https://api.openai.com/v1)
@@ -85,7 +98,9 @@ CONFIG (environment, wins over --config):
     KH_EVENTS_LOG   Same as --events-log (flag wins when both are set)
     BRAVE_API_KEY / TAVILY_API_KEY  Optional premium /web backends (else free)
     With no key, no --config and no --muse-auth, the TUI still starts,
-    disconnected — /connect openai|muse to connect from inside.
+    disconnected — /connect <provider> or /settings to connect from
+    inside. A provider connected by /connect or saved by /settings
+    is reused at startup.
 
 MUSE (--muse-auth):
     Store: ~/.config/muse/auth.json (key: /providers/meta/api_key)
@@ -99,7 +114,10 @@ AGENTS.MD (system context, read once at first send):
 
 KEYS (terminal >= 70x17):
     Enter  send    q  quit    F5  scare
-    Ctrl+N or click [+]  new chat    F7  hub    F9  haunt (game)
+    Ctrl+N or click [+]  new chat
+    F6 or tab click  shop (1 token consumed = 1 coin)    click item  buy
+    Drag sidebar right edge  resize the coffins column
+    F9 or tab click  haunt (platform game)
 
 HAUNT (F9, platform game, level 1 — very hard):
     a/d move    w jump    s sink    space send tokens
@@ -129,7 +147,9 @@ COMMANDS (in chat):
     /bestiary  show a random creature in the side panel
     /compact  compact history (summary + last 4)
     /connect [openai|muse]  interactive connect (masked key,
-        Esc cancels); no arg: connection status
+        Esc cancels); no arg: connection status (stored key first)
+    /settings [name]  providers screen (Enter key, m model, b base,
+        c connect, d erase); /settings add <name> <base_url> [model]
     /permissions [yolo|auto]  future tools mode (remembered)
     context limit: model window capped at 1M est. tokens (see /usage)
 ";
@@ -218,6 +238,13 @@ fn resolve_config(args: &Args) -> Result<ProviderConfig> {
     }
 }
 
+/// Config from CLI/env/TOML, else the last provider connected or saved.
+fn resolve_or_stored(args: &Args) -> Option<ProviderConfig> {
+    resolve_config(args)
+        .ok()
+        .or_else(|| crate::settings::Settings::load().last_config())
+}
+
 /// Un appel user puis exit : affiche le texte puis la ligne d'usage.
 async fn run_once(cfg: &ProviderConfig, prompt: &str) -> Result<()> {
     let provider = Provider::new(cfg.clone())?;
@@ -276,13 +303,14 @@ async fn async_main() -> Result<()> {
         return Ok(());
     }
     if let Some(prompt) = args.once.as_deref() {
-        let cfg = resolve_config(&args)?;
+        let cfg = resolve_or_stored(&args)
+            .context("no API key: --config, KH_API_KEY or a /settings entry")?;
         return run_once(&cfg, prompt).await;
     }
-    let mut app = match resolve_config(&args) {
+    let mut app = match resolve_or_stored(&args) {
         _ if args.demo => App::offline()?,
-        Ok(cfg) => App::from_config_with_agents_file(cfg, args.agents_file)?,
-        Err(_) => App::disconnected_with_agents_file(args.agents_file),
+        Some(cfg) => App::from_config_with_agents_file(cfg, args.agents_file)?,
+        None => App::disconnected_with_agents_file(args.agents_file),
     };
     if !args.demo {
         app.enable_history();
@@ -299,7 +327,6 @@ async fn async_main() -> Result<()> {
     if args.demo {
         app.almanac = Almanac::demo(crate::almanac::today());
         app.populate_hub_demo();
-        app.open_hub();
     }
     let mut terminal = ratatui::init();
     let _ = execute!(io::stdout(), EnableMouseCapture);
@@ -314,7 +341,7 @@ async fn async_main() -> Result<()> {
 }
 
 /// App hors ligne garnie pour `--smoke` / `--apercu` : deux messages,
-/// Kiro effrayé, quelques ticks d'effets.
+/// effroi (F5), quelques ticks d'effets.
 fn demo_app() -> Result<App> {
     let mut app = App::offline()?;
     let chat = &mut app.sessions.current_mut().chat;
@@ -339,7 +366,7 @@ fn render(app: &mut App, screen: Screen, w: u16, h: u16) -> Result<Buffer> {
     Ok(term.backend().buffer().clone())
 }
 
-/// Controle headless : frame 80x24 (chat) + 70x17
+/// Controle headless : frames 80x24 (chat + settings) + 70x17
 /// (minimum, 3 écrans), sans reseau ni cle API. Echec = `Err`.
 fn smoke() -> Result<()> {
     let mut app = demo_app()?;
@@ -347,7 +374,7 @@ fn smoke() -> Result<()> {
     let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
     anyhow::ensure!(filled > 100, "check frame almost empty ({filled} cells)");
     println!("smoke OK: 80x24 frame, {filled} cells filled");
-    for screen in [Screen::Chat, Screen::Hub, Screen::Haunt] {
+    for screen in [Screen::Chat, Screen::Settings, Screen::Shop, Screen::Haunt] {
         let buf = render(&mut app, screen, 70, 17)?;
         let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
         anyhow::ensure!(
@@ -360,7 +387,12 @@ fn smoke() -> Result<()> {
             "header missing at 70x17 ({screen:?})"
         );
     }
-    println!("smoke OK: 70x17 frames, 3 screens");
+    println!("smoke OK: 70x17 frames, 4 screens");
+    let buf = render(&mut app, Screen::Settings, 80, 24)?;
+    let text: String = buf.content.iter().map(|c| c.symbol()).collect();
+    anyhow::ensure!(text.contains("SETTINGS"), "settings frame has no title");
+    anyhow::ensure!(text.contains("openai"), "settings frame lists no provider");
+    println!("smoke OK: settings 80x24");
     println!(
         "smoke OK: tokens estimate('hello')={}",
         crate::tokens::estimate("hello")
@@ -375,10 +407,12 @@ fn apercu(path: &str) -> Result<()> {
     let mut out = String::new();
     for (screen, w, h) in [
         (Screen::Chat, 120, 36),
-        (Screen::Hub, 120, 36),
+        (Screen::Settings, 120, 36),
+        (Screen::Shop, 120, 36),
         (Screen::Haunt, 120, 36),
         (Screen::Chat, 70, 17),
-        (Screen::Hub, 70, 17),
+        (Screen::Settings, 70, 17),
+        (Screen::Shop, 70, 17),
         (Screen::Haunt, 70, 17),
     ] {
         out.push_str(&format!("=== {screen:?} {w}x{h} ===\n"));
@@ -386,7 +420,7 @@ fn apercu(path: &str) -> Result<()> {
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (120x36 + 70x17, 3 screens)");
+    println!("preview: {path} (120x36 + 70x17, 4 screens)");
     Ok(())
 }
 
@@ -423,11 +457,15 @@ mod tests {
 
     #[test]
     fn helps_ne_mentionnent_plus_les_ecrans_supprimes() {
+        // F6 a été réattribuée à la boutique (l'ancien bestiaire F6
+        // est parti vers `/bestiary`) ; F8 reste sans écran.
         for help in [HELP, crate::texts::help_text()] {
             assert!(!help.contains("grimoire"));
             assert!(!help.contains("F2"));
-            assert!(!help.contains("F6"));
             assert!(!help.contains("F8"));
+        }
+        for help in [HELP, crate::texts::help_text()] {
+            assert!(help.contains("F6"), "boutique F6 absente : {help:?}");
         }
     }
 }
