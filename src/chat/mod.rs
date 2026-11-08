@@ -245,8 +245,7 @@ impl ChatState {
         let mut block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(CANDLE))
-            .title_bottom(Line::styled(" Enter ", Style::new().fg(ASH)).right_aligned());
+            .border_style(Style::new().fg(CANDLE));
         if let Some(label) = &self.prompt_label {
             block = block.title(Line::from(label.clone()));
         }
