@@ -39,6 +39,9 @@ pub mod spec_prompts;
 pub mod spec_run;
 pub mod status;
 pub mod steering;
+pub mod workflow_cmds;
+pub mod workflow_run;
+pub mod workflows;
 
 use std::path::PathBuf;
 

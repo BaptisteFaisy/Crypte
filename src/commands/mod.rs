@@ -87,6 +87,7 @@ pub enum Command {
     Mcp(Option<String>),
     Hooks,
     Cloud(Vec<String>),
+    Workflow(Vec<String>),
     Unknown(String),
 }
 
@@ -143,6 +144,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/mcp" => Some(Command::Mcp(opt_arg(&mut parts))),
         "/hooks" => Some(Command::Hooks),
         "/cloud" => Some(Command::Cloud(all_args(&mut parts))),
+        "/workflow" => Some(Command::Workflow(all_args(&mut parts))),
         "/critic" => Some(Command::Critic(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/skills" => Some(Command::Skills),

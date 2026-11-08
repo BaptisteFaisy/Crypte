@@ -484,6 +484,12 @@ global `~/.kiro/`), so a project moves back and forth between both:
   resume command + web link) ; `/cloud list|attach|delete|stop`
   manage sessions ; the sandbox clones the remote, so unpushed
   work is warned about. See [docs/CLOUD.md](docs/CLOUD.md).
+- **Workflows** (`.kiro/workflows/*.workflow.json`, official format) :
+  `/workflow list|show|validate` reads recipes (project wins over
+  global, JSON only), `run <name> [k=v ...]` executes flat step
+  lists via chained sub-agents (`{{inputs}}`, step outputs and
+  producer-resolved artifacts expanded; `repeat`/`parallel`/`watch`
+  and conditions are refused with a reason).
 
 `/kiro` shows what was loaded (steering, specs, hooks, servers,
 ignore) ; `/hooks` shows hooks by trigger, queued agent prompts

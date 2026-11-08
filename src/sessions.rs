@@ -11,6 +11,7 @@ pub use chat::ChatSession;
 pub use close::{shift_bus_links, CloseOutcome};
 pub use subagents::{AgentStatus, AskError, SpecTag, SubAgent};
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::tokens::TokenLedger;
@@ -26,6 +27,8 @@ pub struct Sessions {
     next_agent_id: usize,
     /// Namespace des workspaces agents (`<unix_secs>-<pid>`, un par run).
     session: String,
+    /// Runs workflows par agent en vol (`/workflow run`, voir `drain`).
+    pub workflow_runs: HashMap<usize, crate::kiro::workflow_run::WorkflowRun>,
 }
 
 impl Sessions {
@@ -36,6 +39,7 @@ impl Sessions {
             current: 0,
             next_agent_id: 1,
             session: crate::workspace::session_id(),
+            workflow_runs: HashMap::new(),
         }
     }
 
@@ -147,6 +151,7 @@ impl Sessions {
             current,
             next_agent_id: 1,
             session: crate::workspace::session_id(),
+            workflow_runs: HashMap::new(),
         }
     }
 
