@@ -26,7 +26,14 @@ fn group_of(cmd: &str) -> Group {
         return Group::Chat;
     }
     for prefix in [
-        "agent_", "agents_", "tell_", "msg_", "link", "connect_", "provider", "bestiary_",
+        "agent_",
+        "agents_",
+        "tell_",
+        "msg_",
+        "link",
+        "connect_",
+        "provider",
+        "bestiary_",
     ] {
         if cmd.starts_with(prefix) {
             return Group::BusProv;
@@ -174,17 +181,42 @@ mod tests {
     #[test]
     fn routage_chat_et_busprov() {
         for cmd in [
-            "chat_list", "chat_new", "chat_select", "chat_close", "chat_clear", "chat_send",
-            "chat_stop", "chat_state", "chat_compact", "chat_set_model", "chat_set_thinking",
-            "usage_get", "ctx_gauge",
+            "chat_list",
+            "chat_new",
+            "chat_select",
+            "chat_close",
+            "chat_clear",
+            "chat_send",
+            "chat_stop",
+            "chat_state",
+            "chat_compact",
+            "chat_set_model",
+            "chat_set_thinking",
+            "usage_get",
+            "ctx_gauge",
         ] {
             check(cmd, Group::Chat);
         }
         for cmd in [
-            "agent_spawn", "agent_ask", "agents_list", "tell_send", "msg_send", "link_add",
-            "link_remove", "links_list", "connect_status", "connect_save", "connect_muse",
-            "providers_list", "provider_add", "provider_set_key", "provider_remove",
-            "provider_select", "bestiary_get", "bestiary_random", "bestiary_list",
+            "agent_spawn",
+            "agent_ask",
+            "agents_list",
+            "tell_send",
+            "msg_send",
+            "link_add",
+            "link_remove",
+            "links_list",
+            "connect_status",
+            "connect_save",
+            "connect_muse",
+            "providers_list",
+            "provider_add",
+            "provider_set_key",
+            "provider_remove",
+            "provider_select",
+            "bestiary_get",
+            "bestiary_random",
+            "bestiary_list",
         ] {
             check(cmd, Group::BusProv);
         }
@@ -193,14 +225,45 @@ mod tests {
     #[test]
     fn routage_outils() {
         for cmd in [
-            "tools_status", "tools_set", "tools_list", "tool_decide", "permissions_get",
-            "permissions_set_mode", "permissions_set_rule", "permissions_reset", "web_search",
-            "kiro_status", "skills_list", "skill_inject", "memory_remember", "checkpoints_list",
-            "checkpoint_rewind", "hooks_list", "spec_new", "spec_show", "spec_run",
-            "spec_respond", "mcp_status", "mcp_refresh", "critic_set", "critic_smack",
-            "shop_state", "shop_buy", "apparition_state", "spook", "hub_snapshot",
-            "haunt_start", "haunt_stop", "haunt_input", "vps_list", "vps_launch", "vps_stop",
-            "vps_status", "vps_add", "vps_remove", "vps_install",
+            "tools_status",
+            "tools_set",
+            "tools_list",
+            "tool_decide",
+            "permissions_get",
+            "permissions_set_mode",
+            "permissions_set_rule",
+            "permissions_reset",
+            "web_search",
+            "kiro_status",
+            "skills_list",
+            "skill_inject",
+            "memory_remember",
+            "checkpoints_list",
+            "checkpoint_rewind",
+            "hooks_list",
+            "spec_new",
+            "spec_show",
+            "spec_run",
+            "spec_respond",
+            "mcp_status",
+            "mcp_refresh",
+            "critic_set",
+            "critic_smack",
+            "shop_state",
+            "shop_buy",
+            "apparition_state",
+            "spook",
+            "hub_snapshot",
+            "haunt_start",
+            "haunt_stop",
+            "haunt_input",
+            "vps_list",
+            "vps_launch",
+            "vps_stop",
+            "vps_status",
+            "vps_add",
+            "vps_remove",
+            "vps_install",
         ] {
             check(cmd, Group::Tools);
         }
@@ -209,11 +272,28 @@ mod tests {
     #[test]
     fn routage_mbox() {
         for cmd in [
-            "mbox_tail", "mbox_send", "mbox_bus", "mbox_digest", "mbox_rotate", "mbox_hb",
-            "mbox_hb_list", "mbox_ordre_new", "mbox_ordre_list", "mbox_ordre_revoke",
-            "mbox_ordre_ack", "mbox_ordre_pull", "mbox_ordre_delegate", "mbox_jeton_new",
-            "mbox_jeton_revoke", "mbox_jeton_list", "mbox_jeton_purge", "mbox_doctor",
-            "mbox_metriques", "mbox_piste", "mbox_vague", "mbox_fantome",
+            "mbox_tail",
+            "mbox_send",
+            "mbox_bus",
+            "mbox_digest",
+            "mbox_rotate",
+            "mbox_hb",
+            "mbox_hb_list",
+            "mbox_ordre_new",
+            "mbox_ordre_list",
+            "mbox_ordre_revoke",
+            "mbox_ordre_ack",
+            "mbox_ordre_pull",
+            "mbox_ordre_delegate",
+            "mbox_jeton_new",
+            "mbox_jeton_revoke",
+            "mbox_jeton_list",
+            "mbox_jeton_purge",
+            "mbox_doctor",
+            "mbox_metriques",
+            "mbox_piste",
+            "mbox_vague",
+            "mbox_fantome",
         ] {
             check(cmd, Group::Mbox);
         }

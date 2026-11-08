@@ -26,7 +26,7 @@ pub struct EarlyArgs {
 }
 
 /// Usage (miroir du `--help` TUI, adapté desktop).
-pub const HELP: &str = "crypte (Tauri) — chat LLM d'horreur\n\nUsage: crypte [options]\n\n  --smoke             Headless self-check (no network, no key)\n  --sheet <png>       Write the bestiary sheet (33 drawings) as PNG\n  --apercu <fichier>  Write the preview report as JSON\n  --mbox <args...>    Broadcast CLI (same files as bcast shell)\n  --events-log <file> Append domain events as JSONL (KH_EVENTS_LOG)\n  --help              Show this help\n";
+pub const HELP: &str = "crypte (Tauri) — chat LLM d'horreur\n\nUsage: crypte [options]\n\n  --smoke             Headless self-check (no network, no key)\n  --sheet <png>       Write the bestiary sheet (34 drawings) as PNG\n  --apercu <fichier>  Write the preview report as JSON\n  --mbox <args...>    Broadcast CLI (same files as bcast shell)\n  --events-log <file> Append domain events as JSONL (KH_EVENTS_LOG)\n  --help              Show this help\n";
 
 /// Parse `argv` (sans le programme). Inconnu → `Err` (usage + code 2).
 pub fn parse_early(argv: &[String]) -> Result<EarlyArgs, String> {
@@ -114,8 +114,8 @@ fn run_sheet(path: &str) -> i32 {
 /// `--apercu` : rapport JSON de prévisualisation (0 = écrit).
 fn run_apercu(path: &str) -> i32 {
     match crate::preview::write_preview(path) {
-        Ok(report) => {
-            println!("apercu: {path} ({})", crate::preview::summary(&report));
+        Ok(_) => {
+            println!("apercu: {path}");
             0
         }
         Err(err) => {

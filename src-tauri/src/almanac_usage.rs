@@ -12,9 +12,8 @@ impl Almanac {
     /// Jour le plus gourmand (le plus récent en cas d'égalité).
     pub fn peak(&self) -> Option<(NaiveDate, DayTally)> {
         self.recent().fold(None, |best, (day, tally)| {
-            let better = best.is_none_or(|(_, top): (NaiveDate, DayTally)| {
-                tally.total() > top.total()
-            });
+            let better =
+                best.is_none_or(|(_, top): (NaiveDate, DayTally)| tally.total() > top.total());
             if better {
                 Some((day, tally))
             } else {

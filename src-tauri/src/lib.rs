@@ -54,8 +54,8 @@ pub mod fx;
 pub mod haunt;
 pub mod history;
 pub mod hub;
-pub mod invoke;
 pub mod interop;
+pub mod invoke;
 pub mod kiro;
 pub mod known;
 pub mod mbox;
@@ -190,7 +190,12 @@ fn setup_tasks(
 async fn route_one(handle: &tauri::AppHandle, inc: Incoming) {
     use tauri::Manager;
     let core = handle.state::<Core>();
-    if let DrainOutcome::ToolCalls { chat, done, elapsed } = core.route(inc) {
+    if let DrainOutcome::ToolCalls {
+        chat,
+        done,
+        elapsed,
+    } = core.route(inc)
+    {
         let tools = handle.state::<std::sync::Mutex<ToolsBackend>>();
         bridge::drain_tool_calls(&core, &tools, handle, chat, &done, elapsed);
     }
