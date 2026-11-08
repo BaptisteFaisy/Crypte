@@ -27,7 +27,10 @@ impl Incoming {
     pub(crate) fn usage(&self) -> Option<(u64, u64)> {
         let billed = match self {
             Incoming::ToolDone(..) | Incoming::Vps(..) => return None,
-            Incoming::Chat(_, r) | Incoming::Compact(_, r) | Incoming::Agent(_, _, _, r) => {
+            Incoming::Chat(_, r)
+            | Incoming::Compact(_, r)
+            | Incoming::Agent(_, _, _, r)
+            | Incoming::Critique(r) => {
                 let done = r.as_ref().ok()?;
                 (done.prompt_tokens, done.completion_tokens)
             }

@@ -2,6 +2,7 @@
 //! Les constructeurs vivent dans `app/ctors.rs`, le rendu dans `app/ui.rs`
 //! (mise en page de la crypte), le panneau hub dans `app/esprits.rs`.
 
+mod critic;
 mod ctors;
 mod esprits;
 mod keys;
@@ -32,6 +33,7 @@ use crate::ghostty;
 
 use crate::hub::Hub;
 use crate::permissions::Mode;
+use crate::phantom::Phantom;
 use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
@@ -44,18 +46,22 @@ use crate::web::WebAnswer;
 /// Message async d'une tâche provider : chat (`idx`), agent
 /// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
 /// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]),
-/// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]).
+/// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]),
+/// critique de Kiro (voir [`crate::phantom`]).
 pub(crate) enum Incoming {
     Chat(usize, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
     Compact(usize, Result<Completion>),
     Web(usize, Result<WebAnswer>),
     ToolDone(usize, Vec<Delivery>),
+    Critique(Result<Completion>),
     Vps(crate::vps::VpsOutcome),
 }
 
 /// État global de l'application.
 pub struct App {
+    /// Kiro en balade : juge les prompts, se fait frapper (`/critic`).
+    phantom: Phantom,
     pub(crate) fx: Fx,
     bank: ImageBank,
     pub(crate) apparition: Apparition,
@@ -189,8 +195,10 @@ impl App {
         Ok(())
     }
 
-    /// F5 : une créature surgit (jump scare + éclair) et le hub panique.
+    /// F5 : une créature surgit (jump scare + éclair), le hub panique et
+    /// Kiro (en balade) prend peur.
     pub(crate) fn spook(&mut self) {
+        self.phantom.scare();
         self.apparition.scare();
         self.hub.scare();
     }
@@ -218,6 +226,7 @@ impl App {
                 Incoming::Compact(id, reply) => self.drain_compact(id, reply),
                 Incoming::Web(id, reply) => self.drain_web(id, reply),
                 Incoming::ToolDone(id, deliveries) => self.drain_tool_done(id, deliveries),
+                Incoming::Critique(reply) => self.drain_critique(reply),
                 Incoming::Vps(outcome) => self.drain_vps(outcome),
             }
         }
@@ -233,6 +242,7 @@ impl App {
     pub(crate) fn tick(&mut self) {
         self.tick = self.tick.wrapping_add(1);
         self.autosave_if_due(self.tick);
+        self.phantom.tick();
         self.apparition.tick();
         self.hub.sync(&self.sessions);
         self.hub.step();

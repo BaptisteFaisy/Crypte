@@ -95,12 +95,33 @@ pub const BESTIARY: [Creature; 33] = [
 /// Kiro effrayé : hors bestiaire, planche seule.
 pub const KIRO_SPOOKED: Creature = creature!("kiro-effroi", "Kiro", "Something scared it!");
 
-/// Créature par identifiant (bestiaire puis Kiro effrayé).
+/// Kiro en balade (voir [`crate::phantom`]) : grand fantôme blanc du
+/// hub (corps os, ombre sable à droite, yeux d'encre). Au repos, en vol
+/// (1 px plus haut, festons décalés), parle, juge (paupières lourdes),
+/// frappé (écrasé, yeux en croix), K.O. (frappé tête en bas), apeuré.
+pub const KIRO_IDLE: Creature = creature!("kiro-spectre", "Kiro", "It roams the crypt.");
+pub const KIRO_FLOAT: Creature = creature!("kiro-flotte", "Kiro", "It drifts through the crypt.");
+pub const KIRO_TALK: Creature = creature!("kiro-parle", "Kiro", "It has notes on your prompt.");
+pub const KIRO_JUDGE: Creature = creature!("kiro-juge", "Kiro", "Unimpressed.");
+pub const KIRO_HIT: Creature = creature!("kiro-frappe", "Kiro", "Ouch.");
+pub const KIRO_KO: Creature = creature!("kiro-ko", "Kiro", "Down for the count.");
+pub const KIRO_FRIGHT: Creature = creature!("kiro-peur", "Kiro", "Hands up, ghost.");
+
+/// Kiro hors bestiaire (effroi du portrait + balade) : recherche, tests.
+const KIRO_EXTRAS: [&Creature; 8] = [
+    &KIRO_SPOOKED,
+    &KIRO_IDLE,
+    &KIRO_FLOAT,
+    &KIRO_TALK,
+    &KIRO_JUDGE,
+    &KIRO_HIT,
+    &KIRO_KO,
+    &KIRO_FRIGHT,
+];
+
+/// Créature par identifiant (bestiaire puis Kiro hors bestiaire).
 pub fn find(slug: &str) -> Option<&'static Creature> {
-    BESTIARY
-        .iter()
-        .chain(std::iter::once(&KIRO_SPOOKED))
-        .find(|c| c.slug == slug)
+    BESTIARY.iter().chain(KIRO_EXTRAS).find(|c| c.slug == slug)
 }
 
 /// Créature par identifiant ; panique si absent (identifiants internes).
@@ -210,7 +231,7 @@ mod tests {
 
     #[test]
     fn every_sprite_decodes_with_visible_pixels() {
-        for creature in BESTIARY.iter().chain([&KIRO_SPOOKED]) {
+        for creature in BESTIARY.iter().chain(KIRO_EXTRAS) {
             let img = creature.sprite().expect(creature.slug);
             let inked = img.pixels().filter(|p| p.0[3] == 255).count();
             assert!(inked > 80, "{} almost empty ({inked} px)", creature.slug);
@@ -246,11 +267,19 @@ mod tests {
     #[test]
     fn slugs_are_unique_and_findable() {
         let mut slugs: Vec<&str> = BESTIARY.iter().map(|c| c.slug).collect();
+        slugs.extend(KIRO_EXTRAS.iter().map(|c| c.slug));
         slugs.sort_unstable();
         slugs.dedup();
-        assert_eq!(slugs.len(), BESTIARY.len());
+        assert_eq!(slugs.len(), BESTIARY.len() + KIRO_EXTRAS.len());
+        assert_eq!(get("kiro-ko"), &KIRO_KO);
         assert_eq!(get("fantome").name, "Kiro");
         assert_eq!(get("kiro-effroi"), &KIRO_SPOOKED);
         assert!(find("unicorn").is_none());
+    }
+
+    #[test]
+    fn kiro_ko_is_the_hit_frame_upside_down() {
+        let hit = KIRO_HIT.sprite().unwrap();
+        assert_eq!(KIRO_KO.sprite().unwrap(), imageops::flip_vertical(&hit));
     }
 }

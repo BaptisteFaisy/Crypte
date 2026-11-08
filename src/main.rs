@@ -30,6 +30,7 @@ mod kiro;
 mod mouse;
 mod permissions;
 mod persist;
+mod phantom;
 mod pool;
 mod provider;
 mod scroll;

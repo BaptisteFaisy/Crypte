@@ -1,9 +1,10 @@
 # kiro-horror-tui — contexte agents
 
 Chat LLM dans une crypte hantée (TUI ratatui) pensé pour Ghostty :
-multi-chats, hub des esprits (panneau droit, affichage seul),
-bestiaire pixel art (panneau latéral + `/bestiary`, images Kitty),
-effets horreur, compteur tokens,
+multi-chats, hub des esprits (panneau droit, affichage seul), Kiro la
+mascotte en grand fantôme blanc qui hante l'écran chat et critique les
+prompts (`/critic`, clic = le frapper), bestiaire pixel art (panneau
+latéral + `/bestiary`, images Kitty), effets horreur, compteur tokens,
 almanach tokens/jour (`/usage`), sous-agents `/agent`,
 compaction `/compact`. UI et messages **en anglais**.
 
@@ -26,9 +27,10 @@ ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
 `main.rs` (CLI + bootstrap), `app.rs` (état + boucle 10 ms, tick 100 ms),
 `app/ctors.rs` (constructeurs), `app/model.rs` (modèle effectif + thinking),
 `bus.rs` (adressage, files, liens auto, plafond 8 relais),
-`mouse.rs` (molette = défilement de l'historique ; clics : [+] = nouveau
-chat, [×] = fermer, lignes sidebar = choisir, onglets = écrans,
-articles boutique = acheter ; drag bord sidebar = largeur colonne),
+`mouse.rs` (molette = défilement de l'historique ; clics : Kiro en
+balade = le frapper (bulle = la taire), [+] = nouveau chat, [×] =
+fermer, lignes sidebar = choisir, onglets = écrans, articles boutique
+= acheter ; drag bord sidebar = largeur colonne),
 `scroll.rs` (défilement : décalage depuis le bas + fenêtre visible),
 `drain.rs` (routage réponses async + pompes + retransmissions),
 `events.rs` (flux JSONL temps réel `--events-log`/`KH_EVENTS_LOG` :
@@ -53,7 +55,12 @@ fermeture `close.rs`),
 `sidebar.rs` (colonne cercueils + boutons [+] et [×]), `chat.rs` (historique +
 saisie + prompt custom masquable), `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :
-chargement, pin, compaction pure), `fx.rs`
+chargement, pin, compaction pure),
+`phantom.rs` + `phantom/` (Kiro en balade : humeurs + clics, `motion.rs`
+errance/recul/K.O., `draw.rs` sprite 32×32 via `ImageBank` + bulle +
+étoiles + BONK, jamais sur les cellules du sprite, `lines.rs` consigne
+de critique + répliques), `app/critic.rs` (critique = même modèle que
+le chat, `Incoming::Critique`, `/critic`, clics), `fx.rs`
 (overlay horreur), `app/ui.rs` (mise en page), `theme.rs` (palette
 unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
 (panneau droit, `/bestiary`), `ghostty.rs` (OSC + mode 2026),
@@ -77,7 +84,9 @@ ignorés).
 `always` fusionné au pin agents.md, voir `agents::load_merged`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
-Flux : `send` (user → provider, tâche async, outillé si `/tools on`) →
+Flux : `send` (user → provider, tâche async, outillé si `/tools on` ;
+en parallèle `critique` → `Incoming::Critique` → bulle de Kiro, almanach
+seul, jamais l'historique) →
 `drain_replies` (`Incoming::Chat|Agent|Compact|Web|ToolDone`) → almanach
 (`Incoming::usage`, `None` pour `ToolDone`) + ledger + historique + affichage.
 Boucle outils : réponse avec `tool_calls` (budget 8 tours, voir
@@ -119,6 +128,10 @@ historique inchangé).
   `~/.kiro` réel (déterminisme).
 - Couleurs : uniquement via `theme.rs` (jamais de `Color::Rgb` ailleurs,
   sauf les fonds RGBA de `gfx.rs` et `bestiary.rs`, documentés = `theme::VOID`).
+- Kiro en balade : sprites `assets/pixel/kiro-*.txt` (fantôme blanc du
+  hub en 32×32 ; `kiro-ko` = `kiro-frappe` retourné, testé) ; arène =
+  sidebar + discussion (jamais le panneau droit ni sous la saisie) ;
+  aucune écriture dans le rectangle du sprite (placeholders Kitty).
 - Pixel art : grilles `assets/pixel/*.txt` 32×32, lettres de palette
   (voir README) ; mise à l'échelle **entière** au plus proche voisin
   seulement (`bestiary::fit`), jamais de filtre lissant : la netteté est

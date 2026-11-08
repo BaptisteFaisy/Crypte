@@ -39,6 +39,7 @@ impl App {
             ));
             return;
         }
+        let judged = text.clone();
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
@@ -72,5 +73,8 @@ impl App {
                 let _ = tx.send(Incoming::Chat(id, reply)).await;
             });
         }
+        // Kiro juge le prompt en parallèle (même modèle, bulle), après
+        // l'appel du chat : le permis du pool va d'abord à la réponse.
+        self.critique(id, &judged);
     }
 }

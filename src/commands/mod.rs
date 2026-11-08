@@ -1,6 +1,7 @@
 //! Commandes slash (`/usage` `/new` `/bestiary` `/thinking` `/model` `/agent`
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
-//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/settings` `/help`).
+//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/critic` `/settings`
+//! `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -56,6 +57,7 @@ pub enum Command {
     Web(String),
     Tools(Option<String>),
     Kiro,
+    Critic(Option<String>),
     Vps {
         args: Vec<String>,
     },
@@ -81,7 +83,8 @@ pub const WEB_USAGE: &str = "usage: /web <query> — web search with summarized 
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
 /// Matche le premier mot ; cibles + texte consomment le reste,
-/// `/thinking` `/model` `/connect` `/permissions` `/tools` ont un arg optionnel.
+/// `/thinking` `/model` `/connect` `/permissions` `/tools` `/critic` ont un
+/// arg optionnel.
 pub fn parse(input: &str) -> Option<Command> {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
@@ -107,6 +110,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/permissions" => Some(Command::Permissions(opt_arg(&mut parts))),
         "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
         "/kiro" => Some(Command::Kiro),
+        "/critic" => Some(Command::Critic(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),
