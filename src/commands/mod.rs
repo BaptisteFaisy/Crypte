@@ -1,4 +1,4 @@
-//! Commandes slash (`/usage` `/new` `/bestiary` `/thinking` `/model` `/agent`
+//! Commandes slash (`/usage` `/new` `/clear` `/bestiary` `/thinking` `/model` `/agent`
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
 //! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/hooks`
 //! `/skills` `/skill` `/checkpoints` `/rewind` `/remember` `/critic`
@@ -18,6 +18,7 @@ pub fn is_command(input: &str) -> bool {
 pub enum Command {
     Usage,
     New,
+    Clear,
     Bestiary,
     Help,
     Thinking(Option<String>),
@@ -123,6 +124,7 @@ pub fn parse(input: &str) -> Option<Command> {
     match word {
         "/usage" => Some(Command::Usage),
         "/new" => Some(Command::New),
+        "/clear" => Some(Command::Clear),
         "/bestiary" => Some(Command::Bestiary),
         "/help" => Some(Command::Help),
         "/thinking" => Some(Command::Thinking(opt_arg(&mut parts))),

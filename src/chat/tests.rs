@@ -95,6 +95,19 @@ fn wrap_cache_ne_recalcule_que_si_messages_ou_largeur_changent() {
 }
 
 #[test]
+fn clear_invalide_le_cache_de_rendu() {
+    let mut chat = ChatState::new();
+    chat.push(Role::User, "bonsoir");
+    let _ = chat.wrapped_lines(40);
+    assert_eq!(chat.wrap_cache_key(), Some((1, 40)));
+    chat.clear();
+    assert!(chat.messages().is_empty());
+    let lines = chat.wrapped_lines(40);
+    assert!(lines.is_empty(), "lignes périmées après clear");
+    assert_eq!(chat.wrap_cache_key(), Some((2, 40)));
+}
+
+#[test]
 fn prompt_masked_hides_key_length_only() {
     let mut chat = ChatState::new();
     chat.input.push_str("brouillon");

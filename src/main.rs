@@ -136,7 +136,8 @@ GHOSTTY:
     ghostty/
 
 COMMANDS (in chat):
-    /usage  tokens (chat + session + all-time)    /new  new chat    /help  help
+    /usage  tokens (chat + session + all-time)    /new  new chat    /clear  clear chat
+    /help  help
     /thinking [level]  reasoning (default/low/medium/high)
     /model [name|reset]  chat model (reset = default)
     /agent [@<n>] <text>  sub-agent (reply goes to chat n if targeted)
