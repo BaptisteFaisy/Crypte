@@ -314,7 +314,7 @@ fn find_recipe<'a>(found: &'a [Found], name: &str) -> Option<&'a Found> {
 
 /// Découpe `k=v...` : la valeur mange les mots suivants jusqu'à la
 /// prochaine clé (`Malformed` = mot nu sans clé devant).
-fn split_inputs(words: &[&str]) -> (HashMap<String, String>, Option<String>) {
+pub(crate) fn split_inputs(words: &[&str]) -> (HashMap<String, String>, Option<String>) {
     let mut inputs = HashMap::new();
     let mut key: Option<String> = None;
     for word in words {

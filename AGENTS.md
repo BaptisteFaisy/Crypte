@@ -106,8 +106,11 @@ ignorés).
 `spec_cmds.rs` (`/spec` : handlers `new`/statut/`run` + drain, tests
 dans `spec_cmds/tests.rs`), `spec_prompts.rs` (prompts purs),
 `spec_run.rs` (`SpecGen`/`SpecRun`, purs), `mcp_client.rs`
-(protocole), `mcp_conn.rs` (stdio/HTTP), `mcp_pool.rs` (parc),
-`mcp_cmds.rs` (`/mcp`), `hook_match.rs` (regex `matcher`),
+(protocole), `mcp_conn.rs` (stdio/HTTP + requête brute),
+`mcp_pool.rs` (parc, tests dans `mcp_pool/tests.rs`),
+`mcp_lists.rs` (resources/prompts : protocole + stub partagé),
+`mcp_cmds.rs` (`/mcp` : listes, `read`, `prompt` armé),
+`hook_match.rs` (regex `matcher`),
 `hook_run.rs` (moteur : sélection + tirs + file `agent`),
 `hook_exec.rs` (`sh -c` async + `HookOutcome`), `hook_cmds.rs`
 (`/hooks`), `frontmatter.rs` (partagé), `agents_md.rs` (customs)

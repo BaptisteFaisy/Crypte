@@ -28,7 +28,7 @@ pub fn help_text() -> &'static str {
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
      /kiro — kiro .kiro/ status (steering, specs, hooks, mcp)\n\
      /spec <name> [run] | /spec new <name> <idea> — kiro spec workflow\n\
-     /mcp [refresh] — MCP servers: status, tools (refresh reconnects)\n\
+     /mcp [refresh|resources|prompts] | read <server> <uri> | prompt <server> <name> [k=v]\n\
      /hooks — kiro hooks by trigger + recent firings\n\
      /skills — list reusable skills (name + description)\n\
      /steer [name] — list manual/auto steering, arm a manual file\n\
