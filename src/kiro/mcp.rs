@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 /// Un serveur MCP (stdio et/ou distant, champs optionnels).
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Server {
     #[serde(default)]

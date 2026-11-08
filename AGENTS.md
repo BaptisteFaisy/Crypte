@@ -83,7 +83,8 @@ dans `spec_cmds/tests.rs`), `spec_prompts.rs` (prompts purs),
 `mcp_cmds.rs` (`/mcp`), `hook_match.rs` (regex `matcher`),
 `hook_run.rs` (moteur : sélection + tirs + file `agent`),
 `hook_exec.rs` (`sh -c` async + `HookOutcome`), `hook_cmds.rs`
-(`/hooks`), `frontmatter.rs` (partagé), `agents_md.rs` (customs),
+(`/hooks`), `frontmatter.rs` (partagé), `agents_md.rs` (customs)
++ `agents_parse.rs` (parse `.json`/`.md` schéma Kiro),
 `skills.rs` + `skills_cmds.rs` (`/skills`, `/skill`),
 `checkpoint.rs` + `checkpoint_cmds.rs` (`/checkpoints`, `/rewind`),
 `memory.rs` + `memory_cmds.rs` (`/remember`) ; steering `always` +
@@ -129,8 +130,11 @@ tirs : envoi, outils, fichiers spec, tâches, agents, boot ;
 garde anti-récursion profondeur 1, `/hooks` = statut + récents).
 T5 : règles fines `/permissions <outil> <allow|ask|deny>` (`list`,
 `reset`, persistées à côté du mode), agents customs
-`.kiro/agents/*.md` (listés par `/agents`, `/agent <nom> <texte>`
-avec prompt custom), skills `.kiro/skills/*/SKILL.md` (`/skills`,
+`.kiro/agents/` (format Kiro officiel : `.json`/`.md`, `prompt`,
+`model`, `tools`, `mcpServers`, `team/<nom>` ; listés par `/agents`,
+`/agent <nom> <texte>` avec prompt custom + modèle déclaré ;
+`tools`/`mcpServers` lus et affichés, non exécutés), skills
+`.kiro/skills/*/SKILL.md` (`/skills`,
 `/skill` préfixé à la saisie, transitoire), checkpoints
 (`write_tracked`, anneau 20, `/checkpoints`, `/rewind`),
 mémoire `.kiro/MEMORY.md` + globale (pin après steering,
