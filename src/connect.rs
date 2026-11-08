@@ -4,9 +4,10 @@
 //! `/connect` (statut, store Muse, flow clavier), état du flow (clé →
 //! modèle), touches dédiées et installation du provider en fin de flow.
 //!
-//! La clé API transite uniquement en mémoire (buffer puis config) : saisie
-//! masquée en `•`, jamais affichée, logguée ni poussée dans le chat — seuls
-//! le provider et le modèle apparaissent dans les confirmations.
+//! La clé API est saisie masquée en `•`, jamais affichée, logguée ni
+//! poussée dans le chat — seuls le provider et le modèle apparaissent dans
+//! les confirmations. Une fois connecté, le credential est persisté chiffré
+//! dans le coffre (`/settings`, réutilisé au démarrage).
 
 use std::sync::Arc;
 
@@ -125,16 +126,18 @@ impl App {
         }
     }
 
-    /// Installe le provider + confirme (`connecté à {p} ({m})`).
-    /// Échec (construction client) → erreur système, flow inchangé.
+    /// Installs the provider, remembers it in the vault, confirms.
+    /// Client build failure → system error, flow unchanged, nothing stored.
     pub(crate) fn apply_connected(&mut self, cfg: ProviderConfig, name: &str) {
         let model = cfg.model.clone();
-        match Provider::new(cfg) {
+        match Provider::new(cfg.clone()) {
             Ok(provider) => {
                 self.provider = Some(Arc::new(provider));
                 self.connect_flow = None;
                 self.restore_prompt();
                 self.push_system(format!("connected to {name} ({model})"));
+                let msg = self.settings.remember(name, &cfg);
+                self.push_system(msg);
             }
             Err(err) => self.push_system(format!("connection failed: {err:#}")),
         }
@@ -252,10 +255,31 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::Store;
+
+    /// App wired to a throwaway vault (never the real `providers.enc`).
+    fn app_with_vault(name: &str) -> (App, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("kh-connect-{}-{name}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let mut app = App::disconnected();
+        app.settings = crate::settings::Settings::with_store(Store::new(dir.clone()));
+        (app, dir)
+    }
+
+    /// Full chat text of the current session (leak check).
+    fn chat_text(app: &App) -> String {
+        app.sessions
+            .current()
+            .chat
+            .messages()
+            .iter()
+            .map(|m| m.text.clone())
+            .collect()
+    }
 
     #[test]
     fn flow_key_then_empty_model_connects_with_defaults() {
-        let mut app = App::disconnected();
+        let (mut app, dir) = app_with_vault("defaults");
         app.start_connect_flow("openai");
         assert!(app.connect_flow.is_some());
         for c in "sk-test".chars() {
@@ -272,11 +296,12 @@ mod tests {
         let cfg = app.provider.as_ref().unwrap().config();
         assert_eq!(cfg.base_url, "https://api.openai.com/v1");
         assert_eq!(cfg.model, "gpt-4o");
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]
     fn flow_empty_key_stays_and_unknown_provider_errors() {
-        let mut app = App::disconnected();
+        let (mut app, dir) = app_with_vault("empty");
         app.start_connect_flow("muse");
         app.advance_flow();
         assert_eq!(
@@ -289,5 +314,34 @@ mod tests {
         app.start_connect_flow("zzz");
         assert!(app.connect_flow.is_none());
         assert!(app.provider.is_none());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn connect_flow_key_is_remembered_encrypted_for_next_launch() {
+        let (mut app, dir) = app_with_vault("remember");
+        app.start_connect_flow("openai");
+        for c in "sk-connect-mem".chars() {
+            app.flow_push(c);
+        }
+        app.advance_flow();
+        for c in "gpt-4o-mini".chars() {
+            app.flow_push(c);
+        }
+        app.advance_flow();
+        assert!(app.provider.is_some());
+        let chat = chat_text(&app);
+        assert!(chat.contains("connected to openai (gpt-4o-mini)"));
+        assert!(chat.contains("key saved for openai (encrypted)"));
+        assert!(!chat.contains("sk-connect-mem"));
+        // Encrypted at rest, and a fresh load reconnects like at startup.
+        let raw = std::fs::read(dir.join("providers.enc")).unwrap();
+        assert!(!String::from_utf8_lossy(&raw).contains("sk-connect-mem"));
+        let fresh = crate::settings::Settings::with_store(Store::new(&dir));
+        let cfg = fresh.last_config().expect("last provider remembered");
+        assert_eq!(cfg.api_key, "sk-connect-mem");
+        assert_eq!(cfg.model, "gpt-4o-mini");
+        assert_eq!(cfg.base_url, "https://api.openai.com/v1");
+        std::fs::remove_dir_all(dir).ok();
     }
 }
