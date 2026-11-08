@@ -1,0 +1,99 @@
+name: mbox (broadcast agents)
+
+# CI ciblée du module mbox (src/mbox/ + tests/mbox_interop.rs) : format,
+# build, tests unitaires + interop, garde des limites Crypte
+# (500 L / 30 fn par fichier, < 50 L par fonction). Budget CI 5 min
+# (règle user 2026-10-24) : un seul job, timeout explicite, annulation
+# des runs obsolètes, checkout superficiel, cache cargo.
+
+on:
+  pull_request:
+    paths:
+      - 'src/mbox/**'
+      - 'tests/mbox*'
+      - '.github/workflows/mbox.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/mbox/**'
+      - 'tests/mbox*'
+      - '.github/workflows/mbox.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mbox-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mbox:
+    name: mbox
+    runs-on: [self-hosted, horror_cli-worker]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (superficiel)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Chaîne Rust (stable + rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Cache cargo (registre + git)
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: mbox-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            mbox-${{ runner.os }}-
+      - name: Format (rustfmt)
+        run: cargo fmt --check
+      - name: Build (hors-ligne si cache trouvé)
+        run: |
+          if [ "${{ steps.cache.outputs.cache-hit }}" = "true" ]; then
+            cargo build --locked --offline
+          else
+            cargo build --locked
+          fi
+      - name: Tests unitaires mbox
+        run: cargo test --locked --bin kiro-horror-tui mbox
+      - name: Tests interop Rust <-> shell
+        run: |
+          if [ -x /home/baptiste/Bureau/.scratch/broadcast/bin/bcast ]; then
+            cargo test --locked --test mbox_interop
+          else
+            echo "interop ignoré : bcast shell absent de ce runner (tests/mbox_interop.rs exige le poste de dev)"
+          fi
+      - name: Garde des limites (500 L / 30 fn / 50 L)
+        run: |
+          set -u
+          ECHEC=0
+          for f in src/mbox/*.rs tests/mbox*.rs; do
+            L=$(wc -l < "$f")
+            F=$(grep -cE 'fn [a-zA-Z_][a-zA-Z0-9_]* *\(' "$f")
+            [ "$L" -gt 500 ] && { echo "LIMITE $f: $L lignes (>500)"; ECHEC=1; }
+            [ "$F" -gt 30 ] && { echo "LIMITE $f: $F fonctions (>30)"; ECHEC=1; }
+            TROP=$(awk -v fichier="$f" '
+              /^[[:space:]]*(\/\/|$)/ { next }
+              !dans && /fn [a-zA-Z_][a-zA-Z0-9_]* *\(/ { dans=1; debut=FNR; prof=0; amorce=1 }
+              dans {
+                ligne=$0
+                sub(/\/\/.*$/, "", ligne)
+                gsub(/"([^"\\]|\\.)*"/, "\"\"", ligne)
+                gsub(/'"'"'([^'"'"'\\]|\\.)*'"'"'/, "''''", ligne)
+                prof += gsub(/\{/, "{", ligne) - gsub(/\}/, "}", ligne)
+                if (amorce && prof > 0) amorce=0
+                if (!amorce && prof <= 0) {
+                  if (FNR - debut + 1 > 50) print "LIMITE " fichier ":" debut ": fonction de " (FNR-debut+1) " lignes (>50)"
+                  dans=0
+                }
+              }' "$f")
+            [ -n "$TROP" ] && { echo "$TROP"; ECHEC=1; }
+          done
+          exit $ECHEC
