@@ -44,7 +44,7 @@ bcast 2.0 — broadcast user + bus inter-agents
   bcast piste [--ordre ID] [--agent ID] | bcast vague plan|run|lister|etat
 Inbox : P0 popup+son, P1 popup, P2 log seul. Throttle : dedup 30 min, 6 msg/h.
 Sorties : 0 ok (throttled:/same-state inclus), 1 exécution, 2 usage, 3 déjà-en-cours.
-Écritures sensibles (--force, ordre new/revoque/ack) : --token "nom:secret" (voir jeton new).
+Écritures sensibles (--force, ordre new/revoque/ack) : --token "nom:secret" (voir jeton new). Lectures JSON : --json sur tail, ordre list|pull, metriques, piste.
 ```
 
 `doctor` vérifie le dossier (sortie réelle, dossier initialisé par un
@@ -253,11 +253,71 @@ toujours caviardée (`--token ***`).
 `2` erreur d'usage (`bcast: …` sur stderr), `3` déjà-en-cours
 (jeton existant). `version` affiche `bcast 2.0.0`.
 
+### 1.14 Sorties JSON : `--json`
+
+`tail`, `ordre list|pull`, `metriques`, `piste` acceptent `--json`
+(drapeau sans valeur, avant ou après les autres options) : une
+ligne JSON sur stdout, codes inchangés (vide = `[]`, code 0),
+jamais de secret. JSON maison, zéro dépendance (`json.rs`).
+Scénario rejoué sur un bac jetable (`BCAST_DIR=/tmp/mbox-doc-v5`,
+`send` + `bus -t gpu` + `jeton new`/`ordre new "Relire le plan"`,
+sorties réelles, chacune validée par `python3 -m json.tool`) :
+
+```sh
+$ ./target/debug/kiro-horror-tui --mbox tail --json
+[{"date":"2026-11-08 17:30","expediteur":"doc-json","priorite":"P1","dest":"","corps":"message doc json"}]
+$ ./target/debug/kiro-horror-tui --mbox tail --bus gpu --json
+[{"date":"2026-11-08 17:30","expediteur":"doc-json","priorite":"P2","dest":"@gpu","corps":"carte chaude"}]
+$ ./target/debug/kiro-horror-tui --mbox tail --all --json
+{"inbox":[{"date":"2026-11-08 17:30","expediteur":"doc-json","priorite":"P1","dest":"","corps":"message doc json"}],"bus":{"phone":[],"gpu":[{"date":"2026-11-08 17:30","expediteur":"doc-json","priorite":"P2","dest":"@gpu","corps":"carte chaude"}],"file":[],"divers":[]}}
+$ ./target/debug/kiro-horror-tui --mbox ordre list --json
+[{"id":"O-20261108-001","to":"ALL","ttl":24,"statut":"actif","src":"user-direct","texte":"Relire le plan","prio":null,"supersede":null,"hash":"155a2205a4bf5bfb7307bd9c7858ff04a74b2ea6","sig":"abb1839c3f6085d9e6c1e3a8e5d2f494f145dbb2"}]
+$ ./target/debug/kiro-horror-tui --mbox ordre pull --json doc-lecteur
+[{"id":"O-20261108-001","to":"ALL","ttl":24,"statut":"actif","src":"user-direct","texte":"Relire le plan","prio":null,"supersede":null,"hash":"155a2205a4bf5bfb7307bd9c7858ff04a74b2ea6","sig":"abb1839c3f6085d9e6c1e3a8e5d2f494f145dbb2"}]
+$ ./target/debug/kiro-horror-tui --mbox metriques --json
+{"compteurs":{"bus_ok":1,"ordre_new":1,"send_ok":1},"agents":{"doc-json-e3fc6b9a":{"bus_ok":1,"send_ok":1}},"integrite":{"ordres":{"ok":1,"ko":0,"sans":0},"signatures":{"ok":1,"ko":0,"sans":0}}}
+$ ./target/debug/kiro-horror-tui --mbox piste --json
+[{"run_id":"17012a190b00","epoque":1794155449,"agent":"doc-json-e3fc6b9a","action":"ordre_cree","ordre_id":"O-20261108-001","verdict":"ok"}]
+```
+
+Formes stables : ordres 10 clés (`id/to/ttl/statut/src/texte/
+prio/supersede/hash/sig`, texte nu, extensions éclatées, `null`
+si absentes) ; `tail` 5 clés (`date/expediteur/priorite/dest/
+corps`, continuations rattachées, tampon retiré, malformées
+ignorées), `--all` en objet `inbox` + `bus` (ordres exclus :
+`ordre list --json`) ; `metriques` en `compteurs/agents/
+integrite` (`--agent` filtre `agents` seul) ; `piste` en spans.
+Erreurs intactes : `tail --bus nope --json`, `ordre pull --json`
+sans agent et `metriques --json --nope` rendent 2. Preuve :
+`tests/mbox_vague5.rs` (chaque `--json` + `json.tool` + aucun
+secret, fail-closed si python3 absent).
+
+### 1.15 Éveil instantané : inotify + fallback
+
+Le `tick` (10 Hz, `app.rs:210`) n'appelle plus le polling
+`sonde::tour` (throttle 15 s, `sonde.rs:44`) mais
+`eveil::tour` (`app.rs:276`, swap d'une ligne) : lecture
+non bloquante d'un fd inotify (`libc` déjà au lock, dossiers
+racine/`bus`/`.hb` surveillés pour suivre les rotations) ;
+écriture signalée → `sonde::tour` (relecture inchangée),
+silence → rien (zéro tour à vide). Fallback sans régression :
+fd indisponible, `EBADF` ou 3 erreurs consécutives →
+`sonde::tour` throttlée comme avant ; le throttle 15 s reste
+la cadence max (anti-rafale).
+
+Latences mesurées le 2026-11-08 (sonde unitaire temporaire,
+écriture inbox → détection inotify, 3 échantillons) :
+**0,1 ms / 0,0 ms / 0,0 ms** (3/3 au premier sondage). Borne
+de production : prochain tick ≤ 100 ms après l'écriture,
+contre ≤ 15 s avec le polling seul. Preuve : tests unitaires
+`mbox::eveil` (silence, inbox < 1 s, bus+hb, tour à vide =
+zéro octet, fallback fd fermé, réouverture si racine change).
+
 ---
 
 ## 2. Guide développeur (architecture/jetons/interop/limites)
 
-### 2.1 Architecture : 23 modules sous `src/mbox/`
+### 2.1 Architecture : 25 modules sous `src/mbox/`
 
 `mod.rs` = socle partagé : chemins (`BcastDir` : `defaut/depuis/init/
 boite/bus/ordres/acks/vue_ordres/hb/etat/tailles`), horodatage
@@ -290,6 +350,8 @@ boite/bus/ordres/acks/vue_ordres/hb/etat/tailles`), horodatage
 | `signature.rs` | HMAC-SHA1 : scellement `sig=` + vérification |
 | `vague.rs` | CLI `vague` : file, liste blanche, caviardage |
 | `vague_exec.rs` | exécution vagues : topo, threads, synthèse |
+| `eveil.rs` | éveil inotify du `tick` + fallback `sonde` (vague 5) |
+| `json.rs` | sorties `--json` maison des lectures (vague 5) |
 
 `cli.rs:55-91` (`exec`) répartit vers les commandes ; `main.rs:232`
 branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
@@ -325,6 +387,10 @@ branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
   le `bcast` shell sur un `BCAST_DIR` jetable (roundtrip deux sens,
   bus + dedup, cycle jetons/ordres, codes). Autorité confinée par
   `XDG_DATA_HOME` jetable : aucun test n'écrit hors de son bac.
+  `tests/mbox_vague5.rs` prouve les sorties `--json` (oracle
+  `python3 -m json.tool`, aucun secret, codes) et la fraîcheur
+  bout en bout (< 1 s) ; l'éveil inotify est prouvé en
+  unitaire (`mbox::eveil`, crate binaire sans lib).
 
 ### 2.4 Intégrité et métriques
 
@@ -349,10 +415,11 @@ branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
 - Fichier source : **500 lignes max ET 30 fonctions max** (tests
   inclus, `grep -cE 'fn [a-zA-Z_][a-zA-Z0-9_]* *\('`) ; fonction
   **< 50 lignes**. Au-delà : découper en modules, jamais laisser
-  grossir. État au 2026-11-08 : 23 modules + `tests/mbox_interop.rs`,
-  tous sous les plafonds (ex. `cli.rs` 492 L/18 fn, `sonde.rs`
-  489 L/25 fn, `autorite.rs` 486 L/27 fn, `delegation.rs` 476 L/20 fn,
-  `tests/mbox_interop.rs` 482 L/22 fn).
+  grossir. État au 2026-11-08 : 25 modules + `tests/mbox_interop.rs`
+  + `tests/mbox_vague5.rs`, tous sous les plafonds (ex. `cli.rs`
+  497 L/18 fn, `sonde.rs` 489 L/25 fn, `autorite.rs` 487 L/27 fn,
+  `json.rs` 483 L/27 fn, `tests/mbox_interop.rs` 482 L/22 fn,
+  `eveil.rs` 346 L/20 fn, `tests/mbox_vague5.rs` 292 L/13 fn).
 - **Zéro duplication** : une seule implémentation par logique (époque
   unique dans `format`, verrou unique dans `verrou`, découpage unique
   dans `outils`).
@@ -360,6 +427,6 @@ branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
   affichée ni journalisée (ni chat, ni log, ni test, ni doc — les
   exemples ci-dessus masquent les secrets).
 - CI : `mbox.yml` rejoue `fmt --check`, build, tests unitaires +
-  interop, et la garde des limites ; tout nouveau job respecte le
+  interop + vague 5, et la garde des limites ; tout nouveau job respecte le
   budget 5 min (`timeout-minutes: 5`, `concurrency` + cancel,
   `fetch-depth: 1`, cache cargo).

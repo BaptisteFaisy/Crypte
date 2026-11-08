@@ -70,6 +70,13 @@ jobs:
           else
             echo "interop ignoré : bcast shell absent de ce runner (tests/mbox_interop.rs exige le poste de dev)"
           fi
+      - name: Tests vague 5 (JSON + fraîcheur)
+        run: |
+          if command -v python3 >/dev/null 2>&1; then
+            cargo test --locked --test mbox_vague5
+          else
+            echo "vague5 ignoré : python3 absent de ce runner (oracle json.tool exigé)"
+          fi
       - name: Garde des limites (500 L / 30 fn / 50 L)
         run: |
           set -u

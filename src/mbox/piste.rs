@@ -206,11 +206,20 @@ pub fn resume(dir: &BcastDir) -> String {
 
 /// `piste [--ordre ID] [--agent ID]` : spans corrélés, chronologiques.
 pub fn cmd_piste(dir: &BcastDir, args: &[String]) -> Sortie {
-    let Ok((opts, _)) = decoupage(args, &[("ordre", true), ("agent", true)]) else {
+    let j = super::json::est_drapeau_json(args);
+    let nettoyes = super::json::sans_json(args);
+    let Ok((opts, _)) = decoupage(&nettoyes, &[("ordre", true), ("agent", true)]) else {
         return Sortie::Usage;
     };
     let filtre_ordre = opt(&opts, "ordre").map(|o| champ(o, 80));
     let filtre_agent = opt(&opts, "agent").map(sanitize);
+    if j {
+        println!(
+            "{}",
+            super::json::piste_json(dir, filtre_ordre.as_deref(), filtre_agent.as_deref())
+        );
+        return Sortie::Ok;
+    }
     let mut n = 0;
     for span in lire(dir) {
         if filtre_ordre.as_deref().is_some_and(|f| f != span.ordre_id) {

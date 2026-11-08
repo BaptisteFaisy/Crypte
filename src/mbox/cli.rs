@@ -51,7 +51,7 @@ const AIDE: &str = "bcast 2.0 — broadcast user + bus inter-agents
   bcast piste [--ordre ID] [--agent ID] | bcast vague plan|run|lister|etat
 Inbox : P0 popup+son, P1 popup, P2 log seul. Throttle : dedup 30 min, 6 msg/h.
 Sorties : 0 ok (throttled:/same-state inclus), 1 exécution, 2 usage, 3 déjà-en-cours.
-Écritures sensibles (--force, ordre new/revoque/ack) : --token \"nom:secret\" (voir jeton new).";
+Écritures sensibles (--force, ordre new/revoque/ack) : --token \"nom:secret\" (voir jeton new). Lectures JSON : --json sur tail, ordre list|pull, metriques, piste.";
 
 /// Point d'entrée CLI : exécute `args` sur `dir`, rend le code shell.
 /// Sans argument : aide (`cmd="${1:-help}"`, bcast:305).
@@ -249,7 +249,9 @@ fn cmd_bus(dir: &BcastDir, args: &[String]) -> Sortie {
 /// `tail` : lit l'inbox, un sujet ou tout (`cmd_tail`, bcast:117-139).
 /// Fichiers absents = silence (redirections `|| true` du shell).
 fn cmd_tail(dir: &BcastDir, args: &[String]) -> Sortie {
-    let Ok((opts, _)) = decoupage(args, &[("n", true), ("bus", true), ("all", false)]) else {
+    let j = super::json::est_drapeau_json(args);
+    let nettoyes = super::json::sans_json(args);
+    let Ok((opts, _)) = decoupage(&nettoyes, &[("n", true), ("bus", true), ("all", false)]) else {
         return Sortie::Usage;
     };
     let n: usize = match opt(&opts, "n").map(str::parse) {
@@ -257,6 +259,9 @@ fn cmd_tail(dir: &BcastDir, args: &[String]) -> Sortie {
         Some(Ok(v)) => v,
         Some(Err(_)) => return usg("-n attend un nombre"),
     };
+    if j && super::json::affiche_tail_json(dir, n, opt(&opts, "bus"), flag(&opts, "all")) {
+        return Sortie::Ok;
+    }
     if let Some(sujet) = opt(&opts, "bus") {
         if !SUJETS_BUS.contains(&sujet) {
             return usg(&format!("topic : {}", SUJETS_BUS.join(" ")));

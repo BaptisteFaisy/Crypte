@@ -190,7 +190,14 @@ pub(crate) fn cmd_ordre(dir: &BcastDir, args: &[String]) -> Sortie {
         Some("new") => ordre_nouveau(dir, &args[1..]),
         Some("list") => {
             // Seul `--all` en $1 compte, le reste est ignoré (bcast:243-244).
-            print!("{}", lister(dir, args.get(1).is_some_and(|a| a == "--all")));
+            let j = super::json::est_drapeau_json(&args[1..]);
+            let f = super::json::sans_json(&args[1..]);
+            let tout = f.first().is_some_and(|a| a == "--all");
+            if j {
+                println!("{}", super::json::liste_ordres_json(dir, tout));
+            } else {
+                print!("{}", lister(dir, tout));
+            }
             Sortie::Ok
         }
         Some("revoque") => ordre_revoque(dir, &args[1..]),
@@ -329,10 +336,16 @@ fn ordre_accuse(dir: &BcastDir, args: &[String]) -> Sortie {
 
 /// `ordre pull` : file d'un agent (extension Rust, sans équivalent shell).
 fn ordre_tire(dir: &BcastDir, args: &[String]) -> Sortie {
-    let Some(agent) = args.first() else {
+    let j = super::json::est_drapeau_json(args);
+    let f = super::json::sans_json(args);
+    let Some(agent) = f.first() else {
         return usg("usage : bcast ordre pull <agent>");
     };
-    print!("{}", tirer(dir, agent));
+    if j {
+        println!("{}", super::json::pull_json(dir, agent));
+    } else {
+        print!("{}", tirer(dir, agent));
+    }
     Sortie::Ok
 }
 

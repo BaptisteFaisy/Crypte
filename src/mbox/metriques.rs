@@ -132,9 +132,15 @@ pub(crate) fn verifie_integrite(dir: &BcastDir) -> (usize, usize, usize) {
 
 /// `metriques [--agent ID]` : globales, par agent, intégrité des ordres.
 pub(crate) fn cmd_metriques(dir: &BcastDir, args: &[String]) -> Sortie {
-    let Ok((opts, _)) = decoupage(args, &[("agent", true)]) else {
+    let j = super::json::est_drapeau_json(args);
+    let nettoyes = super::json::sans_json(args);
+    let Ok((opts, _)) = decoupage(&nettoyes, &[("agent", true)]) else {
         return Sortie::Usage;
     };
+    if j {
+        println!("{}", super::json::metriques_json(dir, opt(&opts, "agent")));
+        return Sortie::Ok;
+    }
     let compteurs = lire(dir);
     if compteurs.is_empty() {
         println!("aucune métrique");
