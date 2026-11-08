@@ -436,8 +436,10 @@ to run commands or exfiltrate is reported, not obeyed.
 Crypte reads the same `.kiro/` files as Kiro (project `./.kiro/` plus
 global `~/.kiro/`), so a project moves back and forth between both:
 
-- **Steering** (`.kiro/steering/*.md`, 4 inclusion modes) : `always`
-  files join the pinned AGENTS.md context at first send.
+- **Steering** (`.kiro/steering/*.md`, project + global, YAML
+  frontmatter) : `always` files join the pinned context at first
+  send, `fileMatch` files join when their paths are in context
+  (`manual`/`auto` are parsed but not applied yet).
 - **Specs** (`.kiro/specs/<name>/`) : `/spec new <name> <idea>` drafts
   requirements, design and tasks in 3 chained LLM calls (progress shown,
   existing specs never overwritten); `/spec <name>` shows status (docs,
@@ -483,8 +485,13 @@ global `~/.kiro/`), so a project moves back and forth between both:
   manage sessions ; the sandbox clones the remote, so unpushed
   work is warned about. See [docs/CLOUD.md](docs/CLOUD.md).
 
-`/kiro` shows what was loaded (steering, specs, hooks, servers);
-`/hooks` shows hooks by trigger, queued agent prompts and recent firings.
+`/kiro` shows what was loaded (steering, specs, hooks, servers,
+ignore) ; `/hooks` shows hooks by trigger, queued agent prompts
+and recent firings. Everything Crypte writes under `.kiro/`
+(specs, memory, task check-offs) is snapshot-protected — see
+`/checkpoints` and `/rewind`. This repo dogfoods it all : its own
+`.kiro/` carries steering, a spec, hooks, MCP settings, custom
+agents and skills, readable by Kiro and Crypte alike.
 
 ## Checkpoints
 
