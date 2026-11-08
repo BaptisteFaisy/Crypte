@@ -16,6 +16,7 @@ use crate::connect::NOT_CONNECTED;
 use crate::events::EventLog;
 use crate::fx::Fx;
 use crate::gfx::ImageBank;
+use crate::haunt::Haunt;
 use crate::hub::Hub;
 use crate::mascot::Mascot;
 use crate::pool::{SpawnPool, INCOMING_CAP};
@@ -105,6 +106,10 @@ impl App {
             bank: ImageBank::headless(),
             apparition: Apparition::new(),
             hub: Hub::new(),
+            haunt: Haunt::new(),
+            live_terminal: false,
+            releases_ok: None,
+            releases_on: false,
             tick: 0,
             busy: false,
             ctx_used: 0,

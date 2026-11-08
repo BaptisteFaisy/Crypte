@@ -27,6 +27,7 @@ pub enum Screen {
     #[default]
     Chat,
     Hub,
+    Haunt,
 }
 
 /// Huitièmes de bloc pour une jauge lisse.
@@ -39,7 +40,11 @@ pub(crate) const MIN_H: u16 = 17;
 /// Seuil compact : sous 80 colonnes, sidebar réduite, panneau droit masqué.
 const COMPACT_W: u16 = 80;
 /// Onglets de l'en-tête : écran, libellé, touche.
-const TABS: [(Screen, &str, &str); 2] = [(Screen::Chat, "chat", ""), (Screen::Hub, "hub", "F7")];
+const TABS: [(Screen, &str, &str); 3] = [
+    (Screen::Chat, "chat", ""),
+    (Screen::Hub, "hub", "F7"),
+    (Screen::Haunt, "haunt", "F9"),
+];
 /// Coiffes powerline arrondies (sprites internes de Ghostty).
 const CAP_L: &str = "\u{e0b6}";
 const CAP_R: &str = "\u{e0b4}";
@@ -69,6 +74,7 @@ impl App {
         match self.screen {
             Screen::Chat => self.draw_chat(frame, body),
             Screen::Hub => self.draw_hub(frame, body),
+            Screen::Haunt => self.draw_haunt(frame, body),
         }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
@@ -229,7 +235,8 @@ impl App {
         let used: usize = left.iter().map(|s| s.width()).sum();
         frame.render_widget(Paragraph::new(Line::from(left)), area);
         let width = area.width as usize;
-        for hints in [key_hints(false), key_hints(true)] {
+        let game = self.screen == Screen::Haunt;
+        for hints in [key_hints(false, game), key_hints(true, game)] {
             let hints_w: usize = hints.iter().map(|s| s.width()).sum();
             if used + hints_w + 2 <= width {
                 let right = Paragraph::new(Line::from(hints)).alignment(Alignment::Right);
@@ -336,19 +343,25 @@ fn fear_gauge(used: u64, max: u64) -> Vec<Span<'static>> {
     spans
 }
 
-/// Raccourcis rappelés dans la barre d'état (courts si `short`).
-fn key_hints(short: bool) -> Vec<Span<'static>> {
+/// Raccourcis rappelés dans la barre d'état (courts si `short`) ; en
+/// jeu, `q` ne quitte pas : on rappelle comment en sortir.
+fn key_hints(short: bool, game: bool) -> Vec<Span<'static>> {
     let key = Style::new().fg(PUMPKIN).add_modifier(Modifier::BOLD);
     if short {
-        return vec![Span::styled("F5 F7", key)];
+        return vec![Span::styled(if game { "Esc F9" } else { "F5 F7" }, key)];
     }
     let word = Style::new().fg(ASH);
     let mut spans = Vec::with_capacity(6);
-    for (k, w) in [
-        ("F5", " scare  "),
-        ("Ctrl+←/→", " column  "),
-        ("q", " quit  "),
-    ] {
+    let hints: [(&'static str, &'static str); 3] = if game {
+        [("F5", " thunder  "), ("Esc/F9", " back  "), ("F7", " hub  ")]
+    } else {
+        [
+            ("F5", " scare  "),
+            ("Ctrl+←/→", " column  "),
+            ("q", " quit  "),
+        ]
+    };
+    for (k, w) in hints {
         spans.push(Span::styled(k, key));
         spans.push(Span::styled(w, word));
     }
@@ -426,7 +439,7 @@ mod tests {
             .push(Role::Assistant, "les os craquent sous la lune");
         for (w, h) in [(70, 17), (80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [Screen::Chat, Screen::Hub] {
+            for screen in [Screen::Chat, Screen::Hub, Screen::Haunt] {
                 app.screen = screen;
                 app.spook();
                 app.tick();
@@ -438,7 +451,7 @@ mod tests {
     #[test]
     fn minimum_70x17_shows_ui_not_too_small() {
         let mut app = App::offline().unwrap();
-        for screen in [Screen::Chat, Screen::Hub] {
+        for screen in [Screen::Chat, Screen::Hub, Screen::Haunt] {
             app.screen = screen;
             let mut term = Terminal::new(TestBackend::new(70, 17)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();

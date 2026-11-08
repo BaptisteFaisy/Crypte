@@ -1,7 +1,8 @@
 //! Clavier : dispatch général (`on_key`), défilement, colonne ;
-//! celles du hub vivent avec son écran (`app/esprits.rs`).
+//! celles du hub vivent avec son écran (`app/esprits.rs`), celles du jeu
+//! avec le sien (`app/haunt.rs`, seul à recevoir les relâchements).
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use super::{App, Screen};
 use crate::chat::SCROLL_PAGE;
@@ -9,7 +10,16 @@ use crate::chat::SCROLL_PAGE;
 impl App {
     /// Traite une touche ; renvoie false pour quitter.
     /// Confirmation outil ou flow `/connect` : touches dédiées (pas de quit).
+    /// Hors jeu, seuls les appuis comptent (ni répétitions ni relâchements).
     pub(super) fn on_key(&mut self, key: KeyEvent) -> bool {
+        let modal =
+            self.tool_run.as_ref().is_some_and(|run| run.confirming) || self.connect_flow.is_some();
+        if self.screen == Screen::Haunt && !modal {
+            return self.on_haunt_key(key);
+        }
+        if key.kind != KeyEventKind::Press {
+            return true;
+        }
         if self.tool_run.as_ref().is_some_and(|run| run.confirming) {
             return self.on_tool_key(key);
         }
@@ -36,6 +46,7 @@ impl App {
             KeyCode::End => self.cmd(|s| s.sessions.current().chat.scroll.to_bottom()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(7) => self.cmd(|s| s.open_hub()),
+            KeyCode::F(9) => self.cmd(|s| s.open_haunt()),
             KeyCode::Left if ctrl => self.cmd(|s| s.resize_right(2)),
             KeyCode::Right if ctrl => self.cmd(|s| s.resize_right(-2)),
             _ => true,

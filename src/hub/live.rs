@@ -20,6 +20,9 @@ pub struct View {
     id: u32,
     live: Option<(Rect, Protocol)>,
     pending: Option<String>,
+    /// Image plein cadre réutilisée d'une frame à l'autre (bords VOID
+    /// posés une fois) : à 240 images/s, ni allocation ni remplissage.
+    frame: RgbaImage,
 }
 
 impl View {
@@ -29,6 +32,7 @@ impl View {
             id: rand::random_range(1..0x00FF_FFFF),
             live: None,
             pending: None,
+            frame: RgbaImage::new(0, 0),
         }
     }
 
@@ -54,28 +58,48 @@ pub fn present_kitty(
     area: Rect,
     buf: &mut Buffer,
 ) {
-    let mut img = RgbaImage::from_pixel(bw, bh, px(theme::VOID));
-    let (dx, dy) = (
-        (bw - cv.width() * scale) / 2,
-        (bh - cv.height() * scale) / 2,
-    );
-    for (x, y, p) in cv.enumerate_pixels() {
-        for k in 0..scale * scale {
-            img.put_pixel(dx + x * scale + k % scale, dy + y * scale + k / scale, *p);
-        }
+    if view.frame.dimensions() != (bw, bh) {
+        view.frame = RgbaImage::from_pixel(bw, bh, px(theme::VOID));
     }
+    upscale(cv, scale, &mut view.frame);
     match &view.live {
         Some((rect, proto)) if *rect == area => {
             Image::new(proto).render(area, buf);
-            view.pending = kitty_png(view.id, &img);
+            view.pending = kitty_png(view.id, &view.frame);
         }
         _ => {
-            let Ok(kitty) = Kitty::new(DynamicImage::ImageRgba8(img), area, view.id, false) else {
+            let img = DynamicImage::ImageRgba8(view.frame.clone());
+            let Ok(kitty) = Kitty::new(img, area, view.id, false) else {
                 return;
             };
             let proto = Protocol::Kitty(kitty);
             Image::new(&proto).render(area, buf);
             view.live = Some((area, proto));
+        }
+    }
+}
+
+/// Pose `cv` agrandi ×`scale` (plus proche voisin) au centre de `out` :
+/// chaque rangée est agrandie une fois puis recopiée `scale` fois.
+fn upscale(cv: &RgbaImage, scale: u32, out: &mut RgbaImage) {
+    let (bw, bh) = out.dimensions();
+    let (dx, dy) = (
+        (bw - cv.width() * scale) as usize / 2,
+        (bh - cv.height() * scale) as usize / 2,
+    );
+    let (k, stride) = (scale as usize, bw as usize * 4);
+    let mut line = Vec::with_capacity(cv.width() as usize * k * 4);
+    let raw: &mut [u8] = out;
+    for (y, row) in cv.rows().enumerate() {
+        line.clear();
+        for p in row {
+            for _ in 0..k {
+                line.extend_from_slice(&p.0);
+            }
+        }
+        for r in 0..k {
+            let start = (dy + y * k + r) * stride + dx * 4;
+            raw[start..start + line.len()].copy_from_slice(&line);
         }
     }
 }

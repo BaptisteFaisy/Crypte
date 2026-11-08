@@ -1,0 +1,14 @@
+....R.....
+...RO.....
+...ROR....
+..ROOR..R.
+..ROYOR.R.
+.ROYYOROR.
+.ROYYYOOR.
+ROYYWYYOR.
+ROYWWWYOR.
+ROYYWYYOR.
+.ROYYYOR..
+.RROOOORR.
+..RRrrRR..
+..........

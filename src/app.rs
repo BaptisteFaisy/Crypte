@@ -4,6 +4,7 @@
 
 mod ctors;
 mod esprits;
+mod haunt;
 mod keys;
 mod model;
 mod send;
@@ -16,7 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, Event};
 use ratatui::{layout::Rect, DefaultTerminal};
 use tokio::sync::mpsc;
 
@@ -30,6 +31,7 @@ use crate::fx::Fx;
 use crate::gfx::ImageBank;
 use crate::ghostty;
 
+use crate::haunt::Haunt;
 use crate::hub::Hub;
 use crate::mascot::{Mascot, MascotState};
 use crate::permissions::Mode;
@@ -59,6 +61,15 @@ pub struct App {
     bank: ImageBank,
     pub(crate) apparition: Apparition,
     pub(crate) hub: Hub,
+    /// Jeu Haunt (F9), en pause hors de son écran.
+    pub(crate) haunt: Haunt,
+    /// Terminal réel branché (`attach_terminal`) : jamais d'écriture
+    /// brute vers stdout sans lui (tests, `--smoke`).
+    pub(crate) live_terminal: bool,
+    /// Protocole clavier Kitty géré (interrogé à la 1re entrée en jeu).
+    pub(crate) releases_ok: Option<bool>,
+    /// Protocole clavier Kitty empilé (pendant le jeu).
+    pub(crate) releases_on: bool,
     tick: u64,
     busy: bool,
     /// Jauge contexte mise en cache (tokens estimés + fenêtre modèle),
@@ -112,15 +123,18 @@ impl App {
     /// d'images (Kitty dans Ghostty) + habillage de la fenêtre.
     pub fn attach_terminal(&mut self) -> Result<()> {
         self.bank = ImageBank::detect();
+        self.live_terminal = true;
         ghostty::enter()?;
         Ok(())
     }
 
     /// Boucle principale : scrute les touches et les réponses toutes les
     /// 10 ms (routage quasi instantané), ne rend que si besoin (touche,
-    /// réponse, tick 100 ms pour les animations).
+    /// réponse, tick 100 ms pour les animations). Sur l'écran Haunt, le
+    /// jeu tourne à 30 Hz et seules ses frames déclenchent le rendu.
     pub async fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let mut last_tick = Instant::now();
+        let mut last_pump = Instant::now();
         let mut dirty = true;
         'main: loop {
             if dirty {
@@ -129,19 +143,21 @@ impl App {
             }
             dirty |= self.drain_replies();
             self.sync_progress()?;
-            if event::poll(Duration::from_millis(10))? {
+            // Jeu à l'écran : on scrute toutes les 1 ms (240 images/s).
+            let wait = if self.screen == Screen::Haunt { 1 } else { 10 };
+            if event::poll(Duration::from_millis(wait))? {
                 // Rafale : vide la file d'attente (frappe rapide sans retard).
                 loop {
                     match event::read()? {
                         Event::Key(key) => {
-                            if key.kind == KeyEventKind::Press && !self.on_key(key) {
+                            if !self.on_key(key) {
                                 break 'main;
                             }
                         }
                         Event::Mouse(mev) => self.on_mouse(mev),
                         _ => {}
                     }
-                    dirty = true;
+                    dirty |= self.screen != Screen::Haunt;
                     if !event::poll(Duration::ZERO)? {
                         break;
                     }
@@ -150,9 +166,12 @@ impl App {
             if last_tick.elapsed() >= Duration::from_millis(100) {
                 last_tick = Instant::now();
                 self.tick();
-                dirty = true;
+                dirty |= self.screen != Screen::Haunt;
             }
+            dirty |= self.pump_haunt(last_pump.elapsed());
+            last_pump = Instant::now();
         }
+        self.release_keys();
         self.save_now();
         Ok(())
     }

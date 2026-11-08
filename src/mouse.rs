@@ -62,8 +62,11 @@ impl App {
     /// Clic sur un onglet : même effet que sa touche (le hub bascule).
     fn goto_tab(&mut self, tab: Screen) {
         match tab {
-            Screen::Chat => self.screen = Screen::Chat,
+            Screen::Chat => self.show(Screen::Chat),
+            Screen::Hub if self.screen == Screen::Hub => {}
             Screen::Hub => self.open_hub(),
+            Screen::Haunt if self.screen == Screen::Haunt => {}
+            Screen::Haunt => self.open_haunt(),
         }
     }
 }

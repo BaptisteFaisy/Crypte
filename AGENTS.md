@@ -14,7 +14,9 @@ cargo test                       # tous les tests doivent être verts
 cargo fmt --check                # formatage propre exigé
 ./target/debug/kiro-horror-tui --smoke   # headless 80x24, sans réseau ni clé
 ./target/debug/kiro-horror-tui --planche docs/bestiaire.png  # après retouche d'un sprite
-./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 2 écrans × 2 tailles en ANSI
+./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans      # 3 écrans × 2 tailles en ANSI
+./target/debug/kiro-horror-tui --haunt-shot /tmp/haunt.png    # 4 frames du jeu (après retouche)
+cargo test --release -- --ignored frame_budget --nocapture    # coût d'une frame du jeu (240 i/s)
 ./target/debug/kiro-horror-tui --muse-auth --once "Reply with exactly: OK"
 cargo build --release            # met à jour `kiro-horror-tui` (symlink)
 ghostty/crypte-test.sh           # dispatch lanceur (sur place vs fenêtre)
@@ -52,6 +54,20 @@ unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
 crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 `font.rs` police 3×5, `social.rs` orbes et bavardages), `app/esprits.rs`
 (écran + touches du hub). Sprites du hub : `assets/hub/*.txt`.
+`canvas.rs` (peinture RGBA partagée hub + jeu : `px`, `put`, `blit`
+opacité/teinte/découpe). `haunt.rs` + `haunt/` (jeu F9, plateforme
+et tir, niveau 1 très difficile : Kiro envoie des tokens) : `level.rs`
+grille texte `assets/haunt/niveau-1.txt` (une lettre par dalle 16×16,
+dernière ligne = zones du directeur), `body.rs` physique en dalles,
+`player.rs` Kiro (linceul = armure), `foes.rs` créatures du bestiaire,
+`boss.rs` Faucheuse, `shots.rs` tokens/butin/cercueils flottants,
+`combat.rs`, `spawn.rs` repères + directeur + reprise, `backdrop.rs`
+ciel 32 bits + éclairage, `draw.rs` composition + présentation,
+`actors.rs`, `hud.rs`, `demo.rs` (`--haunt-shot`), `tests.rs`.
+Simulation à pas fixe **240 Hz** : vitesses/durées écrites en pas de
+référence de 1/30 s, toujours multipliées par `DT` / `SUB`.
+`app/haunt.rs` (écran, touches a/w/s/d + Espace, protocole clavier
+Kitty empilé seulement en jeu). Sprites du jeu : `assets/haunt/*.txt`.
 `almanac.rs` (tokens par jour, bloc `/usage`) + `almanac/disk.rs`
 (JSON `~/.local/share/kiro-horror-tui/`, relu avant chaque écriture,
 jamais réécrit s'il est illisible).

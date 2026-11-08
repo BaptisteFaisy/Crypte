@@ -22,12 +22,12 @@ impl App {
     /// F7 : ouvre le hub sur le chat courant, ou revient au chat.
     pub(crate) fn open_hub(&mut self) {
         if self.screen == Screen::Hub {
-            self.screen = Screen::Chat;
+            self.show(Screen::Chat);
             return;
         }
         self.hub.selected = self.sessions.index();
         self.hub.sync(&self.sessions);
-        self.screen = Screen::Hub;
+        self.show(Screen::Hub);
     }
 
     /// Touches du hub : flèches (choisir), Entrée (ouvrir le chat), F7 retour.
@@ -38,10 +38,11 @@ impl App {
             KeyCode::Right | KeyCode::Down => self.cmd(|s| s.hub_step(1)),
             KeyCode::Enter => self.cmd(|s| {
                 s.sessions.select(s.hub.selected);
-                s.screen = Screen::Chat;
+                s.show(Screen::Chat);
             }),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
-            KeyCode::F(7) => self.cmd(|s| s.screen = Screen::Chat),
+            KeyCode::F(7) => self.cmd(|s| s.show(Screen::Chat)),
+            KeyCode::F(9) => self.cmd(|s| s.open_haunt()),
             _ => true,
         }
     }
@@ -52,11 +53,19 @@ impl App {
         self.hub.selected = (self.hub.selected as isize + delta).rem_euclid(n.max(1)) as usize;
     }
 
-    /// Frame complète + image Kitty animée du hub à écrire après (si le hub
-    /// est affiché dans un terminal Kitty).
+    /// Frame complète + image Kitty animée du hub ou du jeu à écrire après
+    /// (si l'écran est affiché dans un terminal Kitty).
     pub(crate) fn render_frame(&mut self, frame: &mut Frame) -> Option<String> {
         self.draw(frame);
-        self.hub.view.take_pending()
+        let hub = self.hub.view.take_pending();
+        let game = self.haunt.view.take_pending();
+        match (hub, game) {
+            (Some(mut a), Some(b)) => {
+                a.push_str(&b);
+                Some(a)
+            }
+            (a, b) => a.or(b),
+        }
     }
 
     /// Scène pixel (gauche) + panneau des esprits (droite).

@@ -137,6 +137,7 @@ exempt, stays the remedy).
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
 | F5 | scare: Kiro scared 2s, jump scare, lightning flash |
 | F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
+| F9 | toggle chat / Haunt, the platform game (see below) |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
 | Wheel (over the chat) | scroll the history, 3 lines per notch |
 | PgUp / PgDn | scroll up / down one page (10 lines) |
@@ -192,6 +193,54 @@ Offline demo, no key needed:
 
 ```sh
 ./target/debug/kiro-horror-tui --demo
+```
+
+## Haunt (F9)
+
+An original side-scrolling platform shooter drawn in the bestiary style.
+Kiro, the keeper of the crypt, crosses **level 1 — The Boneyard** (very
+hard) by **sending tokens** (little text pills: `THE`, `ING`, `42`…) at
+the bestiary's creatures, up to the Reaper.
+
+| key | effect |
+| --- | ---- |
+| `a` / `d` (or ←/→) | left / right |
+| `w` (or ↑) | jump (barely steerable in the air) |
+| `s` (or ↓) | sink into the earth: dodge, low tokens; `s`+`w` drops through a slab |
+| Space | send a token (2 in flight at most) |
+| Enter | start / rise again |
+| `p` | pause |
+| Esc / F9 | back to the chat (the run pauses) |
+
+- **Shroud = armour**: the first hit tears Kiro's white shroud off (he
+  is knocked back), the second one kills. 3 lives, one checkpoint
+  (a lantern) mid-level, 2:30 per life before the candle burns out.
+- Creatures: mummies rising from the ground, hurried mummies, bats,
+  grave hands, black ghosts (the hub's sub-agents, through walls), the
+  White Lady (appears, wails, vanishes), bouncing zombie heads; pits,
+  bone spikes and ectoplasm pools crossed on floating coffins.
+- Coffins open under tokens: **sharp tokens** (knife, piercing),
+  **hot tokens** (lantern, arcing, set the ground on fire), a new shroud,
+  or a trap. The White Lady leaves a lollipop.
+- Boss: the Reaper (bestiary sprite ×2) throws scythes, summons black
+  ghosts and, at half life, dives at Kiro.
+- **240 Hz**: the simulation runs on a fixed 1/240 s step (physics,
+  input, AI) and the screen is redrawn up to 240 times a second.
+  Measured frame cost (release, compose + ×k upscale + Kitty PNG):
+  ~2.5 ms at 10×20 cells, ~4 ms at 20×40 (HiDPI) — what you finally
+  see is capped by your monitor's refresh rate.
+- "32-bit" look: 320×192 canvas, parallax (hills and chapels, dead
+  trees, iron fence), dithered sky, blood moon, lighting around Kiro,
+  pumpkins and flames, fog, vignette; integer nearest-neighbour scaling
+  only. In Ghostty the frame is a Kitty image re-sent under the same id;
+  the Kitty keyboard protocol is enabled while playing so held keys are
+  known (releases reported). Elsewhere: half-blocks and key repeat.
+- The level is a text grid (`assets/haunt/niveau-1.txt`, one letter
+  per 16×16 tile, last line = spawn zones), editable by hand like the
+  sprites (`assets/haunt/*.txt`, same palette letters).
+
+```sh
+./target/debug/kiro-horror-tui --haunt-shot /tmp/haunt.png   # 4 frames, x2
 ```
 
 ## Almanac (`/usage`)
@@ -400,5 +449,12 @@ scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
 isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
 `font.rs` 3×5 pixel font, `social.rs` orbs and chatter),
 `app/esprits.rs` (hub screen + keys), `app/keys.rs` (dispatch + scroll + resize),
+`canvas.rs` (shared RGBA painting: theme pixels, sprite blit with
+alpha / tint / clip), `haunt.rs` + `haunt/` (F9 game: `level.rs` text
+grid, `body.rs` tile physics, `player.rs` Kiro, `foes.rs` creatures,
+`boss.rs` Reaper, `shots.rs` tokens and loot, `combat.rs`, `spawn.rs`
+markers + director, `backdrop.rs` / `draw.rs` / `actors.rs` / `hud.rs`
+rendering, `demo.rs` `--haunt-shot`), `app/haunt.rs` (game screen,
+keys, Kitty keyboard protocol),
 `almanac.rs` (tokens per day, `/usage` block) + `almanac/disk.rs`
 (JSON file).
