@@ -1,11 +1,8 @@
 [package]
 name = "crypte"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-edition = "2024"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Crypte : chat LLM d'horreur, Kiro le fantôme mascotte, effets sang/brume (Tauri v2 + Svelte)"
+edition = "2021"
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -19,10 +16,24 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
+# tokio : macros + rt + sync + time + process + io-util (voir Cargo.toml TUI :
+# spawn/mpsc/timeout/Command/MCP-stdio, zéro fs/net/signal).
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time", "process", "io-util"] }
+# reqwest rustls-only : pas de libssl-dev requis (cf. PLAN §1).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "system-proxy", "gzip"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
+anyhow = "1"
+tiktoken-rs = "0.12"
+rand = "0.9"
+toml = { version = "1", default-features = false, features = ["std", "parse", "serde", "display"] }
+# chacha20poly1305 : coffre chiffré des clés API (providers.enc).
+chacha20poly1305 = "0.10"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std", "serde"] }
+# image png-only : planche bestiaire + sprites.
+image = { version = "0.25", default-features = false, features = ["png"] }
+# libc : eveil inotify (mbox, dormant : la sonde passe par un timer).
+libc = "0.2"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

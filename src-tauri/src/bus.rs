@@ -1,0 +1,216 @@
+//! Bus de messages inter-chats/agents (faible latence).
+//!
+//! Port de la partie pure de `bus.rs` du TUI (les tests de flux via
+//! `App` vivent dans les tests de `Core`, voir `core.rs`).
+
+/// Relais automatiques max d'une chaîne (un lien = 1 relais ; au-delà,
+/// la retransmission est comptée `capped` et abandonnée).
+pub const MAX_AUTO_HOPS: u8 = 8;
+
+/// Cible d'un message : chat (numéro 1-based, comme `/tell`) ou agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    Chat(usize),
+    Agent(usize),
+}
+
+/// `2`/`@2` → chat 2, `#3` → agent#3 (les agents exigent `#`, les
+/// chiffres nus désignent un chat). `None` si pas une cible (`all`,
+/// vide, `@x`, `0`…).
+pub fn parse_target(token: &str) -> Option<Target> {
+    let token = token.trim();
+    if let Some(num) = token.strip_prefix('#') {
+        return num
+            .parse::<usize>()
+            .ok()
+            .filter(|n| *n >= 1)
+            .map(Target::Agent);
+    }
+    let num = token.strip_prefix('@').unwrap_or(token);
+    num.parse::<usize>()
+        .ok()
+        .filter(|n| *n >= 1)
+        .map(Target::Chat)
+}
+
+/// Extrémité d'un lien : chat (index 0-based) ou agent (id global).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkEnd {
+    Chat(usize),
+    Agent(usize),
+}
+
+impl LinkEnd {
+    /// Depuis un [`Target`] 1-based (chat n → index n-1).
+    pub fn from_target(target: Target) -> Self {
+        match target {
+            Target::Chat(n) => LinkEnd::Chat(n - 1),
+            Target::Agent(id) => LinkEnd::Agent(id),
+        }
+    }
+
+    /// `Chat 2` / `agent#3` (listes, notes).
+    pub fn label(self) -> String {
+        match self {
+            LinkEnd::Chat(idx) => format!("Chat {}", idx + 1),
+            LinkEnd::Agent(id) => format!("agent#{id}"),
+        }
+    }
+}
+
+/// Règle auto : chaque réponse de `from` est retransmise à `to`
+/// (déclenche sa réponse ; compte 1 relais, voir [`MAX_AUTO_HOPS`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Link {
+    pub from: LinkEnd,
+    pub to: LinkEnd,
+}
+
+/// Échec de création d'un lien : vers soi-même, ou déjà présent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkError {
+    Same,
+    Exists,
+}
+
+/// Table des liens + compteurs (retransmis, coupés par le plafond).
+#[derive(Debug, Default)]
+pub struct Bus {
+    links: Vec<Link>,
+    pub forwarded: u64,
+    pub capped: u64,
+}
+
+impl Bus {
+    /// Bus vide.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Ajoute un lien (refusé : vers soi-même, doublon).
+    pub fn link(&mut self, from: LinkEnd, to: LinkEnd) -> Result<(), LinkError> {
+        if from == to {
+            return Err(LinkError::Same);
+        }
+        if self.links.iter().any(|l| l.from == from && l.to == to) {
+            return Err(LinkError::Exists);
+        }
+        self.links.push(Link { from, to });
+        Ok(())
+    }
+
+    /// Retire un lien (vrai s'il était présent).
+    pub fn unlink(&mut self, from: LinkEnd, to: LinkEnd) -> bool {
+        let before = self.links.len();
+        self.links.retain(|l| l.from != from || l.to != to);
+        self.links.len() != before
+    }
+
+    /// Cibles liées à `from` (éventail, dans l'ordre d'ajout).
+    pub fn targets(&self, from: LinkEnd) -> Vec<LinkEnd> {
+        self.links
+            .iter()
+            .filter(|l| l.from == from)
+            .map(|l| l.to)
+            .collect()
+    }
+
+    /// Tous les liens (affichage `/links`, `links_list`).
+    pub fn links(&self) -> &[Link] {
+        &self.links
+    }
+
+    /// Texte `/links` : règles + compteurs (toujours les compteurs).
+    pub fn list_text(&self) -> String {
+        let mut out = if self.links.is_empty() {
+            String::from("no links")
+        } else {
+            self.links
+                .iter()
+                .map(|l| format!("{} → {}", l.from.label(), l.to.label()))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        out.push_str(&format!(
+            "\nforwarded: {} · capped (>{} hops): {}",
+            self.forwarded, MAX_AUTO_HOPS, self.capped
+        ));
+        out
+    }
+}
+
+/// Tell en file (affiché aussitôt dans le chat cible, versé à
+/// l'historique dès que le chat est libre ; `trigger` = déclenche une
+/// réponse, sinon simple versement au contexte, façon « btw »).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedTell {
+    pub envelope: String,
+    pub hops: u8,
+    pub trigger: bool,
+}
+
+/// Ask en file (déclenché dès que l'agent est libre, livré à `deliver`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedAsk {
+    pub deliver: usize,
+    pub text: String,
+    pub hops: u8,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_target_forme_chats_agents_et_rejets() {
+        assert_eq!(parse_target("2"), Some(Target::Chat(2)));
+        assert_eq!(parse_target("@2"), Some(Target::Chat(2)));
+        assert_eq!(parse_target("#3"), Some(Target::Agent(3)));
+        assert_eq!(parse_target("  #3  "), Some(Target::Agent(3)));
+        assert_eq!(parse_target("all"), None);
+        assert_eq!(parse_target(""), None);
+        assert_eq!(parse_target("@demain"), None);
+        assert_eq!(parse_target("0"), None);
+        assert_eq!(parse_target("#0"), None);
+        assert_eq!(parse_target("#x"), None);
+        assert_eq!(LinkEnd::from_target(Target::Chat(2)), LinkEnd::Chat(1));
+        assert_eq!(LinkEnd::Chat(1).label(), "Chat 2");
+        assert_eq!(LinkEnd::Agent(3).label(), "agent#3");
+    }
+
+    #[test]
+    fn link_refuse_soi_meme_et_doublon_unlink_retire() {
+        let mut bus = Bus::new();
+        let a = LinkEnd::Agent(1);
+        let c = LinkEnd::Chat(1);
+        assert_eq!(bus.link(a, a), Err(LinkError::Same));
+        assert!(bus.link(a, c).is_ok());
+        assert_eq!(bus.link(a, c), Err(LinkError::Exists));
+        assert!(bus.unlink(a, c));
+        assert!(!bus.unlink(a, c));
+        assert!(bus.links().is_empty());
+    }
+
+    #[test]
+    fn targets_eventail_dans_l_ordre_d_ajout() {
+        let mut bus = Bus::new();
+        let src = LinkEnd::Chat(0);
+        bus.link(src, LinkEnd::Agent(1)).unwrap();
+        bus.link(src, LinkEnd::Chat(2)).unwrap();
+        bus.link(LinkEnd::Agent(9), src).unwrap();
+        assert_eq!(bus.targets(src), vec![LinkEnd::Agent(1), LinkEnd::Chat(2)]);
+    }
+
+    #[test]
+    fn list_text_montre_regles_et_compteurs() {
+        let mut bus = Bus::new();
+        assert!(bus.list_text().starts_with("no links\nforwarded: 0"));
+        bus.link(LinkEnd::Agent(1), LinkEnd::Chat(1)).unwrap();
+        bus.forwarded = 5;
+        bus.capped = 1;
+        let text = bus.list_text();
+        assert!(text.contains("agent#1 → Chat 2"), "{text}");
+        assert!(text.contains("forwarded: 5"), "{text}");
+        assert!(text.contains("capped (>8 hops): 1"), "{text}");
+    }
+}
