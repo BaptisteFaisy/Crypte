@@ -143,6 +143,7 @@ pub struct T5State {
     pub rules_path: Option<PathBuf>,
     pub kiro_project: PathBuf,
     pub kiro_global: Option<PathBuf>,
+    pub checkpoint_dir: Option<PathBuf>,
 }
 
 impl T5State {
@@ -155,6 +156,7 @@ impl T5State {
             rules_path: rules_path(),
             kiro_project: crate::kiro::project_dir(),
             kiro_global: crate::kiro::global_dir(),
+            checkpoint_dir: crate::kiro::checkpoint::dir(),
         }
     }
 }

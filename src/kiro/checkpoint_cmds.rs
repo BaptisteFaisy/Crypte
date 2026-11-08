@@ -9,7 +9,12 @@ use crate::app::App;
 impl App {
     /// `/checkpoints` : snapshots numérotés (plus récent d'abord).
     pub(crate) fn cmd_checkpoints(&mut self) {
-        let snaps = crate::kiro::checkpoint::list();
+        let snaps = self
+            .t5
+            .checkpoint_dir
+            .as_deref()
+            .map(crate::kiro::checkpoint::list_in)
+            .unwrap_or_default();
         if snaps.is_empty() {
             self.push_system(String::from("no checkpoints"));
             return;
@@ -28,8 +33,11 @@ impl App {
 
     /// `/rewind <n|nom>` : restaure le snapshot (succès ou erreur affichés).
     pub(crate) fn cmd_rewind(&mut self, target: String) {
-        match crate::kiro::checkpoint::rewind(&target) {
-            Ok(msg) | Err(msg) => self.push_system(msg),
+        match self.t5.checkpoint_dir.as_deref() {
+            Some(ckpt) => match crate::kiro::checkpoint::rewind_in(ckpt, &target) {
+                Ok(msg) | Err(msg) => self.push_system(msg),
+            },
+            None => self.push_system(String::from("no checkpoints")),
         }
     }
 }
@@ -40,20 +48,20 @@ mod tests {
 
     #[test]
     fn checkpoints_liste_rewind_restaure_et_erreurs() {
-        // Seul test à toucher `KH_CHECKPOINT_DIR` (pas de course).
+        // Dossier injecté via `T5State` (zéro env, hermétique).
         let dir = std::env::temp_dir().join(format!("kh-checkpoint-cmds-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let saved = std::env::var("KH_CHECKPOINT_DIR").ok();
-        std::env::set_var("KH_CHECKPOINT_DIR", dir.join("ckpt"));
+        let ckpt = dir.join("ckpt");
+        std::fs::create_dir_all(&ckpt).unwrap();
         let cfg = crate::provider::ProviderConfig {
             base_url: String::from("http://localhost:9/"),
             api_key: String::from("factice"),
             model: String::from("factice"),
         };
         let mut app = App::from_config(cfg).unwrap();
+        app.t5.checkpoint_dir = Some(ckpt.clone());
         let target = dir.join("doc.md");
-        crate::kiro::checkpoint::write_tracked(&target, "v1").unwrap();
-        crate::kiro::checkpoint::write_tracked(&target, "v2").unwrap();
+        crate::kiro::checkpoint::write_tracked_in(&ckpt, &target, "v1").unwrap();
+        crate::kiro::checkpoint::write_tracked_in(&ckpt, &target, "v2").unwrap();
         app.run_command("/checkpoints");
         let listed = last_text(&app);
         assert!(
@@ -70,10 +78,6 @@ mod tests {
             missing.contains("no checkpoint matching 'zzz'"),
             "{missing}"
         );
-        match saved {
-            Some(val) => std::env::set_var("KH_CHECKPOINT_DIR", val),
-            None => std::env::remove_var("KH_CHECKPOINT_DIR"),
-        }
         std::fs::remove_dir_all(&dir).ok();
     }
 
