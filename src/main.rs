@@ -29,6 +29,7 @@ mod hub;
 mod kiro;
 mod mouse;
 mod permissions;
+mod permissions_cmds;
 mod persist;
 mod pool;
 mod provider;

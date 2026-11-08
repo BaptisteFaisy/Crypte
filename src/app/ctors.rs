@@ -99,8 +99,21 @@ impl App {
         lazy: bool,
         hint_connect: bool,
     ) -> Self {
+        let mut app = Self::blank(provider, agents_md, agents_file, lazy);
+        app.finish_boot(hint_connect);
+        app
+    }
+
+    /// État brut (canal + champs, sans pin ni annonce).
+    fn blank(
+        provider: Option<Arc<Provider>>,
+        agents_md: Option<String>,
+        agents_file: Option<String>,
+        lazy: bool,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(INCOMING_CAP);
         let mut app = Self {
+            mascot: Mascot::new(),
             fx: Fx::new(),
             bank: ImageBank::headless(),
             apparition: Apparition::new(),
@@ -129,6 +142,7 @@ impl App {
             thinking: None,
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
+            t5: crate::permissions::T5State::load(),
             tools_on: true,
             tool_run: None,
             spec_runs: HashMap::new(),
@@ -141,15 +155,18 @@ impl App {
             tx,
             rx,
             pool: SpawnPool::new(),
-        };
-        app.pin_current();
-        app.announce_agents_md();
-        app.hooks_fire_session_start();
-        if hint_connect {
-            app.push_system(String::from(NOT_CONNECTED));
         }
-        app.refresh_ctx_cache();
-        app
+    }
+
+    /// Fin de construction : pin + annonce + hint + cache contexte.
+    fn finish_boot(&mut self, hint_connect: bool) {
+        self.pin_current();
+        self.announce_agents_md();
+        self.hooks_fire_session_start();
+        if hint_connect {
+            self.push_system(String::from(NOT_CONNECTED));
+        }
+        self.refresh_ctx_cache();
     }
 
     /// Lit agents.md + steering Kiro au premier envoi (une seule tentative),
@@ -159,7 +176,11 @@ impl App {
             return;
         }
         self.agents_tried = true;
-        let merged = agents::load_merged(self.agents_file.as_deref());
+        let merged = agents::load_merged_in(
+            self.agents_file.as_deref(),
+            &self.t5.kiro_project,
+            self.t5.kiro_global.as_deref(),
+        );
         if merged.text.is_none() {
             return;
         }

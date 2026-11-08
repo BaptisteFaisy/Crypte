@@ -1,4 +1,5 @@
-//! Compatibilité Kiro (`.kiro/`) : steering, specs, hooks, MCP, ignore.
+//! Compatibilité Kiro (`.kiro/`) : steering, specs, hooks, MCP, ignore,
+//! agents customs, skills, checkpoints, mémoire (T5).
 //!
 //! Crypte lit les mêmes fichiers que Kiro (projet `./.kiro/` + global
 //! `~/.kiro/`) : un projet va et vient entre les deux. Le steering
@@ -8,7 +9,11 @@
 //! Tests déterministes : `KH_KIRO_PROJECT` / `KH_KIRO_GLOBAL` remplacent
 //! cwd / `~/.kiro` quand elles sont non vides.
 
+pub mod agents_md;
+pub mod checkpoint;
+pub mod checkpoint_cmds;
 pub mod cmds;
+pub mod frontmatter;
 pub mod glob;
 pub mod hook_cmds;
 pub mod hook_exec;
@@ -21,6 +26,10 @@ pub mod mcp_client;
 pub mod mcp_cmds;
 pub mod mcp_conn;
 pub mod mcp_pool;
+pub mod memory;
+pub mod memory_cmds;
+pub mod skills;
+pub mod skills_cmds;
 pub mod spec;
 pub mod spec_cmds;
 pub mod spec_prompts;
@@ -56,7 +65,7 @@ pub fn home_dir() -> Option<PathBuf> {
 }
 
 /// Lit une variable d'environnement, `None` si absente ou blanche.
-fn read_env(name: &str) -> Option<String> {
+pub(crate) fn read_env(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
         .map(|v| v.trim().to_string())

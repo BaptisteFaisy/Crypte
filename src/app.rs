@@ -116,6 +116,8 @@ pub struct App {
     pub(crate) permissions: Mode,
     /// Fichier de persistance du mode (`None` si `HOME` manquant).
     pub(crate) permissions_path: Option<PathBuf>,
+    /// État T5 : règles fines + chemins Kiro résolus à la construction.
+    pub(crate) t5: crate::permissions::T5State,
     /// Envois outillés (`/tools on`, défaut) ; boucle agent dans `tool_run`.
     pub(crate) tools_on: bool,
     /// Boucle agent en cours (`None` = aucun envoi outillé actif).

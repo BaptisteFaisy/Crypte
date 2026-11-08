@@ -52,6 +52,11 @@ impl App {
             Some(Command::SpecRun { name }) => self.cmd_spec_run(name),
             Some(Command::Mcp(arg)) => self.cmd_mcp(arg),
             Some(Command::Hooks) => self.cmd_hooks(),
+            Some(Command::Skills) => self.cmd_skills(),
+            Some(Command::Skill { name, text }) => self.cmd_skill(name, text),
+            Some(Command::Checkpoints) => self.cmd_checkpoints(),
+            Some(Command::Rewind { target }) => self.cmd_rewind(target),
+            Some(Command::Remember(text)) => self.cmd_remember(text),
             Some(Command::Unknown(word)) => {
                 self.push_system(format!("unknown command: {word} — /help for help"));
             }
@@ -149,6 +154,7 @@ impl App {
 
     /// `/agent [@<n>] <texte>` : sous-agent (agents.md préfixé si chargé,
     /// sans historique) ; réponse livrée au chat n si ciblé, sinon ici.
+    /// `<nom-custom>` en tête (voir `agents_md`) = prompt custom en système.
     /// Déconnecté → hint `/connect`, sans créer d'agent.
     fn cmd_agent(&mut self, target: Option<usize>, prompt: String) {
         let Some(provider) = self.provider.clone() else {
@@ -156,21 +162,13 @@ impl App {
             return;
         };
         let id = self.sessions.index();
-        let deliver = match target {
-            None => id,
-            Some(n) if self.sessions.get(n - 1).is_some() => n - 1,
-            Some(n) => {
-                self.push_system(format!("chat {n} not found"));
-                return;
-            }
+        let Some(deliver) = self.resolve_agent_deliver(target, id) else {
+            return;
         };
         // Premier envoi réel : lecture unique d'agents.md (pin + annonce).
         self.ensure_agents_loaded();
-        let mut messages = Vec::with_capacity(2);
-        if let Some(content) = &self.agents_md {
-            messages.push((String::from("system"), content.clone()));
-        }
-        messages.push(("user".to_string(), prompt.clone()));
+        let (messages, prompt) =
+            crate::kiro::agents_md::spawn_messages(self, self.agents_md.as_deref(), &prompt);
         let used = crate::tokens::context_estimate(&messages);
         if used > self.context_limit() {
             self.push_system(format!(
@@ -204,8 +202,21 @@ impl App {
         });
     }
 
+    /// Chat de livraison `/agent` (`None` + note si cible inconnue).
+    fn resolve_agent_deliver(&mut self, target: Option<usize>, id: usize) -> Option<usize> {
+        match target {
+            None => Some(id),
+            Some(n) if self.sessions.get(n - 1).is_some() => Some(n - 1),
+            Some(n) => {
+                self.push_system(format!("chat {n} not found"));
+                None
+            }
+        }
+    }
+
     /// `/agents [all]` : sous-agents du chat courant, ou de tous les
-    /// chats (`all`, préfixés `Chat k`) ; file d'attente entre crochets.
+    /// chats (`all`, préfixés `Chat k`) ; file d'attente entre crochets ;
+    /// customs `.kiro/agents/` listés à la suite (`custom <nom>`).
     fn cmd_agents(&mut self, all: bool) {
         let here = self.sessions.index();
         let mut rows = Vec::new();
@@ -235,6 +246,9 @@ impl App {
                     queued = queued
                 ));
             }
+        }
+        for line in crate::kiro::agents_md::lines_of_app(self) {
+            rows.push(line);
         }
         if rows.is_empty() {
             self.push_system(String::from("no agents"));
