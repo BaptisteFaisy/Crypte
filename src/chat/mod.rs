@@ -47,12 +47,13 @@ pub struct Message {
     pub text: String,
 }
 
-/// Contexte de rendu : titre du chat, horloge d'animation, attente.
+/// Contexte de rendu : titre, horloge d'animation, attente, question IA.
 #[derive(Clone, Copy, Debug)]
 pub struct ChatView<'a> {
     pub title: &'a str,
     pub tick: u64,
     pub sending: bool,
+    pub question_pending: bool,
 }
 
 /// Historique + brouillon de saisie (+ prompt custom éventuel).
@@ -192,7 +193,7 @@ impl ChatState {
             ..area
         };
         self.draw_history(frame, hist, view);
-        self.draw_input(frame, input);
+        self.draw_input(frame, input, view.question_pending);
     }
 
     /// Historique : bloc arrondi, défilable (molette / PgUp / Shift+↑↓)
@@ -241,7 +242,8 @@ impl ChatState {
     /// Saisie : brouillon (ou aperçu) cadré sur la fin + curseur bougie fixe.
     /// Sans titre par défaut ; le label custom et le masquage (`•`)
     /// servent au flow `/connect` (seul cas avec un titre).
-    fn draw_input(&self, frame: &mut Frame, area: Rect) {
+    /// Question IA en attente : l'invite suggère chiffre ou mots.
+    fn draw_input(&self, frame: &mut Frame, area: Rect, question: bool) {
         let mut block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -254,7 +256,12 @@ impl ChatState {
         let raw = self.input_preview.as_ref().unwrap_or(&self.input);
         let line = if raw.is_empty() {
             let hint = Style::new().fg(ASH).add_modifier(Modifier::ITALIC);
-            Line::from(vec![cursor, Span::styled("whisper to the crypt…", hint)])
+            let text = if question {
+                "number or words to answer…"
+            } else {
+                "whisper to the crypt…"
+            };
+            Line::from(vec![cursor, Span::styled(text, hint)])
         } else {
             let shown = mask_text(raw, self.mask_input);
             let text = tail_chars(&shown, inner_w.max(1));
