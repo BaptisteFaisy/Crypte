@@ -37,7 +37,7 @@ impl App {
             Some(Command::Model(arg)) => self.cmd_model(arg),
             Some(Command::Thinking(arg)) => self.cmd_thinking(arg),
             Some(Command::Agent { target, prompt }) => self.cmd_agent(target, prompt),
-            Some(Command::Agents { all }) => self.cmd_agents(all),
+            Some(Command::Agents { all, voir }) => self.cmd_agents(all, voir),
             Some(Command::Ask { agent, text }) => self.cmd_ask(agent, text),
             Some(Command::Tell { target, text }) => self.cmd_tell(target, text),
             Some(Command::Msg { to, text }) => self.cmd_msg(to, text),
@@ -170,10 +170,20 @@ impl App {
         }
     }
 
-    /// `/agents [all]` : sous-agents du chat courant, ou de tous les
-    /// chats (`all`, préfixés `Chat k`) ; file d'attente entre crochets ;
-    /// customs `.kiro/agents/` listés à la suite (`custom <nom>`).
-    fn cmd_agents(&mut self, all: bool) {
+    /// `/agents [all|#id]` : sous-agents du chat courant, ou de tous
+    /// les chats (`all`, préfixés `Chat k`) ; `#id` affiche l'échange
+    /// complet de l'agent (cherché dans tous les chats) ; file d'attente
+    /// entre crochets ; customs `.kiro/agents/` listés à la suite
+    /// (`custom <nom>`).
+    fn cmd_agents(&mut self, all: bool, voir: Option<usize>) {
+        if let Some(id) = voir {
+            let text = match self.sessions.find_agent_mut(id) {
+                Some((_, agent)) => agent.transcript(),
+                None => format!("agent#{id} unknown"),
+            };
+            self.push_system(text);
+            return;
+        }
         let here = self.sessions.index();
         let mut rows = Vec::new();
         for (i, sess) in self.sessions.iter().enumerate() {
@@ -463,5 +473,21 @@ mod tests {
             last.text.contains("tonight: 150 (in=100 out=50 calls=1)"),
             "{last:?}"
         );
+    }
+
+    #[test]
+    fn agents_diese_montre_echange_et_inconnu_signale() {
+        let mut app = test_app();
+        app.add_chat();
+        let history = vec![(String::from("user"), String::from("u"))];
+        app.sessions.add_agent(0, "loin", history).unwrap();
+        // Agent du chat 1, vu depuis le chat 2 (recherche globale).
+        app.run_command("/agents #1");
+        let last = app.sessions.current().chat.messages().last().unwrap();
+        assert!(last.text.starts_with("#1 running — loin"), "{}", last.text);
+        assert!(last.text.contains("\nyou: u"), "{}", last.text);
+        app.run_command("/agents #42");
+        let last = app.sessions.current().chat.messages().last().unwrap();
+        assert_eq!(last.text, "agent#42 unknown");
     }
 }

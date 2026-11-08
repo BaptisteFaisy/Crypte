@@ -12,7 +12,7 @@ pub fn help_text() -> &'static str {
      /thinking [level] — reasoning level (default/low/medium/high)\n\
      /model [name|reset] — show or change the model\n\
      /agent [@<n>] <text> — sub-agent (reply goes to chat n if targeted)\n\
-     /agents [all] — list sub-agents (all = every chat)\n\
+     /agents [all|#id] — list sub-agents (#id = full exchange)\n\
      /ask #<id> <text> — follow up with an agent\n\
      /tell <n> <text> — talk to chat n\n\
      /msg <n|@n|#id|all> <text> — talk to a chat, an agent, all\n\
@@ -39,7 +39,7 @@ pub fn help_text() -> &'static str {
      /vps [ip|name|off|status|add|del|install] — run this TUI on a VPS\n\
      /help — this help\n\
      Questions: the AI may ask you — reply with the number or in your own words\n\
-     Keys: F5 scare · F6 shop · F9 haunt (game) · Ctrl+N · Ctrl+W close (+ click) · Ctrl+C stop\n\
+     Keys: F5 scare · F6 shop · F9 haunt (game) · Ctrl+N · Ctrl+W close (+ click) · Ctrl+C stop · ↑↓ agents · Enter expand · Esc\n\
      Shop (F6 or tab click): 1 token consumed = 1 coin, ambiance perks\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
 }

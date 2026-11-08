@@ -52,11 +52,12 @@ impl App {
         self.events
             .emit(&Event::agent_spawned(agent_id, id, deliver, &prompt));
         self.hooks_fire_agent_spawn(id, &prompt);
-        if deliver == id {
-            self.push_system(format!("agent#{agent_id} started"));
+        let line = if deliver == id {
+            crate::agent_view::spawn_line(agent_id, None, &prompt)
         } else {
-            self.push_system(format!("agent#{agent_id} started → Chat {}", deliver + 1));
-        }
+            crate::agent_view::spawn_line(agent_id, Some(deliver + 1), &prompt)
+        };
+        self.push_system(line);
         let model = custom_model.unwrap_or_else(|| self.effective_model());
         let effort = self.thinking.clone();
         let tx = self.tx.clone();

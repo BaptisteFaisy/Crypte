@@ -9,7 +9,7 @@ mod subagents;
 
 pub use chat::ChatSession;
 pub use close::{shift_bus_links, CloseOutcome};
-pub use subagents::{AgentStatus, AskError, SubAgent};
+pub use subagents::{AgentStatus, AskError, SpecTag, SubAgent};
 
 use std::path::Path;
 

@@ -269,14 +269,18 @@ impl App {
         self.events
             .emit(&Event::agent_spawned(agent_id, chat, chat, &prompt));
         let run = SpecRun::new(name, chat, index, total).with_agent(agent_id);
+        if let Some((_, agent)) = self.sessions.find_agent_mut(agent_id) {
+            agent.spec = Some(crate::sessions::SpecTag {
+                name: name.to_string(),
+                index,
+                total,
+            });
+        }
         self.push_spec_line(
             chat,
-            format!(
-                "spec {name}: task {} ({}) → agent#{agent_id}",
-                run.label(),
-                crate::provider::truncate(&spec.tasks[index].text, 40)
-            ),
+            crate::agent_view::spec_parent_line(name, &run.label(), &spec.tasks[index].text),
         );
+        self.push_spec_line(chat, crate::agent_view::spec_child_line(agent_id, name));
         self.hooks_fire_agent_spawn(chat, &prompt);
         self.hooks_fire(
             crate::kiro::hooks::Trigger::PreTaskExecution,

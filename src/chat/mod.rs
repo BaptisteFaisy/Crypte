@@ -47,13 +47,15 @@ pub struct Message {
     pub text: String,
 }
 
-/// Contexte de rendu : titre, horloge d'animation, attente, question IA.
+/// Contexte de rendu : titre, horloge d'animation, attente, question
+/// IA, pastilles agents (marqueur, curseur, dépliés).
 #[derive(Clone, Copy, Debug)]
 pub struct ChatView<'a> {
     pub title: &'a str,
     pub tick: u64,
     pub sending: bool,
     pub question_pending: bool,
+    pub agents: crate::agent_view::AgentCtx<'a>,
 }
 
 /// Historique + brouillon de saisie (+ prompt custom éventuel).
@@ -273,6 +275,7 @@ impl ChatState {
                 .collect();
             crate::clip::highlight(&mut visible, &lens, inner, sel);
         }
+        crate::agent_view::decorate(&mut visible, &view.agents, view.tick, width);
         let block = if scrolled == 0 {
             block
         } else {

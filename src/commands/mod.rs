@@ -29,6 +29,7 @@ pub enum Command {
     },
     Agents {
         all: bool,
+        voir: Option<usize>,
     },
     Ask {
         agent: usize,
@@ -129,9 +130,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/help" => Some(Command::Help),
         "/thinking" => Some(Command::Thinking(opt_arg(&mut parts))),
         "/model" => Some(Command::Model(opt_arg(&mut parts))),
-        "/agents" => Some(Command::Agents {
-            all: opt_arg(&mut parts).as_deref() == Some("all"),
-        }),
+        "/agents" => parse_agents(&mut parts),
         "/compact" => Some(Command::Compact),
         "/connect" => Some(Command::Connect(opt_arg(&mut parts))),
         "/settings" | "/setting" | "/params" => {
@@ -172,6 +171,33 @@ fn opt_arg(parts: &mut std::str::SplitWhitespace<'_>) -> Option<String> {
 /// Tous les mots suivants (`/permissions` : mode, règle, `list`, `reset`).
 fn all_args(parts: &mut std::str::SplitWhitespace<'_>) -> Vec<String> {
     parts.map(str::to_string).collect()
+}
+
+/// `/agents [all|#<id>]` (`#` optionnel) : `all` = tous les chats,
+/// `#<id>` = échange complet de l'agent, sinon liste du chat courant
+/// (argument inconnu ignoré, comme avant).
+fn parse_agents(parts: &mut std::str::SplitWhitespace<'_>) -> Option<Command> {
+    let none = Command::Agents {
+        all: false,
+        voir: None,
+    };
+    match opt_arg(parts).as_deref() {
+        None => Some(none),
+        Some("all") => Some(Command::Agents {
+            all: true,
+            voir: None,
+        }),
+        Some(token) => {
+            let num = token.strip_prefix('#').unwrap_or(token);
+            match num.parse::<usize>().ok() {
+                Some(id) if id >= 1 => Some(Command::Agents {
+                    all: false,
+                    voir: Some(id),
+                }),
+                _ => Some(none),
+            }
+        }
+    }
 }
 
 /// `/agent [@<n>] <texte...>` : `@<n>` (chiffres) route la réponse vers
