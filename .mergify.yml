@@ -32,10 +32,11 @@ queue_rules:
     # Mise à jour par merge de main : jamais de réécriture (force-push)
     # des branches de PR, et pas d'échec sur les PR déjà fusionnées.
     update_method: merge
-    commit_message_template: |
-      {{ title }} (#{{ number }})
-
-      {{ body }}
+    # Commit squashé = « titre de la PR (#n) » + description de la PR
+    # (pas la liste des commits de merge).
+    commit_message_format:
+      title: pr-title
+      body: pr-body
 
 priority_rules:
   - name: urgent
