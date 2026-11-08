@@ -125,7 +125,7 @@ AGENTS.MD (system context, read once at first send):
     Excluded from /compact (meta summary) and from --once (raw)
 
 KEYS (terminal >= 70x17):
-    Enter  send    q  quit    F5  scare
+    Enter  send    ←/→ move in input    q  quit    F5  scare
     Ctrl+N or click [+]  new chat
     Ctrl+C  stop the current reply (late reply ignored)
     F6 or tab click  shop (1 token consumed = 1 coin)    click item  buy
