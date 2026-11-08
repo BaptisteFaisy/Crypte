@@ -2,7 +2,7 @@
 //!
 //! Extrait de `commands.rs` (limite 500 lignes) : pur, sans état.
 
-/// Aide : les 34 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 35 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (chat + session + all-time almanac)\n\
@@ -31,6 +31,7 @@ pub fn help_text() -> &'static str {
      /mcp [refresh] — MCP servers: status, tools (refresh reconnects)\n\
      /hooks — kiro hooks by trigger + recent firings\n\
      /skills — list reusable skills (name + description)\n\
+     /steer [name] — list manual/auto steering, arm a manual file\n\
      /skill <name> [text] — inject a skill atop the next send\n\
      /checkpoints — list file snapshots (newest first)\n\
      /rewind <n|name> — restore a checkpoint\n\

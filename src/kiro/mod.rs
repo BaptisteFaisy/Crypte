@@ -38,6 +38,7 @@ pub mod spec_cmds;
 pub mod spec_prompts;
 pub mod spec_run;
 pub mod status;
+pub mod steer_cmds;
 pub mod steering;
 
 use std::path::PathBuf;

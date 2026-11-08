@@ -2,7 +2,7 @@
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
 //! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/hooks`
 //! `/skills` `/skill` `/checkpoints` `/rewind` `/remember` `/critic`
-//! `/settings` `/cloud` `/help`).
+//! `/settings` `/cloud` `/steer` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -65,6 +65,7 @@ pub enum Command {
         args: Vec<String>,
     },
     Skills,
+    Steer(Option<String>),
     Skill {
         name: String,
         text: Option<String>,
@@ -146,6 +147,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/critic" => Some(Command::Critic(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/skills" => Some(Command::Skills),
+        "/steer" => Some(Command::Steer(opt_arg(&mut parts))),
         "/checkpoints" => Some(Command::Checkpoints),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),

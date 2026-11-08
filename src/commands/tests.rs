@@ -408,3 +408,13 @@ fn parse_cloud_args_bruts() {
     );
     assert!(crate::texts::help_text().contains("/cloud"));
 }
+
+#[test]
+fn parse_steer_nom_optionnel() {
+    assert_eq!(parse("/steer"), Some(Command::Steer(None)));
+    assert_eq!(
+        parse("/steer rust"),
+        Some(Command::Steer(Some(String::from("rust"))))
+    );
+    assert!(crate::texts::help_text().contains("/steer"));
+}
