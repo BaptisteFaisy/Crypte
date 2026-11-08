@@ -410,6 +410,20 @@ fn parse_cloud_args_bruts() {
 }
 
 #[test]
+fn parse_workflow_args_bruts() {
+    assert_eq!(parse("/workflow"), Some(Command::Workflow(vec![])));
+    assert_eq!(
+        parse("/workflow run w task=hi"),
+        Some(Command::Workflow(vec![
+            String::from("run"),
+            String::from("w"),
+            String::from("task=hi"),
+        ]))
+    );
+    assert!(crate::texts::help_text().contains("/workflow"));
+}
+
+#[test]
 fn parse_steer_nom_optionnel() {
     assert_eq!(parse("/steer"), Some(Command::Steer(None)));
     assert_eq!(

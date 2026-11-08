@@ -60,6 +60,7 @@ impl App {
             Some(Command::Mcp(arg)) => self.cmd_mcp(arg),
             Some(Command::Hooks) => self.cmd_hooks(),
             Some(Command::Cloud(args)) => self.cmd_cloud(args),
+            Some(Command::Workflow(args)) => self.cmd_workflow(args),
             Some(Command::Skills) => self.cmd_skills(),
             Some(Command::Steer(name)) => self.cmd_steer(name),
             Some(Command::Skill { name, text }) => self.cmd_skill(name, text),

@@ -133,6 +133,7 @@ impl App {
                 }
                 self.pump_agent_inbox(agent_id);
                 self.spec_agent_failed(agent_id);
+                self.workflow_agent_failed(agent_id);
                 return;
             }
         };
@@ -168,6 +169,7 @@ impl App {
         self.pump_agent_inbox(agent_id);
         self.fire_agent_links(agent_id, &done.text);
         self.spec_agent_done(agent_id);
+        self.workflow_agent_done(agent_id, &done.text);
     }
 
     /// Marque un agent échoué sur son chat propriétaire (réponse en erreur).
