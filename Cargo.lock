@@ -922,6 +922,7 @@ dependencies = [
  "chrono",
  "crossterm",
  "image",
+ "libc",
  "rand 0.9.5",
  "ratatui",
  "ratatui-image",

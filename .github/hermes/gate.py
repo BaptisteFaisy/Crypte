@@ -3,10 +3,14 @@
 """Gate Hermes Lite — fraîcheur exigée AU MOMENT DU MERGE ([HERMES-REFRESH], porté du gate `duello`).
 
 Règles :
-- retard sans conflit  → rebase serveur (PUT /pulls/N/update-branch) ;
-  le rebase déclenche un événement `synchronize` qui re-run ce workflow → cycle auto.
+- retard sans conflit  → mise à jour serveur (PUT /pulls/N/update-branch,
+  méthode UPDATE_METHOD, merge de la base par défaut) ; ré-évaluée dans ce run.
 - vrai conflit         → check rouge + label `hermes/conflit` (escalade humaine).
-- frais + checks requis verts → merge (rebase), une PR à la fois.
+- frais + checks requis verts → merge (MERGE_METHOD, squash par défaut),
+  une PR à la fois.
+
+Méthodes alignées sur .mergify.yml : jamais de rebase, qui refuse les PR
+ayant fusionné main en elles (constaté 2026-11-08, PR #73).
 """
 
 API = 'https://api.github.com'
@@ -15,7 +19,12 @@ LABEL_OK = 'hermes/approuvee'
 LABEL_CONFLIT = 'hermes/conflit'
 
 import json
+import os
 import time
+
+# Méthodes GitHub (env du workflow hermes-lite.yml, alignées sur .mergify.yml).
+MERGE_METHOD = os.environ.get('MERGE_METHOD') or 'squash'
+UPDATE_METHOD = os.environ.get('UPDATE_METHOD') or 'merge'
 
 
 def api(method, url, body=None, token=None):
@@ -55,12 +64,13 @@ def set_label(pr, repo, token, name, add):
 
 
 def refresh_branch(repo, token, pr):
-    """Rebase serveur d'une PR en retard. Renvoie 'refreshed'/'conflict'/'error'."""
+    """Mise à jour serveur d'une PR en retard (UPDATE_METHOD). Renvoie
+    'refreshed'/'conflict'/'error'."""
     num = pr['number']
     expected = pr['head']['sha']
     sc, resp = api('PUT', '/repos/%s/pulls/%d/update-branch' % (repo, num),
                    token=token,
-                   body={'update_method': 'rebase', 'expected_head_sha': expected})
+                   body={'update_method': UPDATE_METHOD, 'expected_head_sha': expected})
     if sc == 202:
         return 'refreshed'
     if sc in (409, 422):
@@ -95,7 +105,7 @@ def required_checks_green(repo, token, pr, required):
 
 
 def settle_after_refresh(repo, token, num, required, attempts=10, pause=6, dry=False):
-    """[HERMES-REFRESH] Ré-évalue la PR après le rebase serveur, DANS CE RUN.
+    """[HERMES-REFRESH] Ré-évalue la PR après la mise à jour serveur, DANS CE RUN.
 
     Le push effectué par `update-branch` est un push de bot : il ne déclenche
     AUCUN workflow (anti-récursion GitHub), et hermes-lite n'a ni cron ni
@@ -118,20 +128,20 @@ def settle_after_refresh(repo, token, num, required, attempts=10, pause=6, dry=F
         behind = cmp_.get('behind_by') if sc == 200 else -1
         behind = behind if isinstance(behind, int) else -1
         if behind > 0:
-            continue  # rebase pas encore appliqué (ou main a bougé entre-temps)
+            continue  # mise à jour pas encore appliquée (ou main a bougé entre-temps)
         conflicts = (pr.get('mergeable') is False
                      and (pr.get('mergeable_state') or '') == 'dirty')
         if conflicts:
             create_check(repo, token, sha, False,
                          'Conflits avec %s — intervention humaine' % base_ref,
-                         'Le rebase automatique a révélé un conflit. Rebase manuel '
-                         'puis push, ou label `hermes/intervention-humaine`.')
+                         'La mise à jour automatique a révélé un conflit. Fusionner '
+                         'main, résoudre puis push, ou label `hermes/intervention-humaine`.')
             set_label(pr, repo, token, LABEL_CONFLIT, True)
             set_label(pr, repo, token, LABEL_OK, False)
             return 'conflict'
         set_label(pr, repo, token, LABEL_OK, True)
         create_check(repo, token, sha, True, 'PR à jour — merge par le gate',
-                     'Fraîche au moment du merge (settle après rebase serveur).')
+                     'Fraîche au moment du merge (settle après mise à jour serveur).')
         if dry:
             return 'dry'
         m = try_merge(repo, token, pr, required)
@@ -142,7 +152,7 @@ def settle_after_refresh(repo, token, num, required, attempts=10, pause=6, dry=F
 
 
 def try_merge(repo, token, pr, required):
-    """Merge la PR (méthode rebase) si fraîche et checks requis verts."""
+    """Merge la PR (MERGE_METHOD) si fraîche et checks requis verts."""
     num = pr['number']
     sha = pr['head']['sha']
     # Re-vérification de fraîcheur au dernier moment (défense anti-course)
@@ -153,7 +163,7 @@ def try_merge(repo, token, pr, required):
     if not required_checks_green(repo, token, pr, required):
         return 'waiting'
     sc, resp = api('PUT', '/repos/%s/pulls/%d/merge' % (repo, num), token=token,
-                   body={'sha': sha, 'merge_method': 'rebase'})
+                   body={'sha': sha, 'merge_method': MERGE_METHOD})
     if sc == 200:
         return 'merged'
     if sc == 409:
@@ -189,20 +199,20 @@ def handle_pr(pr, repo, token, required, dry=False):
 
     if not fresh:
         if dry:
-            print('[gate] #%d : en retard de %s commit(s) — rebase serveur (dry-run)' % (num, behind))
+            print('[gate] #%d : en retard de %s commit(s) — mise à jour serveur (dry-run)' % (num, behind))
             return 'dry'
         r = refresh_branch(repo, token, pr)
         print('[gate] #%d : en retard de %s → refresh %s' % (num, behind, r), flush=True)
         if r == 'refreshed':
-            # Le push du rebase est un push de bot : aucun workflow ne se
+            # Le push de la mise à jour est un push de bot : aucun workflow ne se
             # déclenche. Ré-évaluation et merge DANS CE RUN.
             return settle_after_refresh(repo, token, num, required, dry=dry)
         if r == 'conflict':
-            # Le rebase serveur a été refusé : conflit réel après tout.
+            # La mise à jour serveur a été refusée : conflit réel après tout.
             create_check(repo, token, sha, False,
                          'Conflits avec %s — intervention humaine' % base_ref,
-                         'Le rebase automatique a été refusé. Rebase manuel '
-                         'puis push, ou label `hermes/intervention-humaine`.')
+                         'La mise à jour automatique a été refusée. Fusionner '
+                         'main, résoudre puis push, ou label `hermes/intervention-humaine`.')
             set_label(pr, repo, token, LABEL_CONFLIT, True)
             set_label(pr, repo, token, LABEL_OK, False)
         return r
