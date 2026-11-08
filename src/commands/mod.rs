@@ -1,6 +1,6 @@
 //! Commandes slash (`/usage` `/new` `/bestiary` `/thinking` `/model` `/agent`
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
-//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/hooks` `/settings` `/help`).
+//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/hooks` `/skills` `/skill` `/checkpoints` `/rewind` `/remember` `/settings` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -52,13 +52,23 @@ pub enum Command {
     Hint(&'static str),
     Connect(Option<String>),
     Settings(String),
-    Permissions(Option<String>),
+    Permissions(Vec<String>),
     Web(String),
     Tools(Option<String>),
     Kiro,
     Vps {
         args: Vec<String>,
     },
+    Skills,
+    Skill {
+        name: String,
+        text: Option<String>,
+    },
+    Checkpoints,
+    Rewind {
+        target: String,
+    },
+    Remember(String),
     SpecNew {
         name: String,
         idea: String,
@@ -91,11 +101,15 @@ pub const UNLINK_USAGE: &str = "usage: /unlink <n|#id> <n|#id> — remove a link
 pub const WEB_USAGE: &str = "usage: /web <query> — web search with summarized sources";
 pub const SPEC_USAGE: &str =
     "usage: /spec <name> [run] | /spec new <name> <idea...> — kiro spec workflow";
+pub const SKILL_USAGE: &str = "usage: /skill <name> [text] — inject a skill atop the next send";
+pub const REWIND_USAGE: &str = "usage: /rewind <n|name> — restore a checkpoint";
+pub const REMEMBER_USAGE: &str = "usage: /remember <text> — memorize into .kiro/MEMORY.md";
 
 /// Analyse une saisie : `None` si ce n'est pas une commande.
 ///
 /// Matche le premier mot ; cibles + texte consomment le reste,
-/// `/thinking` `/model` `/connect` `/permissions` `/tools` `/mcp` ont un arg optionnel.
+/// `/thinking` `/model` `/connect` `/tools` `/mcp` ont un arg optionnel,
+/// `/permissions` consomme tous les mots suivants.
 pub fn parse(input: &str) -> Option<Command> {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
@@ -118,12 +132,14 @@ pub fn parse(input: &str) -> Option<Command> {
         "/settings" | "/setting" | "/params" => {
             Some(Command::Settings(trimmed[word.len()..].trim().to_string()))
         }
-        "/permissions" => Some(Command::Permissions(opt_arg(&mut parts))),
+        "/permissions" => Some(Command::Permissions(all_args(&mut parts))),
         "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
         "/kiro" => Some(Command::Kiro),
         "/mcp" => Some(Command::Mcp(opt_arg(&mut parts))),
         "/hooks" => Some(Command::Hooks),
         "/links" => Some(Command::Links),
+        "/skills" => Some(Command::Skills),
+        "/checkpoints" => Some(Command::Checkpoints),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),
         "/tell" => parse_tell(trimmed, word),
@@ -135,13 +151,21 @@ pub fn parse(input: &str) -> Option<Command> {
             args: parts.map(str::to_string).collect(),
         }),
         "/spec" => parse_spec(trimmed, word),
+        "/skill" => parse_skill(trimmed, word),
+        "/rewind" => parse_rewind(trimmed, word),
+        "/remember" => parse_remember(trimmed, word),
         _ => Some(Command::Unknown(word.to_string())),
     }
 }
 
-/// Second mot optionnel (`/thinking` `/model` `/connect` `/permissions` `/mcp`).
+/// Second mot optionnel (`/thinking` `/model` `/connect` `/tools` `/mcp`).
 fn opt_arg(parts: &mut std::str::SplitWhitespace<'_>) -> Option<String> {
     parts.next().map(str::to_string)
+}
+
+/// Tous les mots suivants (`/permissions` : mode, règle, `list`, `reset`).
+fn all_args(parts: &mut std::str::SplitWhitespace<'_>) -> Vec<String> {
+    parts.map(str::to_string).collect()
 }
 
 /// `/agent [@<n>] <texte...>` : `@<n>` (chiffres) route la réponse vers
@@ -299,6 +323,42 @@ fn parse_spec(trimmed: &str, word: &str) -> Option<Command> {
         }),
         Some(_) => Some(Command::Hint(SPEC_USAGE)),
     }
+}
+
+/// `/skill <nom> [texte...]` : arme le skill ; vide → aide d'usage.
+fn parse_skill(trimmed: &str, word: &str) -> Option<Command> {
+    let rest = trimmed[word.len()..].trim();
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let name = parts.next().unwrap_or("");
+    if name.is_empty() {
+        return Some(Command::Hint(SKILL_USAGE));
+    }
+    let text = parts.next().map(str::trim).filter(|t| !t.is_empty());
+    Some(Command::Skill {
+        name: name.to_string(),
+        text: text.map(str::to_string),
+    })
+}
+
+/// `/rewind <n|nom>` : un seul mot (cible) ; vide ou plus → aide d'usage.
+fn parse_rewind(trimmed: &str, word: &str) -> Option<Command> {
+    let rest = trimmed[word.len()..].trim();
+    let mut parts = rest.split_whitespace();
+    match (parts.next(), parts.next()) {
+        (Some(target), None) => Some(Command::Rewind {
+            target: target.to_string(),
+        }),
+        _ => Some(Command::Hint(REWIND_USAGE)),
+    }
+}
+
+/// `/remember <texte...>` : mémorise ; vide → aide d'usage.
+fn parse_remember(trimmed: &str, word: &str) -> Option<Command> {
+    let rest = trimmed[word.len()..].trim();
+    if rest.is_empty() {
+        return Some(Command::Hint(REMEMBER_USAGE));
+    }
+    Some(Command::Remember(rest.to_string()))
 }
 
 /// Niveaux d'effort acceptés : default/low/medium/high uniquement.

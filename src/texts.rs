@@ -2,7 +2,7 @@
 //!
 //! Extrait de `commands.rs` (limite 500 lignes) : pur, sans état.
 
-/// Aide : les 26 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 31 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (chat + session + all-time almanac)\n\
@@ -22,13 +22,18 @@ pub fn help_text() -> &'static str {
      /connect [openai|muse] — connect (status if no argument)
      /settings [name] — providers screen: encrypted API keys
      /settings add <name> <base_url> [model] — custom provider\n\
-     /permissions [yolo|auto] — tools mode: ask or run free (remembered)\n\
+     /permissions [yolo|auto|<tool> <rule>|list|reset] — tools mode + per-tool rules (remembered)\n\
      /web <query> — web search + summary with cited sources\n\
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
      /kiro — kiro .kiro/ status (steering, specs, hooks, mcp)\n\
      /spec <name> [run] | /spec new <name> <idea> — kiro spec workflow\n\
      /mcp [refresh] — MCP servers: status, tools (refresh reconnects)\n\
      /hooks — kiro hooks by trigger + recent firings\n\
+     /skills — list reusable skills (name + description)\n\
+     /skill <name> [text] — inject a skill atop the next send\n\
+     /checkpoints — list file snapshots (newest first)\n\
+     /rewind <n|name> — restore a checkpoint\n\
+     /remember <text> — memorize into .kiro/MEMORY.md\n\
      /vps [ip|name|off|status|add|del|install] — run this TUI on a VPS\n\
      /help — this help\n\
      Keys: F5 scare · F6 shop · Ctrl+N · Ctrl+W close (+ click)\n\

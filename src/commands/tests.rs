@@ -1,16 +1,57 @@
 use super::*;
 
 #[test]
-fn parse_permissions_arg_optionnel() {
-    assert_eq!(parse("/permissions"), Some(Command::Permissions(None)));
+fn parse_permissions_mots_suivants() {
+    assert_eq!(parse("/permissions"), Some(Command::Permissions(vec![])));
     assert_eq!(
         parse("/permissions yolo"),
-        Some(Command::Permissions(Some(String::from("yolo"))))
+        Some(Command::Permissions(vec![String::from("yolo")]))
     );
     assert_eq!(
-        parse("/permissions auto"),
-        Some(Command::Permissions(Some(String::from("auto"))))
+        parse("/permissions shell_run deny"),
+        Some(Command::Permissions(vec![
+            String::from("shell_run"),
+            String::from("deny")
+        ]))
     );
+    assert!(crate::texts::help_text().contains("/permissions [yolo|auto|<tool>"));
+}
+
+#[test]
+fn parse_skills_skill_checkpoints_rewind_remember() {
+    assert_eq!(parse("/skills"), Some(Command::Skills));
+    assert_eq!(parse("/checkpoints"), Some(Command::Checkpoints));
+    assert_eq!(
+        parse("/skill terse"),
+        Some(Command::Skill {
+            name: String::from("terse"),
+            text: None,
+        })
+    );
+    assert_eq!(
+        parse("/skill terse hello you"),
+        Some(Command::Skill {
+            name: String::from("terse"),
+            text: Some(String::from("hello you")),
+        })
+    );
+    assert_eq!(parse("/skill"), Some(Command::Hint(SKILL_USAGE)));
+    assert_eq!(
+        parse("/rewind 2"),
+        Some(Command::Rewind {
+            target: String::from("2"),
+        })
+    );
+    assert_eq!(parse("/rewind"), Some(Command::Hint(REWIND_USAGE)));
+    assert_eq!(parse("/rewind a b"), Some(Command::Hint(REWIND_USAGE)));
+    assert_eq!(
+        parse("/remember likes terse"),
+        Some(Command::Remember(String::from("likes terse")))
+    );
+    assert_eq!(parse("/remember"), Some(Command::Hint(REMEMBER_USAGE)));
+    assert!(crate::texts::help_text().contains("/skill <name> [text]"));
+    assert!(crate::texts::help_text().contains("/rewind <n|name>"));
+    assert!(crate::texts::help_text().contains("/remember <text>"));
 }
 
 #[test]
@@ -43,7 +84,7 @@ fn parse_mcp_refresh_optionnel() {
         parse("/mcp refresh"),
         Some(Command::Mcp(Some(String::from("refresh"))))
     );
-    assert!(help_text().contains("/mcp [refresh]"));
+    assert!(crate::texts::help_text().contains("/mcp [refresh]"));
 }
 
 #[test]

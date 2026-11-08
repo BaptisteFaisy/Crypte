@@ -12,7 +12,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use super::exec::{self, Outcome};
 use super::wire::{ToolCall, WireMsg};
-use super::{defs, needs_confirm, GUIDE, MAX_ROUNDS};
+use super::{defs, GUIDE, MAX_ROUNDS};
 use crate::app::{App, Incoming};
 use crate::chat::Role;
 use crate::history::send_window;
@@ -159,17 +159,11 @@ impl App {
             self.tool_spawn_llm();
             return;
         };
-        if needs_confirm(self.permissions, &call.name) && !self.mcp.is_auto(&call.name) {
-            self.tool_ask(&call);
-        } else if let Some(run) = self.tool_run.as_mut() {
-            run.queue.pop_front();
-            let chat = run.chat;
-            self.tool_spawn_exec(chat, call);
-        }
+        self.tool_gate(call);
     }
 
     /// Demande confirmation : saute au chat, affiche l'appel, prompt y/n.
-    fn tool_ask(&mut self, call: &ToolCall) {
+    pub(crate) fn tool_ask(&mut self, call: &ToolCall) {
         let chat = self.tool_run.as_ref().map(|run| run.chat).unwrap_or(0);
         self.sessions.select(chat);
         if let Some(run) = self.tool_run.as_mut() {
@@ -239,7 +233,7 @@ impl App {
     /// Exécute un appel (ligne `running`, tâche async, livraison `ToolDone`).
     /// Hors pool LLM : un exécutable local (jusqu'à 90 s) ne doit pas
     /// occuper un permis réseau ; le canal borné garde la backpressure.
-    fn tool_spawn_exec(&mut self, chat: usize, call: ToolCall) {
+    pub(crate) fn tool_spawn_exec(&mut self, chat: usize, call: ToolCall) {
         self.hooks_fire(crate::kiro::hooks::Trigger::PreToolUse, &call.name, chat);
         self.push_tool_line(chat, format!("[tool {}]", call_line(&call)));
         let tx = self.tx.clone();
@@ -258,7 +252,7 @@ impl App {
     }
 
     /// Livraisons : affiche chaque résultat, rejoue au transcript, avance.
-    fn tool_delivered(&mut self, deliveries: Vec<Delivery>) {
+    pub(crate) fn tool_delivered(&mut self, deliveries: Vec<Delivery>) {
         let mut failed = false;
         let mut lines = Vec::with_capacity(deliveries.len());
         let mut results = Vec::with_capacity(deliveries.len());
