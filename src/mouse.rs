@@ -151,10 +151,13 @@ impl App {
     /// Clic sur un onglet : va à son écran (chat, boutique).
     fn goto_tab(&mut self, tab: Screen) {
         match tab {
-            Screen::Chat => self.screen = Screen::Chat,
-            Screen::Settings => self.screen = Screen::Settings,
-            Screen::Vps => self.screen = Screen::Vps,
+            Screen::Chat => self.show(Screen::Chat),
+            Screen::Settings => self.show(Screen::Settings),
+            Screen::Vps => self.show(Screen::Vps),
+            Screen::Shop if self.screen == Screen::Haunt => self.show(Screen::Shop),
             Screen::Shop => self.open_shop(),
+            Screen::Haunt if self.screen == Screen::Haunt => {}
+            Screen::Haunt => self.open_haunt(),
         }
     }
 }
@@ -423,8 +426,8 @@ mod tests {
         assert_eq!(rows.height, 2);
         app.on_mouse(click(rows.x, rows.y + 1));
         assert_eq!(app.sessions.index(), 1);
-        // Onglets mémorisés : chat + boutique, clic → écran.
-        assert_eq!(app.tab_hits.len(), 2);
+        // Onglets mémorisés : chat + boutique + jeu, clic → écran.
+        assert_eq!(app.tab_hits.len(), 3);
         let shop = app
             .tab_hits
             .iter()
@@ -439,6 +442,12 @@ mod tests {
             .find(|(s, _)| *s == Screen::Chat)
             .unwrap()
             .1;
+        app.on_mouse(click(chat.x, chat.y));
+        assert_eq!(app.screen, Screen::Chat);
+        let haunt = app.tab_hits.iter().find(|(s, _)| *s == Screen::Haunt);
+        let haunt = haunt.unwrap().1;
+        app.on_mouse(click(haunt.x, haunt.y));
+        assert_eq!(app.screen, Screen::Haunt);
         app.on_mouse(click(chat.x, chat.y));
         assert_eq!(app.screen, Screen::Chat);
         // [+] mémorisé : clic → 3e chat.

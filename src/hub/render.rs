@@ -15,6 +15,7 @@ use super::iso::{put, px, Room};
 use super::live::present_kitty;
 use super::{font, Glyph, Hub, Key, Mood, Spectre};
 use crate::bestiary::decode_grid;
+use crate::canvas::{blit, Ink};
 use crate::sessions::Sessions;
 use crate::theme;
 
@@ -185,7 +186,7 @@ fn spectre(cv: &mut RgbaImage, hub: &Hub, room: &Room, s: &Spectre) {
     let rx = i64::from(img.width() / 2);
     shadow(cv, x, y, rx, (rx / 3).max(1));
     let top = y - lift - i64::from(img.height());
-    blend(cv, img, x - rx, top, f32::from(s.fade) / 8.0);
+    blit(cv, img, x - rx, top, Ink::alpha(f32::from(s.fade) / 8.0));
 }
 
 /// Ombre ovale au sol (assombrit ce qui est dessous).
@@ -202,20 +203,6 @@ fn shadow(cv: &mut RgbaImage, cx: i64, cy: i64, rx: i64, ry: i64) {
             let k = |c: u8| (f32::from(c) * 0.5) as u8;
             cv.put_pixel(x as u32, y as u32, Rgba([k(p[0]), k(p[1]), k(p[2]), 255]));
         }
-    }
-}
-
-/// Colle `img` en (x0, y0) avec une opacité `alpha` (0..=1).
-fn blend(cv: &mut RgbaImage, img: &RgbaImage, x0: i64, y0: i64, alpha: f32) {
-    for (x, y, p) in img.enumerate_pixels() {
-        let (cx, cy) = (x0 + i64::from(x), y0 + i64::from(y));
-        if p.0[3] == 0 || cx < 0 || cy < 0 || cx as u32 >= cv.width() || cy as u32 >= cv.height() {
-            continue;
-        }
-        let d = cv.get_pixel(cx as u32, cy as u32).0;
-        let mix =
-            |i: usize| (f32::from(d[i]) + (f32::from(p.0[i]) - f32::from(d[i])) * alpha) as u8;
-        cv.put_pixel(cx as u32, cy as u32, Rgba([mix(0), mix(1), mix(2), 255]));
     }
 }
 
@@ -276,12 +263,12 @@ fn bubbles(cv: &mut RgbaImage, hub: &Hub, room: &Room) {
         let img = sprite(hub, s);
         let (x, y, lift) = anchor(hub, room, s);
         let top = y - lift - i64::from(img.height());
-        blend(
+        blit(
             cv,
             hub.sprites.bubble(b.glyph),
             x + 1,
             (top - 7).max(0),
-            1.0,
+            Ink::SOLID,
         );
     }
 }
@@ -353,8 +340,9 @@ fn name_tag(cv: &mut RgbaImage, hub: &Hub, sessions: &Sessions, room: &Room, s: 
     }
 }
 
-/// Demi-blocs : `▀` (haut = avant-plan, bas = fond), espace si égaux.
-fn to_cells(cv: &RgbaImage, area: Rect, buf: &mut Buffer) {
+/// Demi-blocs : `▀` (haut = avant-plan, bas = fond), espace si égaux
+/// (aussi utilisé par l'écran Haunt hors Kitty).
+pub fn to_cells(cv: &RgbaImage, area: Rect, buf: &mut Buffer) {
     for cy in 0..area.height {
         for cx in 0..area.width {
             let (x, y) = (u32::from(cx), u32::from(cy) * 2);

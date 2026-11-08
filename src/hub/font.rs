@@ -1,10 +1,13 @@
-//! Police pixel 3×5 pour les noms du hub (majuscules, chiffres, quelques
-//! signes) ; les accents sont ramenés à la lettre de base.
+//! Police pixel 3×5 pour les noms du hub et l'écran Haunt (majuscules,
+//! chiffres, quelques signes) ; les accents sont ramenés à la lettre de
+//! base. Agrandissement entier seulement (`paint`, `scale`).
 
 use image::{Rgba, RgbaImage};
 
+use crate::canvas::put;
+
 /// Glyphes 3×5, ligne par ligne (`1` = pixel allumé).
-const GLYPHS: [(char, &str); 41] = [
+const GLYPHS: [(char, &str); 45] = [
     ('A', "010101111101101"),
     ('B', "110101110101110"),
     ('C', "011100100100011"),
@@ -45,6 +48,10 @@ const GLYPHS: [(char, &str); 41] = [
     ('-', "000000111000000"),
     ('.', "000000000000010"),
     ('?', "110001010000010"),
+    (':', "000010000010000"),
+    ('!', "010010010000010"),
+    ('+', "000010111010000"),
+    ('/', "001001010100100"),
     (' ', "000000000000000"),
 ];
 
@@ -82,22 +89,35 @@ pub fn label(cv: &mut RgbaImage, cx: i64, top: i64, text: &str, ink: Rgba<u8>, b
             put(cv, x, y, bg);
         }
     }
-    for (k, ch) in text.chars().map(fold).enumerate() {
+    paint(cv, x0, top, text, 1, |_| ink);
+}
+
+/// Écrit `text` à partir de (x0, top), chaque pixel de glyphe agrandi en
+/// carré `scale`×`scale` ; `ink(ligne)` colore la ligne 0..5 du glyphe
+/// (dégradés verticaux des titres).
+pub fn paint(
+    cv: &mut RgbaImage,
+    x0: i64,
+    top: i64,
+    text: &str,
+    scale: i64,
+    ink: impl Fn(i64) -> Rgba<u8>,
+) {
+    let k = scale.max(1);
+    for (n, ch) in text.chars().map(fold).enumerate() {
         let Some((_, bits)) = GLYPHS.iter().find(|(c, _)| *c == ch) else {
             continue;
         };
         for (i, bit) in bits.chars().enumerate() {
-            if bit == '1' {
-                let (dx, dy) = ((i % 3) as i64, (i / 3) as i64);
-                put(cv, x0 + k as i64 * 4 + dx, top + dy, ink);
+            if bit != '1' {
+                continue;
+            }
+            let (dx, dy) = ((i % 3) as i64, (i / 3) as i64);
+            let (x, y) = (x0 + (n as i64 * 4 + dx) * k, top + dy * k);
+            for p in 0..k * k {
+                put(cv, x + p % k, y + p / k, ink(dy));
             }
         }
-    }
-}
-
-fn put(cv: &mut RgbaImage, x: i64, y: i64, c: Rgba<u8>) {
-    if x >= 0 && y >= 0 && (x as u32) < cv.width() && (y as u32) < cv.height() {
-        cv.put_pixel(x as u32, y as u32, c);
     }
 }
 

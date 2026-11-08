@@ -182,6 +182,7 @@ exempt, stays the remedy).
 | Click the roaming ghost | hit him (knockback, stars, BONK; 3 quick hits = KO) |
 | Click his speech bubble | dismiss it |
 | F6 | shop: consumed tokens become coins (↑↓ + Enter to buy) |
+| F9 | Haunt, the platform game (see below) |
 | Click tab / shop item | switch screen / buy in the shop |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
 | Wheel (over the chat) | scroll the history, 3 lines per notch |
@@ -271,6 +272,61 @@ click) sells 5 ambiance perks: lightning flash (200), soothing candle
 (fear −30, 300), Kiro's cry (scare + flash, 500), apparition rite (new
 creature, 700), holy water (fear to zero, 900). Click an item (or ↑↓ +
 Enter) to buy; `/usage` shows the balance (earned, spent).
+## Haunt (F9)
+
+An original side-scrolling **platform** shooter drawn in the bestiary
+style. Kiro, the keeper of the crypt, crosses **level 1 — The Boneyard**
+(very hard) by **sending tokens** (little text pills: `THE`, `ING`, `42`…)
+at the bestiary's creatures, up to the Reaper.
+
+| key | effect |
+| --- | ---- |
+| `a` / `d` (or ←/→) | left / right |
+| `w` (or ↑) | jump, 4 tiles high (barely steerable in the air) |
+| `s` (or ↓) | sink into the earth: dodge, low tokens; `s`+`w` drops through a slab |
+| Space | send a token (2 in flight at most) |
+| Enter | start / rise again |
+| `p` | pause |
+| Esc / F9 | back to the chat (the run pauses) |
+
+- **Tiny world, lots of platforms**: a 960×576 view, 6 px tiles and
+  mini-sprites (6–18 px) in the bestiary palette — Kiro is the hub's
+  white ghost (9×11). The level is six screens of platforming over the
+  whole screen height: slab staircases above pits, a crypt tower climbed
+  in zigzag, an ectoplasm swamp crossed on floating coffins, branches,
+  a bone cathedral climbed bay by bay, an arena with dodging ledges.
+- **Shroud = armour**: the first hit tears Kiro's white shroud off (he
+  is knocked back), the second one kills. 3 lives, one checkpoint
+  (a lantern), 4:00 per life before the candle burns out.
+- Creatures: mummies rising from the ground, hurried mummies, bats,
+  grave hands, black ghosts (the hub's sub-agents, through walls), the
+  White Lady (appears, wails, vanishes), bouncing zombie heads; pits,
+  bone spikes and ectoplasm pools.
+- Coffins open under tokens: **sharp tokens** (knife, piercing),
+  **hot tokens** (lantern, arcing, set the ground on fire), a new shroud,
+  or a trap. The White Lady leaves a lollipop.
+- Boss: the Reaper throws scythes, summons black ghosts and, at half
+  life, dives at Kiro.
+- **240 Hz**: the simulation runs on a fixed 1/240 s step (physics,
+  input, AI); the screen is redrawn up to 240 times a second. Kitty PNG
+  encoding runs on three background threads (frames numbered, never
+  shown out of order). Measured in release on a 12-core machine:
+  ~375 images/s sent at 10×20 px cells, ~247 at 20×40 (HiDPI) — what
+  you finally see is capped by your monitor's refresh rate.
+- "32-bit" look: banded sky dithered at its seams, blood moon, parallax
+  hills and chapels, the bestiary's dead trees, iron fence, lighting
+  around Kiro, pumpkins and flames, fog, vignette; integer
+  nearest-neighbour scaling only (×1, ×2 in HiDPI). In Ghostty the frame
+  is a Kitty image re-sent under the same id; the Kitty keyboard
+  protocol is enabled while playing so held keys are known (releases
+  reported). Elsewhere: half-blocks and key repeat.
+- The level is a text grid (`assets/haunt/niveau-1.txt`, one letter per
+  tile, last line = spawn zones), the sprites are palette-letter grids
+  (`assets/haunt/*.txt`); tests check that the arena is reachable.
+
+```sh
+./target/debug/kiro-horror-tui --haunt-shot /tmp/haunt.png   # 4 frames
+```
 
 ## Almanac (`/usage`)
 
@@ -550,5 +606,12 @@ isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
 `font.rs` 3×5 pixel font, `social.rs` orbs and chatter),
 `app/esprits.rs` (hub panel), `app/keys.rs` (dispatch + scroll + resize),
 `shop.rs` (F6 shop: wallet, 1 token = 1 coin, 5 ambiance perks),
+`canvas.rs` (shared RGBA painting: theme pixels, sprite blit with
+alpha / tint / clip), `haunt.rs` + `haunt/` (F9 game: `level.rs` text
+grid, `body.rs` tile physics, `player.rs` Kiro, `foes.rs` creatures,
+`boss.rs` Reaper, `shots.rs` tokens and loot, `combat.rs`, `spawn.rs`
+markers + director, `backdrop.rs` / `draw.rs` / `actors.rs` / `hud.rs`
+rendering, `demo.rs` `--haunt-shot`), `app/haunt.rs` (game screen,
+keys, Kitty keyboard protocol),
 `almanac.rs` (tokens per day, `/usage` block) + `almanac/disk.rs`
 (JSON file).
