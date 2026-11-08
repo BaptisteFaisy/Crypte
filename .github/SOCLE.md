@@ -9,7 +9,8 @@
   tournant sur les workers : check `hermes-lite/verdict`, labels `hermes/approuvee` /
   `hermes/conflit`. En **dry-run** au lancement (variable de dépôt
   `HERMES_LITE_DRY_RUN=1`) : il évalue et étiquette, il ne merge pas.
-- **Mergify** (`.mergify.yml`) : file de merge, rebase, batching 1-3, labels
+- **Mergify** (`.mergify.yml`) : file de merge, squash (mise à jour des PR
+  par merge de main, jamais de rebase), batching 1-3, labels
   `urgent` / `priority-low`, auto-embarquement par
   `merge_protections_settings.auto_merge_conditions: true`. À faire une fois :
   app GitHub **All repositories** + activation du produit **Merge Queue** dans

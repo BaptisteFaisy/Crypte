@@ -392,10 +392,14 @@ global `~/.kiro/`), so a project moves back and forth between both:
   tool-using send, tools show as `mcp_<server>_<tool>`, `autoApprove`
   skips confirmation ; `/mcp` shows servers + tools, `/mcp refresh`
   reconnects.
-- **Custom agents** (`.kiro/agents/*.md`, our own format: frontmatter
-  `name`/`description`/`system`, body = system prompt, `system`
-  prefixed when present) : `/agents` lists them, `/agent <name>
-  <text>` spawns with the custom prompt.
+- **Custom agents** (`.kiro/agents/`, official Kiro format: `.json`
+  or `.md`, same fields `name`/`description`/`prompt`/`model`/
+  `tools`/`excludedTools`/`mcpServers`, md body = system prompt,
+  `team/<name>` subfolders, project wins over global, json wins
+  over md) : `/agents` lists them (model/tools/mcp shown when
+  declared), `/agent <name> <text>` spawns with the custom prompt
+  and its model when declared. `tools`/`mcpServers` are read and
+  shown but not executed yet (sub-agents have no tools).
 - **Skills** (`.kiro/skills/*/SKILL.md`, Claude-compatible frontmatter
   `name`/`description`, body = instructions) : `/skills` lists them,
   `/skill <name> [text]` prefixes the skill to the current draft
@@ -441,8 +445,9 @@ conversation with an agent (exchange kept, 20 messages max, `system`
 head kept); if it is running, queued and triggered once free.
 `/agents all` lists the agents of every chat (custom
 `.kiro/agents/` agents listed after, as `custom <name>`).
-`/agent <name> <text>` spawns with the custom system prompt when
-`<name>` is known, else the text is sent as-is. Each launch also
+`/agent <name> <text>` spawns with the custom system prompt (and
+its model when declared) when `<name>` is known, else the text is
+sent as-is. Each launch also
 creates the agent's disk workspace
 `~/.config/kiro-horror-tui/workspaces/<session>/agent-<id>/`
 (pure code, zero LLM tokens), for future tools (`<session>` =
@@ -462,6 +467,17 @@ chains are capped at 8 hops (loop guard, note at the source). Every chain
 stays user-originated (command or user-made link): no infinite loops.
 Agent replies delivered to a chat are also versed into its context
 (user role, tagged, no reply triggered — queued behind a busy chat).
+
+## AI questions
+
+The AI (chats and sub-agents) can ask you a real multiple-choice
+question by writing a ```question block (2 to 4 options); the TUI
+detects it, shows it rendered (`— the crypt asks you: …` + numbered
+options) and the chat pill turns candle yellow (`?` marker in the
+sidebar, adapted input hint). Reply with the digit (`2`) or in your
+own words — any sent message answers (`/` commands don't). The format
+instructions are injected into every request (chats + `/agent`,
+never into `/compact` or `--once`).
 
 ## Compact
 
@@ -528,6 +544,7 @@ scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
 (right-panel creature, `/bestiary` reveals),
 `ghostty.rs` (OSC, progress, synced rendering),
 `history.rs` (send window + chat naming),
+`question.rs` (```question block: parse, render, digit reply),
 `hub.rs` + `hub/` (spirit hub: tile-based simulation, `iso.rs`
 isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
 `font.rs` 3×5 pixel font, `social.rs` orbs and chatter),

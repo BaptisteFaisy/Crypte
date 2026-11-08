@@ -83,7 +83,8 @@ impl App {
                         .push(Role::System, String::from("(tool limit reached)"));
                 }
                 sess.push_history("assistant", done.text.clone());
-                sess.chat.push(Role::Assistant, done.text.clone());
+                let shown = sess.track_question(&done.text);
+                sess.chat.push(Role::Assistant, shown);
                 self.events.emit(&Event::assistant_msg(id, &done));
                 self.hub.signal(Signal::Reply { chat: id });
                 self.apparition.advance();
@@ -147,7 +148,7 @@ impl App {
         if let Some(dest) = self.sessions.get_mut(deliver) {
             dest.ledger
                 .record(done.prompt_tokens, done.completion_tokens, 0.0);
-            let tagged = format!("{tag} {}", done.text);
+            let tagged = format!("{tag} {}", dest.track_question(&done.text));
             dest.chat.push(Role::Assistant, tagged.clone());
             if dest.sending {
                 dest.inbox.push_back(QueuedTell {
@@ -249,6 +250,7 @@ impl App {
         if let Some(md) = &self.agents_md {
             history.insert(0, (String::from("system"), md.clone()));
         }
+        crate::question::prefix(&mut history);
         self.events
             .emit(&Event::agent_ask(owner, agent_id, deliver, &history));
         self.hub.signal(Signal::Ask {

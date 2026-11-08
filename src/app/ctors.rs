@@ -199,27 +199,28 @@ impl App {
         }
     }
 
-    /// Ferme le chat `idx` (clic [×], Ctrl+W) : liens bus re-pointés,
-    /// événement émis, refus motivé sinon (dernier, réponse en vol).
+    /// Ferme le chat `idx` (clic [×], Ctrl+W) : liens bus re-pointés
+    /// (coupés sans décalage si c'était le dernier, remplacé par un
+    /// chat neuf), événement émis, refus motivé sinon (vol, inconnu).
     pub(crate) fn close_chat(&mut self, idx: usize) {
         let name = self.sessions.get(idx).map(|c| c.name.clone());
         match self.sessions.close(idx) {
-            CloseOutcome::Closed => {
-                crate::sessions::shift_bus_links(&mut self.bus, idx);
-                if let Some(name) = name {
-                    self.events
-                        .emit(&crate::events::Event::chat_closed(idx, &name));
-                }
-            }
-            CloseOutcome::LastChat => {
-                self.push_system(String::from("cannot close the last chat"));
+            CloseOutcome::Closed => crate::sessions::shift_bus_links(&mut self.bus, idx),
+            CloseOutcome::Reset => {
+                crate::sessions::unlink_chat(&mut self.bus, &self.sessions, idx);
             }
             CloseOutcome::Busy => {
                 self.push_system(String::from("cannot close: a reply is in flight"));
+                return;
             }
             CloseOutcome::Unknown => {
                 self.push_system(format!("chat {} not found", idx + 1));
+                return;
             }
+        }
+        if let Some(name) = name {
+            self.events
+                .emit(&crate::events::Event::chat_closed(idx, &name));
         }
     }
 

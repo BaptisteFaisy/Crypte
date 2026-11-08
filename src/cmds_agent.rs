@@ -22,8 +22,19 @@ impl App {
         };
         // Premier envoi réel : lecture unique d'agents.md (pin + annonce).
         self.ensure_agents_loaded();
-        let (messages, prompt) =
+        let spawn =
             crate::kiro::agents_md::spawn_messages(self, self.agents_md.as_deref(), &prompt);
+        let (mut messages, prompt) = (spawn.messages, spawn.prompt);
+        // Consigne des questions IA devant le prompt (l'estimation suit, honnête).
+        let at = messages.len().saturating_sub(1);
+        messages.insert(
+            at,
+            (
+                String::from("system"),
+                crate::question::QUESTION_SYSTEM.to_string(),
+            ),
+        );
+        let custom_model = spawn.model;
         let used = crate::tokens::context_estimate(&messages);
         if used > self.context_limit() {
             self.push_system(format!(
@@ -46,7 +57,7 @@ impl App {
         } else {
             self.push_system(format!("agent#{agent_id} started → Chat {}", deliver + 1));
         }
-        let model = self.effective_model();
+        let model = custom_model.unwrap_or_else(|| self.effective_model());
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
         self.pool.spawn(async move {

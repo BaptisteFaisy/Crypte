@@ -337,14 +337,18 @@ mod tests {
     }
 
     #[test]
-    fn clic_croix_du_dernier_chat_motive_le_refus() {
+    fn clic_croix_du_dernier_chat_le_recommence_a_neuf() {
         let mut app = test_app();
+        app.sessions
+            .current_mut()
+            .chat
+            .push(crate::chat::Role::User, "adieu");
         app.side_rows = Some(Rect::new(1, 2, 16, 1));
         app.close_btns = vec![Some(Rect::new(16, 2, 1, 1))];
         app.on_mouse(click(16, 2));
         assert_eq!(app.sessions.count(), 1);
-        let last = app.sessions.current().chat.messages().last().unwrap();
-        assert_eq!(last.text, "cannot close the last chat");
+        assert_eq!(app.sessions.current().name, "Chat 1");
+        assert!(app.sessions.current().chat.messages().is_empty());
     }
 
     #[test]
