@@ -305,7 +305,7 @@ impl App {
     }
 
     /// Touches boutique : flèches (choisir), Entrée (acheter),
-    /// F6 (retour chat), F7 (chat, hub visible), q (fuir).
+    /// F6 (retour chat), F7 (chat, hub visible), F9 (jeu Haunt), q (fuir).
     pub(crate) fn on_shop_key(&mut self, code: KeyCode) -> bool {
         match code {
             KeyCode::Char('q') => false,
@@ -315,6 +315,7 @@ impl App {
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.screen = Screen::Chat),
             KeyCode::F(7) => self.cmd(|s| s.screen = Screen::Chat),
+            KeyCode::F(9) => self.cmd(|s| s.open_haunt()),
             _ => true,
         }
     }

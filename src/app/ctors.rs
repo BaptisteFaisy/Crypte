@@ -7,6 +7,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use tokio::sync::mpsc;
 
+use super::haunt::Keyboard;
 use super::{App, Screen};
 use crate::agents;
 use crate::almanac::Almanac;
@@ -17,6 +18,7 @@ use crate::connect::NOT_CONNECTED;
 use crate::events::EventLog;
 use crate::fx::Fx;
 use crate::gfx::ImageBank;
+use crate::haunt::Haunt;
 use crate::hub::Hub;
 use crate::phantom::Phantom;
 use crate::pool::{SpawnPool, INCOMING_CAP};
@@ -120,6 +122,8 @@ impl App {
             apparition: Apparition::new(),
             hub: Hub::new(),
             shop: Shop::new(),
+            haunt: Haunt::new(),
+            keyboard: Keyboard::default(),
             tick: 0,
             busy: false,
             ctx_used: 0,

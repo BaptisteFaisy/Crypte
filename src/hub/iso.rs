@@ -232,20 +232,7 @@ fn stamp(cv: &mut RgbaImage, rows: &[&str], x0: i64, y0: i64) {
     }
 }
 
-/// Couleur du thème → pixel opaque.
-pub fn px(c: Color) -> Rgba<u8> {
-    match c {
-        Color::Rgb(r, g, b) => Rgba([r, g, b, 255]),
-        _ => Rgba([0, 0, 0, 255]),
-    }
-}
-
-/// Pose un pixel s'il est dans le canevas.
-pub fn put(cv: &mut RgbaImage, x: i64, y: i64, c: Rgba<u8>) {
-    if x >= 0 && y >= 0 && (x as u32) < cv.width() && (y as u32) < cv.height() {
-        cv.put_pixel(x as u32, y as u32, c);
-    }
-}
+pub use crate::canvas::{put, px};
 
 #[cfg(test)]
 mod tests {

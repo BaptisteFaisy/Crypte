@@ -7,6 +7,9 @@
 
 use std::io::{self, Write};
 
+use crossterm::event::{
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
 use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use crossterm::QueueableCommand;
 use ratatui::{DefaultTerminal, Frame};
@@ -64,6 +67,30 @@ pub fn draw_synced(
         out.write_all(seq.as_bytes())?;
     }
     out.queue(EndSynchronizedUpdate)?.flush()
+}
+
+/// Le terminal gère-t-il le protocole clavier Kitty (Ghostty, kitty,
+/// WezTerm…) ? Interroge le terminal : à n'appeler qu'en mode brut.
+pub fn supports_key_releases() -> bool {
+    crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false)
+}
+
+/// Active (empile) ou rend (dépile) le protocole clavier Kitty avec
+/// relâchements et répétitions signalés : l'écran Haunt sait quelles
+/// touches sont tenues. Toutes les touches arrivent alors en séquences
+/// CSI u (décodées par crossterm).
+pub fn key_releases(on: bool) -> io::Result<()> {
+    let mut out = io::stdout().lock();
+    if on {
+        out.queue(PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+                | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES,
+        ))?;
+    } else {
+        out.queue(PopKeyboardEnhancementFlags)?;
+    }
+    out.flush()
 }
 
 fn write_raw(seqs: &[&str]) -> io::Result<()> {

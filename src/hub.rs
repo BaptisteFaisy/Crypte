@@ -14,7 +14,7 @@
 //! (`hub/iso.rs` projette, `hub/render.rs` dessine), déterministe (graine
 //! fixe) pour les tests.
 
-mod font;
+pub mod font;
 pub mod iso;
 pub mod live;
 pub mod render;

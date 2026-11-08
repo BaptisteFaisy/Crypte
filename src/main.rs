@@ -4,7 +4,8 @@
 //! `--config <fichier.toml>` (config provider, surchargeable par env),
 //! `--once <texte>` (un appel puis exit), `--muse-auth` (cle depuis le store Muse),
 //! `--agents-file <fichier>` (contexte systeme, prime sur ./AGENTS.md puis ./AGENT.md, lu au premier envoi),
-//! `--planche <png>` (bestiaire en PNG), `--apercu <fichier>` (frames en ANSI).
+//! `--planche <png>` (bestiaire en PNG), `--apercu <fichier>` (frames en ANSI),
+//! `--haunt-shot <png>` (4 frames du jeu Haunt en PNG).
 
 mod agents;
 mod almanac;
@@ -12,6 +13,7 @@ mod app;
 mod apparition;
 mod bestiary;
 mod bus;
+mod canvas;
 mod chat;
 mod cmds;
 mod cmds_agent;
@@ -25,6 +27,7 @@ mod events;
 mod fx;
 mod gfx;
 mod ghostty;
+mod haunt;
 mod history;
 mod hub;
 mod kiro;
@@ -78,7 +81,8 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 3 screens (120x36 + 70x17, offline) as ANSI
+        --preview <file>  Write the 4 screens (120x36 + 70x17, offline) as ANSI
+        --haunt-shot <png>  Write 4 frames of the haunt game (x2) as PNG
         --demo            Offline demo crypt (populated chats + agents)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
 
@@ -115,6 +119,11 @@ KEYS (terminal >= 70x17):
     Ctrl+N or click [+]  new chat
     F6 or tab click  shop (1 token consumed = 1 coin)    click item  buy
     Drag sidebar right edge  resize the coffins column
+    F9 or tab click  haunt (platform game)
+
+HAUNT (F9, platform game, level 1 — very hard):
+    a/d move    w jump    s sink    space send tokens
+    Enter start    p pause    Esc back (arrows work too)
 
 ALMANAC (tokens per day, local date, shown by /usage):
     File: $XDG_DATA_HOME/kiro-horror-tui/almanac.json
@@ -158,6 +167,7 @@ struct Args {
     agents_file: Option<String>,
     planche: Option<String>,
     apercu: Option<String>,
+    haunt_shot: Option<String>,
     events_log: Option<String>,
 }
 
@@ -174,6 +184,7 @@ fn parse_args() -> Result<Args> {
         agents_file: None,
         planche: None,
         apercu: None,
+        haunt_shot: None,
         events_log: None,
     };
     let mut it = std::env::args().skip(1).peekable();
@@ -198,6 +209,10 @@ fn parse_args() -> Result<Args> {
             "--apercu" | "--preview" => {
                 let path = it.next().context("--preview expects a file path")?;
                 args.apercu = Some(path);
+            }
+            "--haunt-shot" => {
+                let path = it.next().context("--haunt-shot expects a .png path")?;
+                args.haunt_shot = Some(path);
             }
             "--planche" | "--sheet" => {
                 let path = it.next().context("--sheet expects a .png path")?;
@@ -284,6 +299,11 @@ async fn async_main() -> Result<()> {
     if let Some(path) = args.apercu.as_deref() {
         return apercu(path);
     }
+    if let Some(path) = args.haunt_shot.as_deref() {
+        crate::haunt::write_shot(path)?;
+        println!("haunt shot: {path}");
+        return Ok(());
+    }
     if let Some(prompt) = args.once.as_deref() {
         let cfg = resolve_or_stored(&args)
             .context("no API key: --config, KH_API_KEY or a /settings entry")?;
@@ -356,7 +376,7 @@ fn smoke() -> Result<()> {
     let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
     anyhow::ensure!(filled > 100, "check frame almost empty ({filled} cells)");
     println!("smoke OK: 80x24 frame, {filled} cells filled");
-    for screen in [Screen::Chat, Screen::Settings, Screen::Shop] {
+    for screen in [Screen::Chat, Screen::Settings, Screen::Shop, Screen::Haunt] {
         let buf = render(&mut app, screen, 70, 17)?;
         let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
         anyhow::ensure!(
@@ -369,7 +389,7 @@ fn smoke() -> Result<()> {
             "header missing at 70x17 ({screen:?})"
         );
     }
-    println!("smoke OK: 70x17 frames, 3 screens");
+    println!("smoke OK: 70x17 frames, 4 screens");
     let buf = render(&mut app, Screen::Settings, 80, 24)?;
     let text: String = buf.content.iter().map(|c| c.symbol()).collect();
     anyhow::ensure!(text.contains("SETTINGS"), "settings frame has no title");
@@ -391,16 +411,18 @@ fn apercu(path: &str) -> Result<()> {
         (Screen::Chat, 120, 36),
         (Screen::Settings, 120, 36),
         (Screen::Shop, 120, 36),
+        (Screen::Haunt, 120, 36),
         (Screen::Chat, 70, 17),
         (Screen::Settings, 70, 17),
         (Screen::Shop, 70, 17),
+        (Screen::Haunt, 70, 17),
     ] {
         out.push_str(&format!("=== {screen:?} {w}x{h} ===\n"));
         out.push_str(&to_ansi(&render(&mut app, screen, w, h)?));
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (120x36 + 70x17, 3 screens)");
+    println!("preview: {path} (120x36 + 70x17, 4 screens)");
     Ok(())
 }
 

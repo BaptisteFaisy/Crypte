@@ -38,7 +38,7 @@ pub fn help_text() -> &'static str {
      /vps [ip|name|off|status|add|del|install] — run this TUI on a VPS\n\
      /help — this help\n\
      Questions: the AI may ask you — reply with the number or in your own words\n\
-     Keys: F5 scare · F6 shop · Ctrl+N · Ctrl+W close (+ click)\n\
+     Keys: F5 scare · F6 shop · F9 haunt (game) · Ctrl+N · Ctrl+W close (+ click)\n\
      Shop (F6 or tab click): 1 token consumed = 1 coin, ambiance perks\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"
 }

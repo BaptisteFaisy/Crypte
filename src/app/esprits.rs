@@ -14,11 +14,19 @@ use crate::sessions::AgentStatus;
 use crate::theme::{self, BONE, SPECTRE, UMBER};
 
 impl App {
-    /// Frame complète + image Kitty animée du hub à écrire après (si le hub
-    /// est affiché dans un terminal Kitty).
+    /// Frame complète + image Kitty animée du hub ou du jeu à écrire après
+    /// (si l'écran est affiché dans un terminal Kitty).
     pub(crate) fn render_frame(&mut self, frame: &mut Frame) -> Option<String> {
         self.draw(frame);
-        self.hub.view.take_pending()
+        let hub = self.hub.view.take_pending();
+        let game = self.haunt.view.take_pending();
+        match (hub, game) {
+            (Some(mut a), Some(b)) => {
+                a.push_str(&b);
+                Some(a)
+            }
+            (a, b) => a.or(b),
+        }
     }
 
     /// Scène pixel des esprits dans `area` (slot keeper, sans liste).
