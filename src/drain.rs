@@ -239,13 +239,15 @@ impl App {
     /// Appel agent (échange déjà à jour) : tâche async sous permis,
     /// réponse livrée à `deliver`. Le contexte système agents.md est
     /// re-préfixé ici (une seule copie, en vol) : il n'est jamais
-    /// stocké dans l'agent (voir `cmd_agent`). Sans provider : rien.
+    /// stocké dans l'agent (voir `cmd_agent`). `filter` = outils du
+    /// custom (`None` = tout). Sans provider : rien.
     pub(crate) fn launch_agent(
         &mut self,
         owner: usize,
         agent_id: usize,
         deliver: usize,
         mut history: Vec<(String, String)>,
+        filter: Option<crate::tools::agent::Filter>,
     ) {
         let Some(provider) = self.provider.clone() else {
             return;
@@ -263,10 +265,22 @@ impl App {
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
+        let rules = self.t5.rules.clone();
+        let mode = self.permissions;
+        let mcp = self.mcp.clone();
+        let tooled = self.tools_on;
+        let filter = filter.unwrap_or_default();
         self.pool.spawn(async move {
-            let reply = provider
-                .complete_full(&history, &model, effort.as_deref())
-                .await;
+            let ctx = crate::tools::agent::Ctx {
+                provider: &provider,
+                model: &model,
+                effort: effort.as_deref(),
+                rules: &rules,
+                mode,
+                mcp: &mcp,
+                chat: owner,
+            };
+            let reply = crate::tools::agent::agent_reply(ctx, history, &filter, tooled).await;
             let _ = tx
                 .send(Incoming::Agent(owner, agent_id, deliver, reply))
                 .await;
@@ -323,10 +337,15 @@ impl App {
             agent.push_user(entry.text);
             agent.status = AgentStatus::Running;
             agent.auto_hops = entry.hops;
-            (owner, entry.deliver, agent.history.clone())
+            (
+                owner,
+                entry.deliver,
+                agent.history.clone(),
+                agent.tool_filter.clone(),
+            )
         };
-        let (owner, deliver, history) = ready;
-        self.launch_agent(owner, agent_id, deliver, history);
+        let (owner, deliver, history, filter) = ready;
+        self.launch_agent(owner, agent_id, deliver, history, Some(filter));
     }
 
     /// Liens auto depuis le chat `id` : retransmet `text` à chaque cible
@@ -401,7 +420,8 @@ impl App {
         agent.status = AgentStatus::Running;
         agent.auto_hops = hops;
         let history = agent.history.clone();
-        self.launch_agent(owner, agent_id, owner, history);
+        let filter = agent.tool_filter.clone();
+        self.launch_agent(owner, agent_id, owner, history, Some(filter));
     }
 
     /// Note « chaîne coupée » dans le chat source (ou propriétaire).

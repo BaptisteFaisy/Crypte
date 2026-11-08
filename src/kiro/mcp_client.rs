@@ -244,7 +244,7 @@ pub fn def_name(server: &str, tool: &str) -> String {
 }
 
 /// Fragment `[A-Za-z0-9_-]` (le reste → `_`, vide → `_`).
-fn sanitize(fragment: &str) -> String {
+pub(crate) fn sanitize(fragment: &str) -> String {
     let clean: String = fragment
         .chars()
         .map(|c| {
