@@ -22,6 +22,7 @@ impl App {
         match self.screen {
             Screen::Hub => return self.on_hub_key(key.code),
             Screen::Settings => return self.on_settings_key(key),
+            Screen::Vps => return self.on_vps_key(key.code),
             _ => {}
         }
         match key.code {

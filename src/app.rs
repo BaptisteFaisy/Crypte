@@ -51,6 +51,7 @@ pub(crate) enum Incoming {
     Compact(usize, Result<Completion>),
     Web(usize, Result<WebAnswer>),
     ToolDone(usize, Vec<Delivery>),
+    Vps(crate::vps::VpsOutcome),
 }
 
 /// État global de l'application.
@@ -107,6 +108,8 @@ pub struct App {
     pub(crate) chats_path: Option<PathBuf>,
     /// Journal d'événements temps réel (`--events-log`, désactivé sinon).
     pub(crate) events: EventLog,
+    /// VPS : profils nommés + statuts distants (`/vps`).
+    pub(crate) vps: crate::vps::VpsRuntime,
     pub(crate) tx: mpsc::Sender<Incoming>,
     pub(crate) rx: mpsc::Receiver<Incoming>,
     /// Pool borné d'appels LLM (plafond `CRYPTE_MAX_FLIGHT`, défaut 4).
@@ -203,6 +206,7 @@ impl App {
                 Incoming::Compact(id, reply) => self.drain_compact(id, reply),
                 Incoming::Web(id, reply) => self.drain_web(id, reply),
                 Incoming::ToolDone(id, deliveries) => self.drain_tool_done(id, deliveries),
+                Incoming::Vps(outcome) => self.drain_vps(outcome),
             }
         }
         routed

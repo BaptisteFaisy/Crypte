@@ -73,6 +73,7 @@ impl App {
             Screen::Chat => self.screen = Screen::Chat,
             Screen::Hub => self.open_hub(),
             Screen::Settings => self.screen = Screen::Settings,
+            Screen::Vps => self.screen = Screen::Vps,
         }
     }
 }

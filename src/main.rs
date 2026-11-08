@@ -15,6 +15,7 @@ mod bus;
 mod chat;
 mod cmds;
 mod cmds_link;
+mod cmds_vps;
 mod cmds_web;
 mod commands;
 mod connect;
@@ -42,6 +43,7 @@ mod texts;
 mod theme;
 mod tokens;
 mod tools;
+mod vps;
 mod web;
 mod workspace;
 

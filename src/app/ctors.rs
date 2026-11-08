@@ -131,6 +131,7 @@ impl App {
             tool_run: None,
             chats_path: None,
             events: EventLog::disabled(),
+            vps: crate::vps::VpsRuntime::load(),
             tx,
             rx,
             pool: SpawnPool::new(),
