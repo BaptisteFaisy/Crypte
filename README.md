@@ -179,6 +179,7 @@ exempt, stays the remedy).
 | key | effect |
 | --- | ---- |
 | Enter | send the message |
+| ← / → | move the cursor in the input bar |
 | `q` (empty input) | quit |
 | Ctrl+N | new chat |
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
@@ -396,9 +397,10 @@ the field is omitted from the JSON). `/thinking` shows the level,
 ## Permissions
 
 Mode for the agent tools (see below). `/permissions` shows the mode,
-`/permissions yolo` runs everything without asking, `/permissions auto`
-(default) asks confirmation before every change. The choice is persisted
-in `~/.config/kiro-horror-tui/permissions` and reloaded at startup.
+`/permissions yolo` (default) runs everything without asking,
+`/permissions auto` asks confirmation before every change. The choice
+is persisted in `~/.config/kiro-horror-tui/permissions` and reloaded
+at startup.
 Per-tool rules refine the mode: `/permissions <tool> <allow|ask|deny>`
 (exact name or `prefix_*`, longest match wins),
 `/permissions list` shows them, `/permissions reset` clears them

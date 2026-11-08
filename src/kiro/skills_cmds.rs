@@ -36,7 +36,9 @@ impl App {
         if !draft.trim().is_empty() {
             parts.push(draft);
         }
-        self.sessions.current_mut().chat.input = parts.join("\n\n");
+        let chat = &mut self.sessions.current_mut().chat;
+        chat.input = parts.join("\n\n");
+        chat.cursor = chat.input.chars().count();
         self.push_system(format!("skill '{name}' armed — send to use (transient)"));
     }
 }
@@ -66,7 +68,7 @@ mod tests {
         app.run_command("/skills");
         let listed = last_text(&app);
         assert!(listed.contains("terse — Short replies."), "{listed}");
-        app.sessions.current_mut().chat.input.push_str("draft");
+        app.sessions.current_mut().chat.input_insert("draft");
         app.run_command("/skill terse hello");
         assert_eq!(
             app.sessions.current().chat.input,
