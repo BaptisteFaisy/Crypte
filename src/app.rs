@@ -36,7 +36,6 @@ use crate::kiro::hook_exec::HookOutcome;
 use crate::kiro::hook_run::HookState;
 use crate::kiro::mcp_pool::McpState;
 use crate::kiro::spec_run::{SpecGen, SpecRun};
-use crate::mascot::{Mascot, MascotState};
 use crate::permissions::Mode;
 use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
