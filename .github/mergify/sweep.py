@@ -333,25 +333,13 @@ def prs_for_event(repo, token, event_name, event):
         user = (event.get('comment') or {}).get('user') or {}
         if user.get('login') != 'mergify[bot]':
             return None
-        issue = event.get('issue') or {}
-        if 'pull_request' not in issue:
-            return [p['number'] for p in list_open_prs(repo, token)]
-        pr = get_pr(repo, token, issue['number'])
-        if pr is None or pr.get('state') != 'open':
-            # Avis de fusion : main vient de bouger, tout reevaluer. En
-            # rafale, GitHub annule les runs en attente (seul le dernier
-            # survit) : sans ce balayage complet, la fusion ne reveille
-            # personne et les PR resteantes attendent le cron.
-            return [p['number'] for p in list_open_prs(repo, token)]
-        return [issue['number']]
-    if event_name == 'check_run':
-        sha = (event.get('check_run') or {}).get('head_sha')
-        return [p['number'] for p in list_open_prs(repo, token)
-                if p.get('head', {}).get('sha') == sha]
     if event_name == 'workflow_dispatch':
         only = os.environ.get('INPUT_PR_NUMBER', '').strip()
         if only.isdigit():
             return [int(only)]
+    # Toujours complet : en rafale GitHub annule les runs en attente et seul
+    # le dernier survit — un perimetre cible ferait rater les autres PR.
+    # A cette echelle (quelques PR ouvertes), le cout est negligeable.
     return [p['number'] for p in list_open_prs(repo, token)]
 
 
@@ -365,12 +353,12 @@ def main():
         event = json.load(handle)
     if not pat:
         print('AUTOMERGE_PAT absent : mode diagnostic (pas de commande)')
-    ensure_label(repo, rtok, LABEL_CONFLIT, 'd73a4a', 'Pose par file-mergify')
-    ensure_label(repo, rtok, LABEL_ESCALADE, 'fbca04', 'Pose par file-mergify')
     nums = prs_for_event(repo, rtok, event_name, event)
     if nums is None:
         print('commentaire non-Mergify, rien a faire')
         return
+    ensure_label(repo, rtok, LABEL_CONFLIT, 'd73a4a', 'Pose par file-mergify')
+    ensure_label(repo, rtok, LABEL_ESCALADE, 'fbca04', 'Pose par file-mergify')
     results = []
     for num in nums:
         try:
