@@ -32,6 +32,8 @@ impl App {
         }
         // Premier envoi réel : lecture unique d'agents.md (pin + annonce).
         self.ensure_agents_loaded();
+        let text = self.hook_prefixed_input(&text);
+        self.hooks_fire(crate::kiro::hooks::Trigger::PromptSubmit, &text, id);
         if let Some(used) = self.context_over_limit(&text) {
             self.push_system(format!(
                 "context full ({}), send refused: /compact to continue",

@@ -2,7 +2,7 @@
 //!
 //! Extrait de `commands.rs` (limite 500 lignes) : pur, sans état.
 
-/// Aide : les 25 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 26 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (chat + session + all-time almanac)\n\
@@ -28,6 +28,7 @@ pub fn help_text() -> &'static str {
      /kiro — kiro .kiro/ status (steering, specs, hooks, mcp)\n\
      /spec <name> [run] | /spec new <name> <idea> — kiro spec workflow\n\
      /mcp [refresh] — MCP servers: status, tools (refresh reconnects)\n\
+     /hooks — kiro hooks by trigger + recent firings\n\
      /vps [ip|name|off|status|add|del|install] — run this TUI on a VPS\n\
      /help — this help\n\
      Keys: F5 scare · F6 shop · Ctrl+N · Ctrl+W close (+ click)\n\

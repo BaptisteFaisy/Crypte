@@ -1,6 +1,6 @@
 //! Commandes slash (`/usage` `/new` `/bestiary` `/thinking` `/model` `/agent`
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
-//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/settings` `/help`).
+//! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/hooks` `/settings` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -70,6 +70,7 @@ pub enum Command {
         name: String,
     },
     Mcp(Option<String>),
+    Hooks,
     Unknown(String),
 }
 
@@ -121,6 +122,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
         "/kiro" => Some(Command::Kiro),
         "/mcp" => Some(Command::Mcp(opt_arg(&mut parts))),
+        "/hooks" => Some(Command::Hooks),
         "/links" => Some(Command::Links),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),

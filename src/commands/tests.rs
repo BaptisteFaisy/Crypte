@@ -47,6 +47,12 @@ fn parse_mcp_refresh_optionnel() {
 }
 
 #[test]
+fn parse_hooks_sans_argument() {
+    assert_eq!(parse("/hooks"), Some(Command::Hooks));
+    assert!(crate::texts::help_text().contains("/hooks"));
+}
+
+#[test]
 fn parse_matches_commands_first_word_only() {
     assert_eq!(parse("/usage"), Some(Command::Usage));
     assert_eq!(parse("  /new x  "), Some(Command::New));
