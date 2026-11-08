@@ -307,6 +307,11 @@ Mode for the agent tools (see below). `/permissions` shows the mode,
 `/permissions yolo` runs everything without asking, `/permissions auto`
 (default) asks confirmation before every change. The choice is persisted
 in `~/.config/kiro-horror-tui/permissions` and reloaded at startup.
+Per-tool rules refine the mode: `/permissions <tool> <allow|ask|deny>`
+(exact name or `prefix_*`, longest match wins),
+`/permissions list` shows them, `/permissions reset` clears them
+(persisted in `~/.config/kiro-horror-tui/permissions-rules`).
+`deny` refuses without asking and tells the model.
 
 ## Tools (browser, desktop, shell)
 
@@ -359,11 +364,33 @@ global `~/.kiro/`), so a project moves back and forth between both:
   tool-using send, tools show as `mcp_<server>_<tool>`, `autoApprove`
   skips confirmation ; `/mcp` shows servers + tools, `/mcp refresh`
   reconnects.
+- **Custom agents** (`.kiro/agents/*.md`, our own format: frontmatter
+  `name`/`description`/`system`, body = system prompt, `system`
+  prefixed when present) : `/agents` lists them, `/agent <name>
+  <text>` spawns with the custom prompt.
+- **Skills** (`.kiro/skills/*/SKILL.md`, Claude-compatible frontmatter
+  `name`/`description`, body = instructions) : `/skills` lists them,
+  `/skill <name> [text]` prefixes the skill to the current draft
+  (transient, announced). Skills cover reusable prompts (no separate
+  system).
+- **Memory** (`.kiro/MEMORY.md` project + `~/.kiro/MEMORY.md`
+  global) : pinned after steering at first send
+  (agents.md → steering → memory) ; `/remember <text>` appends to
+  the project file (created if missing, checkpointed).
 - **Ignore** (`.kiroignore`) : loaded, enforced on file hooks
   (last matching pattern wins, `!` re-includes, `dir/` = subtree).
 
 `/kiro` shows what was loaded (steering, specs, hooks, servers);
 `/hooks` shows hooks by trigger, queued agent prompts and recent firings.
+
+## Checkpoints
+
+Writes through `write_tracked` snapshot the previous content first
+(ring of 20, in `~/.local/share/kiro-horror-tui/checkpoints/`).
+`/checkpoints` lists snapshots (newest first), `/rewind <n|name>`
+restores one (`n` = shown rank, `name` = exact basename or fragment
+of the original path). `/remember` snapshots `MEMORY.md` before
+appending; spec writes follow.
 
 ## History
 
@@ -384,7 +411,10 @@ if delivered elsewhere via `@<n>`) and the status shows in the sidebar
 used, queue in brackets). `/ask #<id> <text>` continues the
 conversation with an agent (exchange kept, 20 messages max, `system`
 head kept); if it is running, queued and triggered once free.
-`/agents all` lists the agents of every chat. Each launch also
+`/agents all` lists the agents of every chat (custom
+`.kiro/agents/` agents listed after, as `custom <name>`).
+`/agent <name> <text>` spawns with the custom system prompt when
+`<name>` is known, else the text is sent as-is. Each launch also
 creates the agent's disk workspace
 `~/.config/kiro-horror-tui/workspaces/<session>/agent-<id>/`
 (pure code, zero LLM tokens), for future tools (`<session>` =

@@ -42,7 +42,8 @@ chats + sous-agents, silencieux si désactivé),
 `known.rs`, coffre chiffre `store.rs` (ChaCha20-Poly1305, `0600`, cle
 maitre `master.key` ou `KH_SETTINGS_KEY`), ecran `ui.rs`, touches
 `keys.rs`),
-`permissions.rs` (mode yolo/auto + persistance fichier + handler),
+`permissions.rs` (mode yolo/auto + règles fines par outil + persistance
++ `T5State`, handler + porte dans `permissions_cmds.rs`),
 `persist.rs` (chats : autosave JSON ~5 s + sortie, restauration silencieuse,
 fichier illisible préservé en `.corrupt`),
 `connect.rs` (handlers + flow `/connect` : statut, store Muse, clé masquée → modèle),
@@ -82,20 +83,25 @@ dans `spec_cmds/tests.rs`), `spec_prompts.rs` (prompts purs),
 `mcp_cmds.rs` (`/mcp`), `hook_match.rs` (regex `matcher`),
 `hook_run.rs` (moteur : sélection + tirs + file `agent`),
 `hook_exec.rs` (`sh -c` async + `HookOutcome`), `hook_cmds.rs`
-(`/hooks`) ; steering `always` fusionné au pin
-agents.md, voir `agents::load_merged`).
+(`/hooks`), `frontmatter.rs` (partagé), `agents_md.rs` (customs),
+`skills.rs` + `skills_cmds.rs` (`/skills`, `/skill`),
+`checkpoint.rs` + `checkpoint_cmds.rs` (`/checkpoints`, `/rewind`),
+`memory.rs` + `memory_cmds.rs` (`/remember`) ; steering `always` +
+mémoire fusionnés au pin agents.md, voir `agents::load_merged_in`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async, outillé si `/tools on`) →
 `drain_replies` (`Incoming::Chat|Agent|Compact|Web|ToolDone`) → almanach
 (`Incoming::usage`, `None` pour `ToolDone`) + ledger + historique + affichage.
 Boucle outils : réponse avec `tool_calls` (budget 8 tours, voir
-`tools::MAX_ROUNDS`) → file séquentielle → confirmation y/n des
-modifications en mode `auto` (lectures libres, `yolo` libre, voir
-`tools::needs_confirm` + `/permissions`) → `exec::run_tool` (binaires
-existants, timeout, sortie tronquée) → `Incoming::ToolDone` → résultats
-rejoués (`tool`, `tool_call_id`) → nouvel appel, jusqu'au texte final
-(seul persisté à l'historique ; guide transitoire `tools::GUIDE`).
+`tools::MAX_ROUNDS`) → file séquentielle → porte `tool_gate`
+(`permissions_cmds.rs` : règle fine `allow`/`ask`/`deny` par outil,
+exact + préfixe `*`, défaut = mode `yolo`/`auto` via
+`tools::needs_confirm` ; `deny` refuse sans y/n et prévient le modèle)
+→ `exec::run_tool` (binaires existants, timeout, sortie tronquée) →
+`Incoming::ToolDone` → résultats rejoués (`tool`, `tool_call_id`) →
+nouvel appel, jusqu'au texte final (seul persisté à l'historique ;
+guide transitoire `tools::GUIDE`).
 Bus : `/tell`/`/msg` déposent (affiché aussitôt, déclenché si libre,
 enfilé sinon, pompé en groupe à la tombée) ; `/agent @<n>` livre ailleurs
 (`Incoming::Agent(propriétaire, id, livraison)`, tag `[agent#id from Chat k]`,
@@ -121,7 +127,14 @@ client MCP tools (`enabled` connectés au premier besoin,
 `Incoming::HookDone`, `agent` = prompt préfixé au prochain envoi ;
 tirs : envoi, outils, fichiers spec, tâches, agents, boot ;
 garde anti-récursion profondeur 1, `/hooks` = statut + récents).
-Reste : permissions fines, agents/skills, checkpoints, mémoire (T5).
+T5 : règles fines `/permissions <outil> <allow|ask|deny>` (`list`,
+`reset`, persistées à côté du mode), agents customs
+`.kiro/agents/*.md` (listés par `/agents`, `/agent <nom> <texte>`
+avec prompt custom), skills `.kiro/skills/*/SKILL.md` (`/skills`,
+`/skill` préfixé à la saisie, transitoire), checkpoints
+(`write_tracked`, anneau 20, `/checkpoints`, `/rewind`),
+mémoire `.kiro/MEMORY.md` + globale (pin après steering,
+`/remember`). Kiro : complet (T1-T5).
 `/web` cherche (Tavily → Brave → DuckDuckGo → Wikipedia FR+EN) +
 fetch top-3 parallèle, synthèse LLM avec sources `[n]`
 (`Incoming::Web`, tag `[web:backend]`, brut si déconnecté,
