@@ -8,7 +8,7 @@
 //! des `tool_calls` reçus (routés vers kiro-tools par le drain).
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -354,142 +354,9 @@ impl Llm for Provider {
     }
 }
 
-/// Message filaire OpenAI (`{role, content}`).
-#[derive(Debug, Serialize)]
-struct WireMsg {
-    role: String,
-    content: String,
-}
-
-/// Requête sans outils (`reasoning_effort` omis si `None`).
-#[derive(Debug, Serialize)]
-struct PlainRequest<'a> {
-    model: &'a str,
-    messages: &'a [WireMsg],
-    stream: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<&'a str>,
-}
-
-/// Requête outillée générique (`tools`/`tool_choice` omis sans outils).
-#[derive(Debug, Serialize)]
-struct JsonRequest<'a> {
-    model: &'a str,
-    messages: &'a [serde_json::Value],
-    stream: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<&'a str>,
-    #[serde(skip_serializing_if = "<[serde_json::Value]>::is_empty")]
-    tools: &'a [serde_json::Value],
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<&'a str>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    #[serde(default)]
-    choices: Vec<Choice>,
-    #[serde(default)]
-    usage: Option<Usage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Choice {
-    #[serde(default)]
-    message: Option<ResponseMessage>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct ResponseMessage {
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<ToolCallIn>>,
-}
-
-/// Appel reçu (forme OpenAI : `id` + `function`, `type` ignoré).
-#[derive(Debug, Deserialize)]
-struct ToolCallIn {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    function: ToolFnIn,
-}
-
-/// Fonction reçue : nom + arguments JSON bruts.
-#[derive(Debug, Default, Deserialize)]
-struct ToolFnIn {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    arguments: String,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct Usage {
-    #[serde(default)]
-    prompt_tokens: u64,
-    #[serde(default)]
-    completion_tokens: u64,
-}
-
-/// Appel d'outil reçu (routé vers la tranche kiro-tools par le drain).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolCall {
-    pub id: String,
-    pub name: String,
-    pub args: String,
-}
-
-/// Réponse textuelle + appels d'outils + usage réel facturé par l'API.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Completion {
-    pub text: String,
-    pub tool_calls: Vec<ToolCall>,
-    pub prompt_tokens: u64,
-    pub completion_tokens: u64,
-}
-
-impl Completion {
-    /// Mappe la réponse API (choix 0 + `tool_calls` + usage) vers le local.
-    fn from_response(resp: ChatResponse) -> Self {
-        let msg = resp.choices.into_iter().next().and_then(|c| c.message);
-        let (text, tool_calls) = match msg {
-            Some(m) => (
-                m.content.unwrap_or_default(),
-                m.tool_calls
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|c| ToolCall {
-                        id: c.id,
-                        name: c.function.name,
-                        args: c.function.arguments,
-                    })
-                    .collect(),
-            ),
-            None => (String::new(), Vec::new()),
-        };
-        let (prompt_tokens, completion_tokens) = resp
-            .usage
-            .map(|u| (u.prompt_tokens, u.completion_tokens))
-            .unwrap_or_default();
-        Self {
-            text,
-            tool_calls,
-            prompt_tokens,
-            completion_tokens,
-        }
-    }
-}
-
-/// Tronque sans couper un caractère UTF-8,
-/// en une seule passe (frontière d'octets, pas de double parcours).
-pub(crate) fn truncate(s: &str, max_chars: usize) -> String {
-    match s.char_indices().map(|(i, _)| i).nth(max_chars) {
-        Some(end) => s[..end].to_string(),
-        None => s.to_string(),
-    }
-}
+pub(crate) use crate::provider_wire::truncate;
+use crate::provider_wire::{ChatResponse, JsonRequest, PlainRequest, WireMsg};
+pub use crate::provider_wire::{Completion, ToolCall};
 
 #[cfg(test)]
 mod tests {
@@ -523,19 +390,6 @@ mod tests {
         assert_eq!(cfg.base_url, MUSE_BASE_URL);
         assert_eq!(cfg.api_key, "kh-test-key");
         assert_eq!(cfg.model, MUSE_DEFAULT_MODEL);
-    }
-
-    #[test]
-    fn reponse_outils_parsee_vers_completion() {
-        let raw = r#"{"choices":[{"message":{"content":null,"tool_calls":[
-            {"id":"c1","type":"function","function":{"name":"shell_run","arguments":"{}"}}
-            ]}}],"usage":{"prompt_tokens":7,"completion_tokens":3}}"#;
-        let resp: ChatResponse = serde_json::from_str(raw).unwrap();
-        let done = Completion::from_response(resp);
-        assert_eq!(done.text, "");
-        assert_eq!(done.tool_calls.len(), 1);
-        assert_eq!(done.tool_calls[0].name, "shell_run");
-        assert_eq!((done.prompt_tokens, done.completion_tokens), (7, 3));
     }
 
     #[test]

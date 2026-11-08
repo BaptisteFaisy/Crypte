@@ -10,8 +10,9 @@
 
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
+use crate::bridge_spawn::{spawn_agent, spawn_exec, spawn_gen, spawn_llm};
 use crate::cmd_chat::SendPrep;
 use crate::core::Core;
 use crate::events::Event;
@@ -295,143 +296,6 @@ fn drive_one(core: &Core, tools: &Mutex<ToolsBackend>, app: &AppHandle, out: Bac
     }
 }
 
-/// Exécute un appel (natif ou `mcp.*`), journalise, livre, re-pilote.
-fn spawn_exec(app: AppHandle, chat: usize, call: crate::tools::wire::ToolCall) {
-    tokio::spawn(async move {
-        let tools_state = app.state::<Mutex<ToolsBackend>>();
-        let mcp = match tools_state.lock() {
-            Ok(tools) => tools.mcp.clone(),
-            Err(_) => return,
-        };
-        let started = std::time::Instant::now();
-        let out = if crate::kiro::mcp_client::is_mcp_name(&call.name) {
-            mcp.call(chat, &call.name, &call.args).await
-        } else {
-            crate::tools::exec::run_tool(chat, &call.name, &call.args).await
-        };
-        let ms = started.elapsed().as_millis().min(9_999_999) as u64;
-        crate::tools::log::append(
-            chat,
-            &call.name,
-            out.ok,
-            ms,
-            call.args.len(),
-            out.text.len(),
-        );
-        let delivery = crate::tools::flow::Delivery::from_outcome(call, out, ms);
-        if let Ok(mut tools) = tools_state.lock() {
-            tools.tool_exec_done(chat, vec![delivery]);
-        }
-        let core_state = app.state::<Core>();
-        drive_outbox(&core_state, &tools_state, &app);
-    });
-}
-
-/// Relance LLM outillée : réinjecte en `Incoming` (route → drain).
-fn spawn_llm(app: AppHandle, chat: usize, wire: Vec<crate::tools::wire::WireMsg>) {
-    let core_state = app.state::<Core>();
-    let tools_state = app.state::<Mutex<ToolsBackend>>();
-    let (provider, model, effort, pool, mcp) = {
-        let inner = core_state.lock();
-        let mcp = match tools_state.lock() {
-            Ok(tools) => tools.mcp.clone(),
-            Err(_) => return,
-        };
-        (
-            inner.provider.clone(),
-            inner.effective_model_for(chat),
-            inner.thinking.clone(),
-            inner.pool.clone(),
-            mcp,
-        )
-    };
-    let Some(provider) = provider else {
-        if let Ok(mut tools) = tools_state.lock() {
-            tools.tool_abort("error: no provider — loop aborted");
-        }
-        drive_outbox(&core_state, &tools_state, &app);
-        return;
-    };
-    pool.spawn(async move {
-        let core_state = app.state::<Core>();
-        let tools_state = app.state::<Mutex<ToolsBackend>>();
-        let defs = mcp.tooled_defs().await;
-        let wire_json = json_values(&wire);
-        let def_json = json_values(&defs);
-        let reply = provider
-            .complete_json(&wire_json, &def_json, &model, effort.as_deref())
-            .await;
-        if reply.is_err() {
-            // Parité TUI (`drain_chat` Err oublie la boucle, silencieux).
-            if let Ok(mut tools) = tools_state.lock() {
-                tools.tool_clear(chat);
-            }
-        }
-        let epoch = core_state.epoch_of(chat);
-        let tx = core_state.lock().tx.clone();
-        let _ = tx.send(crate::Incoming::Chat(chat, epoch, reply)).await;
-    });
-}
-
-/// Étapes `/spec new` : complète, rend au runner, re-pilote.
-fn spawn_gen(app: AppHandle, chat: usize, gen: crate::kiro::spec_run::SpecGen) {
-    tokio::spawn(async move {
-        let core_state = app.state::<Core>();
-        let tools_state = app.state::<Mutex<ToolsBackend>>();
-        let (provider, model, effort) = {
-            let inner = core_state.lock();
-            (
-                inner.provider.clone(),
-                inner.effective_model_for(chat),
-                inner.thinking.clone(),
-            )
-        };
-        let reply = match provider {
-            Some(provider) => {
-                provider
-                    .complete_full(&gen.messages(), &model, effort.as_deref())
-                    .await
-            }
-            None => Err(anyhow::anyhow!("not connected")),
-        };
-        if let Ok(mut tools) = tools_state.lock() {
-            tools.spec_gen_reply_cmd(chat, gen, reply);
-        }
-        drive_outbox(&core_state, &tools_state, &app);
-    });
-}
-
-/// Tâches `/spec run` : spawne l'agent réel, enregistre, re-pilote.
-#[allow(clippy::too_many_arguments)]
-fn spawn_agent(
-    app: AppHandle,
-    chat: usize,
-    name: String,
-    index: usize,
-    total: usize,
-    label: String,
-    prompt: String,
-    task: String,
-) {
-    tokio::spawn(async move {
-        let core_state = app.state::<Core>();
-        let tools_state = app.state::<Mutex<ToolsBackend>>();
-        match core_state.agent_spawn(prompt, Some(chat)).await {
-            Ok(info) => {
-                if let Ok(mut tools) = tools_state.lock() {
-                    tools.spec_agent_started_cmd(&name, chat, index, total, info.id, &task);
-                }
-            }
-            Err(err) => core_state.push_system_to(
-                chat,
-                format!("spec {name} [{label}]: cannot spawn agent: {err}"),
-                false,
-            ),
-        }
-        drive_outbox(&core_state, &tools_state, &app);
-    });
-}
-
 /// Signaux par fait : specs, présages, apparition, hub.
 pub fn on_event(core: &Core, tools: &Mutex<ToolsBackend>, app: &AppHandle, event: &Event) {
     match event {
@@ -525,7 +389,7 @@ fn sync_view(inner: &crate::core::CoreInner) -> crate::hub::SyncView {
 }
 
 /// Sérialise des messages/schémas (`Null` si insérialisable, jamais panic).
-fn json_values<T: serde::Serialize>(items: &[T]) -> Vec<serde_json::Value> {
+pub(crate) fn json_values<T: serde::Serialize>(items: &[T]) -> Vec<serde_json::Value> {
     items
         .iter()
         .map(|item| serde_json::to_value(item).unwrap_or(serde_json::Value::Null))
