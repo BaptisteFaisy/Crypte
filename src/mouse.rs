@@ -75,11 +75,10 @@ impl App {
         chat.scroll.by(delta);
     }
 
-    /// Clic sur un onglet : même effet que sa touche (hub et boutique basculent).
+    /// Clic sur un onglet : va à son écran (chat, boutique).
     fn goto_tab(&mut self, tab: Screen) {
         match tab {
             Screen::Chat => self.screen = Screen::Chat,
-            Screen::Hub => self.open_hub(),
             Screen::Settings => self.screen = Screen::Settings,
             Screen::Vps => self.screen = Screen::Vps,
             Screen::Shop => self.open_shop(),
@@ -174,7 +173,7 @@ mod tests {
         app.on_mouse(event(MouseEventKind::ScrollUp, 95, 5));
         assert_eq!(offset(&app), 0);
         // Autre écran : ignoré même dans la colonne.
-        app.screen = Screen::Hub;
+        app.screen = Screen::Settings;
         app.on_mouse(event(MouseEventKind::ScrollUp, 30, 5));
         assert_eq!(offset(&app), 0);
     }
@@ -251,14 +250,15 @@ mod tests {
         let mut app = test_app();
         app.tab_hits = vec![
             (Screen::Chat, Rect::new(10, 0, 7, 1)),
-            (Screen::Hub, Rect::new(45, 0, 9, 1)),
+            (Screen::Settings, Rect::new(45, 0, 12, 1)),
         ];
+        app.screen = Screen::Settings;
         app.on_mouse(click(11, 0)); // onglet chat → chat
         assert_eq!(app.screen, Screen::Chat);
-        app.on_mouse(click(46, 0)); // hub → Hub
-        assert_eq!(app.screen, Screen::Hub);
+        app.on_mouse(click(46, 0)); // onglet settings → settings
+        assert_eq!(app.screen, Screen::Settings);
         app.on_mouse(click(70, 0)); // hors onglets → inchangé
-        assert_eq!(app.screen, Screen::Hub);
+        assert_eq!(app.screen, Screen::Settings);
     }
 
     #[test]
@@ -297,15 +297,13 @@ mod tests {
         assert_eq!(rows.height, 2);
         app.on_mouse(click(rows.x, rows.y + 1));
         assert_eq!(app.sessions.index(), 1);
-        // Onglet mémorisé : clic hub → Hub.
-        let hub = app
-            .tab_hits
-            .iter()
-            .find(|(s, _)| *s == Screen::Hub)
-            .unwrap()
-            .1;
-        app.on_mouse(click(hub.x, hub.y));
-        assert_eq!(app.screen, Screen::Hub);
+        // Onglet mémorisé : un seul (chat), clic → chat.
+        assert_eq!(app.tab_hits.len(), 1);
+        assert_eq!(app.tab_hits[0].0, Screen::Chat);
+        let chat = app.tab_hits[0].1;
+        app.screen = Screen::Settings;
+        app.on_mouse(click(chat.x, chat.y));
+        assert_eq!(app.screen, Screen::Chat);
         // [+] mémorisé : clic → 3e chat.
         let plus = app.plus_btn.expect("plus mémorisé");
         app.on_mouse(click(plus.x, plus.y));

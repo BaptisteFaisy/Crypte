@@ -2,9 +2,9 @@
 
 LLM chat in a haunted crypt, built for **Ghostty**: a bestiary of
 33 pixel-art creatures (real images via the Kitty graphics
-protocol), Kiro the motionless ghost mascot (scared via F5),
-apparitions that react to the chat, horror effects (warm
-vignette, fog, lightning), a header **fear
+protocol), the spirit hub (every agent as a ghost in an isometric
+crypt, top of the right panel), apparitions that react to the chat,
+horror effects (warm vignette, fog, lightning), a header **fear
 gauge** (`fear`, % of the model's context window), and a **global**
 token counter (status bar: current chat + session total, all
 chats and sub-agents included; `/usage` details the current chat),
@@ -175,8 +175,7 @@ exempt, stays the remedy).
 | Click `[+]` (sidebar) | new chat (mouse captured by the app) |
 | Click `[×]` (sidebar) | close that chat (refused if a reply is in flight) |
 | Ctrl+W | close the current chat |
-| F5 | scare: Kiro scared 2s, jump scare, lightning flash |
-| F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
+| F5 | scare: jump scare 2s, lightning flash, hub panic |
 | F6 | shop: consumed tokens become coins (↑↓ + Enter to buy) |
 | Click tab / shop item | switch screen / buy in the shop |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
@@ -190,8 +189,9 @@ marks the bottom border while you are away from the end. Sending a
 message (or `End`) snaps the view back down, and each chat keeps its
 own scroll position.
 
-On narrow terminals the header tabs drop their key hints (F6/F7) so
+On narrow terminals the header tabs drop their key hint (F6) so
 the `fear` gauge always fits.
+
 
 ## Ghostty
 
@@ -212,9 +212,10 @@ What the crypt uses from Ghostty (and degrades cleanly elsewhere):
 
 No sound: no bell, no notification.
 
-## Spirit hub (F7)
+## Spirit hub
 
-Every agent lives in a crypt drawn in **isometric** pixel art:
+Every agent lives in a crypt drawn in **isometric** pixel art,
+shown display-only at the top of the right panel:
 
 - **white ghost** = an agent (a chat); it wanders, meets the others and
   chats (bubbles "…", heart); while waiting for the LLM it hovers in place;
@@ -224,9 +225,6 @@ Every agent lives in a crypt drawn in **isometric** pixel art:
 - **orbs**: every real message flies from sender to receiver — `/tell`,
   `/msg`, `/ask`, auto links, a sub-agent's delivery; the receiver jumps ("!");
 - F5: everybody flees.
-
-Right panel: each agent, its sub-agents and their state. Arrows select
-(pumpkin ring on the floor), Enter opens that chat.
 
 In Ghostty the scene is a Kitty image re-sent every frame under the same
 id (PNG, ×2–×6 nearest neighbour, crisp); elsewhere, half-blocks.
@@ -281,10 +279,10 @@ creature in `assets/pixel/<slug>.txt`: 32 lines of 32 letters,
 Crisp rendering guaranteed: **integer** nearest-neighbour upscale on
 a canvas of the exact pixel size of the area (1 image pixel = 1
 screen pixel in Kitty, = 1 half-cell in halfblocks). The right panel
-shows Kiro and an apparition: cauldron during a reply, spider during
-sub-agents, grave hand on error, coffin after `/compact`, slow
-rotation otherwise. `/bestiary` reveals a random creature there
-(announced in the chat with its name and lore).
+shows the spirit hub and an apparition: cauldron during a reply,
+spider during sub-agents, grave hand on error, coffin after
+`/compact`, slow rotation otherwise. `/bestiary` reveals a random
+creature there (announced in the chat with its name and lore).
 
 ## Model
 
@@ -429,7 +427,7 @@ N lines, ~M tokens`) and a dedicated `/usage` line (`loaded` or
 `main.rs` (CLI + bootstrap), `app.rs` (state + 100ms loop),
 `mouse.rs` ([+] click = new chat, [×] click = close chat),
 `drain.rs` (routing async replies to chats),
-`chat.rs` (history + input + maskable custom prompt), `mascot.rs` (ghost),
+`chat.rs` (history + input + maskable custom prompt),
 `fx.rs` (horror overlay), `tokens.rs` (tiktoken counter),
 `provider.rs` (OpenAI-compatible client, 60s timeout),
 `sessions.rs` (multi-chats + sub-agents + `sessions/close.rs` closing),
@@ -450,10 +448,10 @@ scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
 (right-panel creature, `/bestiary` reveals),
 `ghostty.rs` (OSC, progress, synced rendering),
 `history.rs` (send window + chat naming),
-`hub.rs` + `hub/` (F7 spirit hub: tile-based simulation, `iso.rs`
+`hub.rs` + `hub/` (spirit hub: tile-based simulation, `iso.rs`
 isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
 `font.rs` 3×5 pixel font, `social.rs` orbs and chatter),
-`app/esprits.rs` (hub screen + keys), `app/keys.rs` (dispatch + scroll + resize),
+`app/esprits.rs` (hub panel), `app/keys.rs` (dispatch + scroll + resize),
 `shop.rs` (F6 shop: wallet, 1 token = 1 coin, 5 ambiance perks),
 `almanac.rs` (tokens per day, `/usage` block) + `almanac/disk.rs`
 (JSON file).
