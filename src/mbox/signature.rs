@@ -41,6 +41,7 @@
 //! Comptage STRUCTUREL (présence + forme 40-hex) : `metriques` n'a
 //! aucun secret sous la main, la preuve crypto a lieu à l'ACK (H2).
 
+use super::autorite::comparaison_constante;
 use super::fichier::lire_lignes;
 use super::ordres::{Extensions, Ordre};
 use super::{normalise, sha1_hex, BcastDir};
@@ -97,20 +98,6 @@ pub fn scelle(secret: &str, corps: &str) -> String {
 /// d'oracle sur la forme). `false` si longueurs différentes.
 pub fn verifie(secret: &str, corps: &str, sig: &str) -> bool {
     comparaison_constante(&scelle(secret, corps), sig)
-}
-
-/// Comparaison sans court-circuit, octet à octet (miroir local :
-/// celle d'`autorite` est privée et liée au fichier des jetons).
-fn comparaison_constante(a: &str, b: &str) -> bool {
-    let (x, y) = (a.as_bytes(), b.as_bytes());
-    if x.len() != y.len() {
-        return false;
-    }
-    let mut ecart = 0u8;
-    for i in 0..x.len() {
-        ecart |= x[i] ^ y[i];
-    }
-    ecart == 0
 }
 
 /// Corps signé : `id|dest|texte normalisé` (même `normalise` que le

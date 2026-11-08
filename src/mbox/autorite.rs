@@ -146,7 +146,8 @@ fn secret_aleatoire() -> String {
 }
 
 /// Comparaison sans court-circuit (secret stocké en hex fixe).
-fn comparaison_constante(a: &str, b: &str) -> bool {
+/// Point unique partagé (`signature.rs` l'utilise aussi).
+pub(crate) fn comparaison_constante(a: &str, b: &str) -> bool {
     let (x, y) = (a.as_bytes(), b.as_bytes());
     if x.len() != y.len() {
         return false;
