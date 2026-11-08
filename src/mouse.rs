@@ -141,6 +141,9 @@ impl App {
         if self.screen != Screen::Chat {
             return;
         }
+        if self.sessions.count() == 0 {
+            return; // aucun chat : rien à défiler
+        }
         let chat = &self.sessions.current().chat;
         if !chat.area.get().contains(Position::new(mev.column, mev.row)) {
             return;
@@ -340,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    fn clic_croix_du_dernier_chat_le_recommence_a_neuf() {
+    fn clic_croix_du_dernier_chat_le_retire() {
         let mut app = test_app();
         app.sessions
             .current_mut()
@@ -349,9 +352,35 @@ mod tests {
         app.side_rows = Some(Rect::new(1, 2, 16, 1));
         app.close_btns = vec![Some(Rect::new(16, 2, 1, 1))];
         app.on_mouse(click(16, 2));
-        assert_eq!(app.sessions.count(), 1);
-        assert_eq!(app.sessions.current().name, "Chat 1");
-        assert!(app.sessions.current().chat.messages().is_empty());
+        assert_eq!(app.sessions.count(), 0);
+        // Re-clic au même endroit : plus de croix, rien ne se passe.
+        app.close_btns.clear();
+        app.side_rows = None;
+        app.on_mouse(click(16, 2));
+        assert_eq!(app.sessions.count(), 0);
+    }
+
+    #[test]
+    fn ecran_sans_chat_se_dessine_et_invite_a_recommencer() {
+        use ratatui::{backend::TestBackend, Terminal};
+        let mut app = test_app();
+        app.close_chat(0);
+        assert_eq!(app.sessions.count(), 0);
+        for (w, h) in [(70, 17), (80, 24), (120, 36)] {
+            let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+            for screen in [Screen::Chat, Screen::Settings, Screen::Shop, Screen::Haunt] {
+                app.screen = screen;
+                app.tick();
+                term.draw(|f| app.draw(f)).unwrap();
+            }
+        }
+        let mut term = Terminal::new(TestBackend::new(120, 36)).unwrap();
+        app.screen = Screen::Chat;
+        term.draw(|f| app.draw(f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let text: String = buf.content.iter().map(|c| c.symbol()).collect();
+        assert!(text.contains("no chat"), "pastille ou invite absente");
+        assert!(text.contains("Ctrl+N"), "invite de création absente");
     }
 
     #[test]

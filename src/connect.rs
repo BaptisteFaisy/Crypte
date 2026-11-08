@@ -182,14 +182,22 @@ impl App {
             ),
         };
         let preview = flow.buffer.clone();
-        let chat = &mut self.sessions.current_mut().chat;
+        let idx = self.sessions.index();
+        let Some(sess) = self.sessions.get_mut(idx) else {
+            return; // chat fermé pendant le flow : prompt perdu
+        };
+        let chat = &mut sess.chat;
         chat.set_prompt(Some(label), mask);
         chat.set_input_preview(Some(preview));
     }
 
     /// Prompt de saisie par défaut (fin ou annulation de flow).
     fn restore_prompt(&mut self) {
-        let chat = &mut self.sessions.current_mut().chat;
+        let idx = self.sessions.index();
+        let Some(sess) = self.sessions.get_mut(idx) else {
+            return; // chat fermé pendant le flow : rien à restaurer
+        };
+        let chat = &mut sess.chat;
         chat.set_prompt(None, false);
         chat.set_input_preview(None);
     }
@@ -275,6 +283,17 @@ mod tests {
             .iter()
             .map(|m| m.text.clone())
             .collect()
+    }
+
+    #[test]
+    fn flow_survit_a_la_fermeture_du_dernier_chat() {
+        let (mut app, _dir) = app_with_vault("flow-ferme");
+        app.start_connect_flow("openai");
+        app.close_chat(0); // souris [×] pendant le flow
+        assert_eq!(app.sessions.count(), 0);
+        app.flow_push('x'); // sync_flow_prompt : sans panique
+        app.cancel_flow(); // restore_prompt + push_system : sans panique
+        assert!(app.connect_flow.is_none());
     }
 
     #[test]

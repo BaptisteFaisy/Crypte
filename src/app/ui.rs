@@ -15,7 +15,6 @@ use ratatui::{
 
 use super::App;
 use crate::bestiary::Creature;
-use crate::chat::ChatView;
 use crate::gfx::ImageBank;
 use crate::sidebar::{draw_side_grip, side_auto, side_width};
 use crate::theme::{self, ASH, BLOOD, BONE, CANDLE, PUMPKIN, SAND, UMBER, VOID};
@@ -120,15 +119,11 @@ impl App {
         self.side_area = Some(side);
         self.side_auto = side_auto(area.width, false);
         draw_side_grip(frame, side, self.side_active());
-        let sess = self.sessions.current_mut();
-        let view = ChatView {
-            title: &sess.name,
-            tick: self.tick,
-            sending: sess.sending,
-            question_pending: sess.pending.is_some(),
-        };
-        sess.chat.draw(frame, chat, view);
-        let sending = sess.sending;
+        self.sessions.draw_main(self.tick, frame, chat);
+        let sending = self
+            .sessions
+            .get(self.sessions.index())
+            .is_some_and(|s| s.sending);
         let agents = self.sessions.running_agents(self.sessions.index());
         let [esprits, omen] =
             Layout::vertical([Constraint::Percentage(45), Constraint::Min(6)]).areas(right);
@@ -156,14 +151,7 @@ impl App {
         self.side_area = Some(side);
         self.side_auto = side_auto(area.width, true);
         draw_side_grip(frame, side, self.side_active());
-        let sess = self.sessions.current_mut();
-        let view = ChatView {
-            title: &sess.name,
-            tick: self.tick,
-            sending: sess.sending,
-            question_pending: sess.pending.is_some(),
-        };
-        sess.chat.draw(frame, chat, view);
+        self.sessions.draw_main(self.tick, frame, chat);
         self.phantom.draw(frame, area, &mut self.bank);
     }
 
@@ -224,14 +212,16 @@ impl App {
     /// mode court) pour tenir à 70.
     fn draw_status(&self, frame: &mut Frame, area: Rect) {
         let compact = area.width < COMPACT_W;
-        let sess = self.sessions.current();
+        let idx = self.sessions.index();
+        let sess = self.sessions.get(idx);
         let mut left = Vec::new();
-        let chat = format!(
-            "\u{f02a0} chat {}/{}",
-            self.sessions.index() + 1,
-            self.sessions.count()
-        );
-        let asking = sess.pending.is_some();
+        let n = self.sessions.count();
+        let chat = if n == 0 {
+            String::from("\u{f02a0} no chat")
+        } else {
+            format!("\u{f02a0} chat {}/{}", idx + 1, n)
+        };
+        let asking = sess.is_some_and(|s| s.pending.is_some());
         left.extend(pill(&chat, if asking { CANDLE } else { PUMPKIN }, VOID));
         let model = short_model(self.effective_model_ref());
         let model = if compact {
@@ -240,18 +230,16 @@ impl App {
             model.into_owned()
         };
         left.extend(pill(&model, UMBER, BONE));
+        let (total, tps) = sess
+            .map(|s| (s.ledger.total(), s.ledger.last_tps()))
+            .unwrap_or((0, 0.0));
         let rate = if compact {
-            format!(
-                "{} tok · {}",
-                sess.ledger.total(),
-                fmt_tps(sess.ledger.last_tps())
-            )
+            format!("{total} tok · {}", fmt_tps(tps))
         } else {
             format!(
-                "{} tok · {} total · {}",
-                sess.ledger.total(),
+                "{total} tok · {} total · {}",
                 self.sessions.grand_total(),
-                fmt_tps(sess.ledger.last_tps())
+                fmt_tps(tps)
             )
         };
         left.extend(pill(&rate, theme::lerp(VOID, UMBER, 0.5), SAND));

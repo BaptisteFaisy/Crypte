@@ -1,4 +1,6 @@
-//! Sidebar « cercueils » : liste des chats + bouton [+] nouveau chat.
+//! Colonnes cercueils + discussion : liste des chats + bouton [+]
+//! nouveau chat (`draw_sidebar`), chat courant ou invite vide
+//! (`draw_main`, aucun chat : dernier fermé).
 //!
 //! `Sessions::draw_sidebar` rend une ligne par chat (point `●` vert au
 //! repos / bleu en réflexion + nom + `…` si envoi en cours +
@@ -9,13 +11,14 @@
 use std::borrow::Cow;
 
 use ratatui::{
-    layout::Rect,
+    layout::{Alignment, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
 
+use crate::chat::ChatView;
 use crate::sessions::Sessions;
 use crate::theme;
 
@@ -79,6 +82,26 @@ impl Sessions {
             plus,
             closes,
         }
+    }
+
+    /// Colonne discussion : chat courant, ou invite vide si aucun chat
+    /// (dernier fermé : Ctrl+N ou [+] pour recommencer).
+    pub fn draw_main(&mut self, tick: u64, frame: &mut Frame, area: Rect) {
+        if self.count() == 0 {
+            let hint = Paragraph::new("no chat — Ctrl+N or click [+] new chat")
+                .style(Style::new().fg(theme::SAND))
+                .alignment(Alignment::Center);
+            frame.render_widget(hint, area);
+            return;
+        }
+        let sess = self.current_mut();
+        let view = ChatView {
+            title: &sess.name,
+            tick,
+            sending: sess.sending,
+            question_pending: sess.pending.is_some(),
+        };
+        sess.chat.draw(frame, area, view);
     }
 }
 
@@ -400,6 +423,28 @@ mod tests {
             assert_eq!(buf[(19, y)].symbol(), "┃", "cran manquant en y={y}");
             assert_eq!(buf[(19, y)].fg, theme::PUMPKIN);
         }
+    }
+
+    #[test]
+    fn sans_chat_seul_le_bouton_plus_en_premiere_ligne() {
+        use crate::sessions::CloseOutcome;
+        use ratatui::{backend::TestBackend, Terminal};
+        let mut s = Sessions::new();
+        assert_eq!(s.close(0), CloseOutcome::Closed);
+        let mut term = Terminal::new(TestBackend::new(18, 10)).unwrap();
+        let mut hits = None;
+        term.draw(|f| {
+            hits = Some(s.draw_sidebar(f, f.area()));
+        })
+        .unwrap();
+        let hits = hits.unwrap();
+        assert!(hits.chats.is_none(), "aucune ligne de chat");
+        assert!(hits.closes.is_empty(), "aucune croix");
+        let plus = hits.plus.expect("[+] affiché");
+        assert_eq!((plus.x, plus.y), (1, 1)); // première ligne intérieure
+        let buf = term.backend().buffer();
+        let row: String = (1u16..17).map(|x| buf[(x, 1)].symbol()).collect();
+        assert!(row.starts_with("[+] new chat"), "plus row: {row:?}");
     }
 
     #[test]
