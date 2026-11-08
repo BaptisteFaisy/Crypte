@@ -68,6 +68,13 @@ impl App {
         let mode = self.permissions;
         let mcp = self.mcp.clone();
         let tooled = self.tools_on;
+        let hook_sink = crate::tools::agent::HookSink {
+            paths: crate::kiro::hook_agent::HookPaths {
+                project: self.t5.kiro_project.clone(),
+                global: self.t5.kiro_global.clone(),
+            },
+            tx: self.tx.clone(),
+        };
         self.pool.spawn(async move {
             let ctx = crate::tools::agent::Ctx {
                 provider: &provider,
@@ -78,7 +85,8 @@ impl App {
                 mcp: &mcp,
                 chat: id,
             };
-            let reply = crate::tools::agent::agent_reply(ctx, messages, &filter, tooled).await;
+            let reply =
+                crate::tools::agent::agent_reply(ctx, messages, &filter, tooled, &hook_sink).await;
             let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply)).await;
         });
     }

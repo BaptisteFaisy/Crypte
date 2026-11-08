@@ -18,6 +18,7 @@ pub mod cloud_cmds;
 pub mod cmds;
 pub mod frontmatter;
 pub mod glob;
+pub mod hook_agent;
 pub mod hook_cmds;
 pub mod hook_exec;
 pub mod hook_match;

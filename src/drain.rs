@@ -270,6 +270,13 @@ impl App {
         let mcp = self.mcp.clone();
         let tooled = self.tools_on;
         let filter = filter.unwrap_or_default();
+        let hook_sink = crate::tools::agent::HookSink {
+            paths: crate::kiro::hook_agent::HookPaths {
+                project: self.t5.kiro_project.clone(),
+                global: self.t5.kiro_global.clone(),
+            },
+            tx: self.tx.clone(),
+        };
         self.pool.spawn(async move {
             let ctx = crate::tools::agent::Ctx {
                 provider: &provider,
@@ -280,7 +287,8 @@ impl App {
                 mcp: &mcp,
                 chat: owner,
             };
-            let reply = crate::tools::agent::agent_reply(ctx, history, &filter, tooled).await;
+            let reply =
+                crate::tools::agent::agent_reply(ctx, history, &filter, tooled, &hook_sink).await;
             let _ = tx
                 .send(Incoming::Agent(owner, agent_id, deliver, reply))
                 .await;

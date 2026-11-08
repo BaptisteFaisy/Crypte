@@ -453,9 +453,11 @@ global `~/.kiro/`), so a project moves back and forth between both:
   + regex `matcher` + `.kiroignore` (file triggers); `command`
   runs async `sh -c` (30 s timeout, truncated output, announced
   on completion), `agent` queues a prompt prefixed to the next
-  user send; triggers wired: send, tools, spec files, spec tasks,
-  agents, boot (single-fire, no re-trigger); `/hooks` shows
-  loaded hooks by trigger + recent firings.
+  user send (injected into the next agent turn for sub-agent tool
+  hooks); triggers wired: send, tools (chats and sub-agents),
+  spec files, spec tasks, agents, boot (single-fire, no
+  re-trigger); `/hooks` shows loaded hooks by trigger + recent
+  firings.
 - **MCP** (`.kiro/settings/mcp.json`, stdio + remote) : live client
   (tools, resources, prompts) — servers connect lazily, tools show
   as `mcp_<server>_<tool>`, `autoApprove` skips confirmation ;
@@ -473,9 +475,13 @@ global `~/.kiro/`), so a project moves back and forth between both:
   sub-agent's tools, `mcpServers` restricts its MCP servers (names
   only — per-agent server configs are not connected). Sub-agents
   run tools on their own (bounded: 20 rounds, 60 calls max, `Ask`/
-  `Deny` become refusals since nobody can confirm, `PreToolUse`
-  hooks don't fire); in `auto` mode they only get reads unless a
-  rule allows more, in `yolo` everything.
+  `Deny` become refusals since nobody can confirm); in `auto` mode
+  they only get reads unless a rule allows more, in `yolo`
+  everything. Tool hooks fire as for chats (`PreToolUse`/
+  `PostToolUse`, commands async with completion shown on the owner
+  chat, `agent` prompts injected into the next agent turn, only for
+  executed tools — never for refusals), counted in the delivery
+  summary (`hooks: N commands, M prompts`).
 - **Skills** (`.kiro/skills/*/SKILL.md`, Claude-compatible frontmatter
   `name`/`description`, body = instructions) : `/skills` lists them,
   `/skill <name> [text]` prefixes the skill to the current draft

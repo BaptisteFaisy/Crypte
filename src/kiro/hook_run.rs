@@ -12,10 +12,10 @@
 use std::collections::VecDeque;
 use std::path::Path;
 
-use super::hook_exec::{HookOutcome, HOOK_TIMEOUT};
+use super::hook_exec::HookOutcome;
 use super::hook_match;
 use super::hooks::{Hook, Trigger};
-use crate::app::{App, Incoming};
+use crate::app::App;
 use crate::chat::Role;
 
 /// Déclenchements gardés pour `/hooks`.
@@ -157,22 +157,7 @@ impl App {
             });
             return;
         }
-        let tx = self.tx.clone();
-        let cwd = project.to_path_buf();
-        let name = name.to_string();
-        let cmd = cmd.to_string();
-        tokio::spawn(async move {
-            let (ok, text, ms) = super::hook_exec::run_hook_command(&cmd, &cwd, HOOK_TIMEOUT).await;
-            let out = HookOutcome {
-                chat,
-                name,
-                trigger,
-                ok,
-                text,
-                ms,
-            };
-            let _ = tx.send(Incoming::HookDone(out)).await;
-        });
+        super::hook_exec::spawn_command(&self.tx, chat, name, cmd, trigger, project);
     }
 
     /// Tombée hook : ligne système sur le chat d'origine + historique.
@@ -255,7 +240,7 @@ impl App {
 }
 
 /// Hooks du trigger dont le matcher (absent = toujours) matche `target`.
-fn select_hooks(
+pub(crate) fn select_hooks(
     trigger: Trigger,
     target: &str,
     project: &Path,

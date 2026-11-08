@@ -9,6 +9,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use super::hooks::Trigger;
+use crate::app::Incoming;
 
 /// Timeout d'une commande hook (Kiro-like, jamais bloquant).
 pub const HOOK_TIMEOUT: Duration = Duration::from_secs(30);
@@ -64,6 +65,34 @@ pub async fn run_hook_command(cmd: &str, cwd: &Path, timeout: Duration) -> (bool
     }
     let text = crate::provider::truncate(&text, HOOK_OUT_MAX);
     (out.status.success(), text, ms(started))
+}
+
+/// Lance une commande en fond, résultat via `Incoming::HookDone`
+/// (chats et sous-agents partagent ce spawn, même tombée).
+pub(crate) fn spawn_command(
+    tx: &tokio::sync::mpsc::Sender<Incoming>,
+    chat: usize,
+    name: &str,
+    cmd: &str,
+    trigger: Trigger,
+    cwd: &Path,
+) {
+    let tx = tx.clone();
+    let cwd = cwd.to_path_buf();
+    let name = name.to_string();
+    let cmd = cmd.to_string();
+    tokio::spawn(async move {
+        let (ok, text, ms) = run_hook_command(&cmd, &cwd, HOOK_TIMEOUT).await;
+        let out = HookOutcome {
+            chat,
+            name,
+            trigger,
+            ok,
+            text,
+            ms,
+        };
+        let _ = tx.send(Incoming::HookDone(out)).await;
+    });
 }
 
 #[cfg(test)]
