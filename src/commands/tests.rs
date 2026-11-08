@@ -414,6 +414,12 @@ fn parse_cloud_args_bruts() {
 }
 
 #[test]
+fn parse_powers_nu() {
+    assert_eq!(parse("/powers"), Some(Command::Powers));
+    assert!(crate::texts::help_text().contains("/powers"));
+}
+
+#[test]
 fn parse_workflow_args_bruts() {
     assert_eq!(parse("/workflow"), Some(Command::Workflow(vec![])));
     assert_eq!(
