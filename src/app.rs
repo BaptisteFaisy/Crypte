@@ -46,8 +46,7 @@ use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
 use crate::settings::Settings;
 use crate::shop::Shop;
-use crate::tools::flow::Delivery;
-use crate::tools::flow::ToolRun;
+use crate::tools::flow::{Delivery, ToolRun};
 use crate::web::WebAnswer;
 
 /// Message async d'une tâche provider : chat (`idx`, époque du vol),
@@ -57,7 +56,7 @@ use crate::web::WebAnswer;
 /// génération spec (`chat`, état chaîné, voir [`crate::kiro::spec_run`]),
 /// MCP (`/mcp refresh` terminé, statut à afficher), hook (commande
 /// terminée, voir [`crate::kiro::hook_run`]), critique de Kiro (voir
-/// [`crate::phantom`]).
+/// [`crate::phantom`]), cloud (voir [`crate::kiro::cloud`]).
 pub(crate) enum Incoming {
     Chat(usize, u64, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
@@ -69,6 +68,7 @@ pub(crate) enum Incoming {
     SpecNew(usize, SpecGen, Result<Completion>),
     McpRefresh(String),
     HookDone(HookOutcome),
+    Cloud(usize, usize, crate::kiro::cloud::CloudMsg),
 }
 
 /// État global de l'application.
@@ -157,6 +157,7 @@ pub struct App {
     pub(crate) events: EventLog,
     /// VPS : profils nommés + statuts distants (`/vps`).
     pub(crate) vps: crate::vps::VpsRuntime,
+    pub(crate) cloud: crate::kiro::cloud::CloudJobs,
     pub(crate) tx: mpsc::Sender<Incoming>,
     pub(crate) rx: mpsc::Receiver<Incoming>,
     /// Pool borné d'appels LLM (plafond `CRYPTE_MAX_FLIGHT`, défaut 4).
@@ -256,6 +257,7 @@ impl App {
                 Incoming::SpecNew(chat, gen, reply) => self.drain_spec_new(chat, gen, reply),
                 Incoming::McpRefresh(text) => self.drain_mcp_refresh(text),
                 Incoming::HookDone(out) => self.drain_hook_done(out),
+                Incoming::Cloud(chat, job, msg) => self.drain_cloud(chat, job, msg),
             }
         }
         routed
