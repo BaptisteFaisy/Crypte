@@ -213,25 +213,12 @@ pub fn drive_outbox(core: &Core, tools: &Mutex<ToolsBackend>, app: &AppHandle) {
     }
 }
 
-/// Applique une sortie (les `Spawn*` partent en tâches détachées).
+/// Applique une sortie (écrits core ici, events/spawns à côté).
 fn drive_one(core: &Core, tools: &Mutex<ToolsBackend>, app: &AppHandle, out: BackendOut) {
     match out {
         BackendOut::ChatLine { chat, text } => core.push_system_to(chat, text, true),
         BackendOut::DisplayText { chat, text } => core.push_system_to(chat, text, false),
         BackendOut::SetSending { chat, sending } => core.set_sending(chat, sending),
-        BackendOut::Confirm { chat, call } => {
-            let _ = app.emit(
-                UI_CHANNEL,
-                UiEvent::ToolConfirm {
-                    request: ToolConfirmView { chat, call },
-                },
-            );
-        }
-        BackendOut::SpawnExec { chat, call } => spawn_exec(app.clone(), chat, call),
-        BackendOut::SpawnLlm { chat, wire } => spawn_llm(app.clone(), chat, wire),
-        BackendOut::Delivered { chat, delivery } => {
-            let _ = app.emit(UI_CHANNEL, UiEvent::ToolDelivery { chat, delivery });
-        }
         BackendOut::Finalize { chat } => {
             if let Ok(mut tools) = tools.lock() {
                 tools.tool_clear(chat);
@@ -245,6 +232,30 @@ fn drive_one(core: &Core, tools: &Mutex<ToolsBackend>, app: &AppHandle, out: Bac
             core.ledger_add(chat, prompt, completion, 0.0);
             core.almanac_record(prompt, completion);
         }
+        BackendOut::AskConfirm { .. } => {
+            // La ligne `…? (y/n)` accompagne déjà (ChatLine) ; le frontend
+            // suit la ligne + `spec_respond` (pas d'event contrat).
+        }
+        other => drive_event_or_spawn(core, app, other),
+    }
+}
+
+/// Sorties events + spawns (la seconde moitié de `drive_one`).
+fn drive_event_or_spawn(core: &Core, app: &AppHandle, out: BackendOut) {
+    match out {
+        BackendOut::Confirm { chat, call } => {
+            let _ = app.emit(
+                UI_CHANNEL,
+                UiEvent::ToolConfirm {
+                    request: ToolConfirmView { chat, call },
+                },
+            );
+        }
+        BackendOut::SpawnExec { chat, call } => spawn_exec(app.clone(), chat, call),
+        BackendOut::SpawnLlm { chat, wire } => spawn_llm(app.clone(), chat, wire),
+        BackendOut::Delivered { chat, delivery } => {
+            let _ = app.emit(UI_CHANNEL, UiEvent::ToolDelivery { chat, delivery });
+        }
         BackendOut::SpawnGen { chat, gen } => spawn_gen(app.clone(), chat, gen),
         BackendOut::SpawnAgent {
             chat,
@@ -256,10 +267,6 @@ fn drive_one(core: &Core, tools: &Mutex<ToolsBackend>, app: &AppHandle, out: Bac
             task,
         } => {
             spawn_agent(app.clone(), chat, name, index, total, label, prompt, task);
-        }
-        BackendOut::AskConfirm { .. } => {
-            // La ligne `…? (y/n)` accompagne déjà (ChatLine) ; le frontend
-            // suit la ligne + `spec_respond` (pas d'event contrat).
         }
         BackendOut::Progress {
             name,
@@ -293,6 +300,7 @@ fn drive_one(core: &Core, tools: &Mutex<ToolsBackend>, app: &AppHandle, out: Bac
         BackendOut::Critique { text } => {
             let _ = app.emit(UI_CHANNEL, UiEvent::Critic { text });
         }
+        _ => {}
     }
 }
 

@@ -15,6 +15,7 @@
 pub mod agents;
 pub mod almanac;
 pub mod almanac_disk;
+pub mod almanac_usage;
 pub mod apparition;
 pub mod bestiary;
 pub mod bridge;
@@ -53,6 +54,7 @@ pub mod fx;
 pub mod haunt;
 pub mod history;
 pub mod hub;
+pub mod invoke;
 pub mod interop;
 pub mod kiro;
 pub mod known;
@@ -129,101 +131,7 @@ pub fn run(events_log: Option<std::path::PathBuf>) {
             setup_tasks(app.handle().clone(), channels, journal);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            tauri_chat::chat_list,
-            tauri_chat::chat_new,
-            tauri_chat::chat_select,
-            tauri_chat::chat_close,
-            tauri_chat::chat_clear,
-            tauri_chat::chat_send,
-            tauri_chat::chat_stop,
-            tauri_chat::chat_state,
-            tauri_chat::chat_compact,
-            tauri_chat::chat_set_model,
-            tauri_chat::chat_set_thinking,
-            tauri_chat::usage_get,
-            tauri_chat::ctx_gauge,
-            tauri_more::agent_spawn,
-            tauri_more::agent_ask,
-            tauri_more::agents_list,
-            tauri_more::tell_send,
-            tauri_more::msg_send,
-            tauri_more::link_add,
-            tauri_more::link_remove,
-            tauri_more::links_list,
-            tauri_more::connect_status,
-            tauri_more::connect_save,
-            tauri_more::connect_muse,
-            tauri_more::providers_list,
-            tauri_more::provider_add,
-            tauri_more::provider_set_key,
-            tauri_more::provider_remove,
-            tauri_more::provider_select,
-            tauri_more::bestiary_get,
-            tauri_more::bestiary_random,
-            tauri_more::bestiary_list,
-            cmd_tools::tools_status,
-            cmd_tools::tools_set,
-            cmd_tools::tools_list,
-            cmd_tools::tool_decide,
-            cmd_tools::permissions_get,
-            cmd_tools::permissions_set_mode,
-            cmd_tools::permissions_set_rule,
-            cmd_tools::permissions_reset,
-            cmd_web::web_search,
-            cmd_kiro::kiro_status,
-            cmd_kiro::skills_list,
-            cmd_kiro::skill_inject,
-            cmd_kiro::memory_remember,
-            cmd_kiro::checkpoints_list,
-            cmd_kiro::checkpoint_rewind,
-            cmd_kiro::hooks_list,
-            cmd_spec::spec_new,
-            cmd_spec::spec_show,
-            cmd_spec::spec_run,
-            cmd_spec::spec_respond,
-            cmd_mcp::mcp_status,
-            cmd_mcp::mcp_refresh,
-            cmd_critic::critic_set,
-            cmd_critic::critic_smack,
-            cmd_shop::shop_state,
-            cmd_shop::shop_buy,
-            cmd_apparition::apparition_state,
-            cmd_apparition::spook,
-            cmd_hub::hub_snapshot,
-            cmd_haunt::haunt_start,
-            cmd_haunt::haunt_stop,
-            cmd_haunt::haunt_input,
-            cmd_vps::vps_list,
-            cmd_vps::vps_launch,
-            cmd_vps::vps_stop,
-            cmd_vps::vps_status,
-            cmd_vps::vps_add,
-            cmd_vps::vps_remove,
-            cmd_vps::vps_install,
-            cmd_mbox_core::mbox_tail,
-            cmd_mbox_core::mbox_send,
-            cmd_mbox_core::mbox_bus,
-            cmd_mbox_core::mbox_digest,
-            cmd_mbox_core::mbox_rotate,
-            cmd_mbox_core::mbox_hb,
-            cmd_mbox_core::mbox_hb_list,
-            cmd_mbox_ordres::mbox_ordre_new,
-            cmd_mbox_ordres::mbox_ordre_list,
-            cmd_mbox_ordres::mbox_ordre_revoke,
-            cmd_mbox_ordres::mbox_ordre_ack,
-            cmd_mbox_ordres::mbox_ordre_pull,
-            cmd_mbox_ordres::mbox_ordre_delegate,
-            cmd_mbox_ordres::mbox_jeton_new,
-            cmd_mbox_ordres::mbox_jeton_revoke,
-            cmd_mbox_ordres::mbox_jeton_list,
-            cmd_mbox_ordres::mbox_jeton_purge,
-            cmd_mbox_ops::mbox_doctor,
-            cmd_mbox_ops::mbox_metriques,
-            cmd_mbox_ops::mbox_piste,
-            cmd_mbox_ops::mbox_vague,
-            cmd_mbox_ops::mbox_fantome,
-        ])
+        .invoke_handler(invoke::dispatch)
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
                 use tauri::Manager;
@@ -255,55 +163,51 @@ fn setup_tasks(
         mut incoming,
         mut events,
     } = channels;
-    tauri::async_runtime::spawn({
-        let handle = handle.clone();
-        async move {
-            use tauri::Manager;
-            while let Some(inc) = incoming.recv().await {
-                let core = handle.state::<Core>();
-                match core.route(inc) {
-                    DrainOutcome::ToolCalls {
-                        chat,
-                        done,
-                        elapsed,
-                    } => {
-                        let tools = handle.state::<std::sync::Mutex<ToolsBackend>>();
-                        bridge::drain_tool_calls(&core, &tools, &handle, chat, &done, elapsed);
-                    }
-                    DrainOutcome::Done | DrainOutcome::Ignored => {}
-                }
-            }
+    let route = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(inc) = incoming.recv().await {
+            route_one(&route, inc).await;
         }
     });
-    tauri::async_runtime::spawn({
-        let handle = handle.clone();
-        async move {
-            use tauri::Manager;
-            while let Some(event) = events.recv().await {
-                let core = handle.state::<Core>();
-                let tools = handle.state::<std::sync::Mutex<ToolsBackend>>();
-                bridge::on_event(&core, &tools, &handle, &event);
-                use tauri::Emitter;
-                let _ = handle.emit(bridge::CRYPTE_EVENT, &event);
-            }
+    let relay = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        use tauri::Manager;
+        while let Some(event) = events.recv().await {
+            let core = relay.state::<Core>();
+            let tools = relay.state::<std::sync::Mutex<ToolsBackend>>();
+            bridge::on_event(&core, &tools, &relay, &event);
+            use tauri::Emitter;
+            let _ = relay.emit(bridge::CRYPTE_EVENT, &event);
         }
     });
-    tauri::async_runtime::spawn({
-        let handle = handle.clone();
-        async move {
-            let mut ticker = tokio::time::interval(std::time::Duration::from_millis(100));
-            let mut tick: u64 = 0;
-            let mut last_apparition = String::new();
-            loop {
-                ticker.tick().await;
-                tick += 1;
-                tick_once(&handle, tick, &mut last_apparition);
-            }
-        }
-    });
+    spawn_tick(handle.clone());
     if let Some(journal) = journal {
         tauri::async_runtime::spawn(sonde_timer::spawn_sonde_timer(handle, journal));
     }
+}
+
+/// Route un `Incoming` (boucle outils si appels d'outils).
+async fn route_one(handle: &tauri::AppHandle, inc: Incoming) {
+    use tauri::Manager;
+    let core = handle.state::<Core>();
+    if let DrainOutcome::ToolCalls { chat, done, elapsed } = core.route(inc) {
+        let tools = handle.state::<std::sync::Mutex<ToolsBackend>>();
+        bridge::drain_tool_calls(&core, &tools, handle, chat, &done, elapsed);
+    }
+}
+
+/// Boucle du tick 10 Hz (autosave, sync, simus, frames UI).
+fn spawn_tick(handle: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(100));
+        let mut tick: u64 = 0;
+        let mut last_apparition = String::new();
+        loop {
+            ticker.tick().await;
+            tick += 1;
+            tick_once(&handle, tick, &mut last_apparition);
+        }
+    });
 }
 
 /// Un tick 10 Hz : autosave, sync, simus, frames UI.

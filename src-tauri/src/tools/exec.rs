@@ -330,7 +330,14 @@ mod tests {
 
     #[tokio::test]
     async fn navigateur_via_doublure_avec_session() {
-        let dir = std::env::temp_dir().join(format!("kh-tools-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "kh-tools-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let fake = dir.join("agent-browser");
         std::fs::write(
@@ -350,7 +357,7 @@ mod tests {
             ..Bins::system()
         };
         let out = run_tool_with(0, "browser_click", r#"{"target":"@e3"}"#, &bins).await;
-        assert!(out.ok);
+        assert!(out.ok, "browser_click a échoué : {}", out.text);
         assert!(out
             .text
             .contains(&format!("SESSION=crypte-{}", std::process::id())));
