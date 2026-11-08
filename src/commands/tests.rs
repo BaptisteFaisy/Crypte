@@ -410,6 +410,12 @@ fn parse_cloud_args_bruts() {
 }
 
 #[test]
+fn parse_powers_nu() {
+    assert_eq!(parse("/powers"), Some(Command::Powers));
+    assert!(crate::texts::help_text().contains("/powers"));
+}
+
+#[test]
 fn parse_steer_nom_optionnel() {
     assert_eq!(parse("/steer"), Some(Command::Steer(None)));
     assert_eq!(

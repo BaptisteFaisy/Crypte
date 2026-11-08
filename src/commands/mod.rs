@@ -65,6 +65,7 @@ pub enum Command {
         args: Vec<String>,
     },
     Skills,
+    Powers,
     Steer(Option<String>),
     Skill {
         name: String,
@@ -147,6 +148,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/critic" => Some(Command::Critic(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/skills" => Some(Command::Skills),
+        "/powers" => Some(Command::Powers),
         "/steer" => Some(Command::Steer(opt_arg(&mut parts))),
         "/checkpoints" => Some(Command::Checkpoints),
         "/agent" => parse_agent(trimmed, word),

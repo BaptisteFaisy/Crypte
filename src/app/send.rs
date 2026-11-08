@@ -53,6 +53,7 @@ impl App {
             .unwrap_or(text);
         let judged = text.clone();
         let auto = self.auto_steer_blocks(&text);
+        let powers = self.power_blocks(&text);
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
@@ -79,6 +80,17 @@ impl App {
                 .join(", ");
             self.push_system(format!("steering auto: {names}"));
         }
+        if !powers.is_empty() {
+            let tagged: Vec<(String, String)> = powers
+                .iter()
+                .map(|(power, skill, body)| (format!("{power}/{skill}"), body.clone()))
+                .collect();
+            crate::kiro::steering::prefix_tagged(&mut history, "power", &tagged);
+            let mut names: Vec<&str> = powers.iter().map(|(power, _, _)| power.as_str()).collect();
+            names.sort_unstable();
+            names.dedup();
+            self.push_system(format!("powers: {}", names.join(", ")));
+        }
         if self.tools_on {
             let wire = crate::tools::flow::tooled_wire(history);
             let mcp = self.mcp.clone();
@@ -100,6 +112,12 @@ impl App {
         // Kiro juge le prompt en parallèle (même modèle, bulle), après
         // l'appel du chat : le permis du pool va d'abord à la réponse.
         self.critique(id, &judged);
+    }
+
+    /// Skills des powers matchant la demande (`power/skill`, corps).
+    fn power_blocks(&self, prompt: &str) -> Vec<(String, String, String)> {
+        let powers = crate::kiro::powers::load_all(self.t5.kiro_global.as_deref());
+        crate::kiro::powers::activation_blocks(&powers, prompt)
     }
 
     /// Blocs steering `auto` matchant la demande (rechargés à chaque
@@ -217,6 +235,43 @@ mod tests {
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].0, "r");
         assert!(app.auto_steer_blocks("bonjour").is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Envoi : le mot-clé power annonce `powers: db`.
+    #[tokio::test]
+    async fn send_annonce_powers_matche() {
+        let mut app = test_app();
+        let dir = std::env::temp_dir().join(format!("kh-send-powers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let power = dir.join("powers/installed/db");
+        std::fs::create_dir_all(power.join("skills/indexes")).unwrap();
+        std::fs::write(
+            power.join("plugin.json"),
+            r#"{"name": "db", "keywords": ["postgres"]}"#,
+        )
+        .unwrap();
+        std::fs::write(power.join("skills/indexes/SKILL.md"), "Corps.").unwrap();
+        let empty = dir.join("proj");
+        std::fs::create_dir_all(&empty).unwrap();
+        app.t5.kiro_project = empty;
+        app.t5.kiro_global = Some(dir.clone());
+        app.mcp = crate::kiro::mcp_pool::McpState::for_config(crate::kiro::mcp::Config::default());
+        app.sessions
+            .current_mut()
+            .chat
+            .input
+            .push_str("tune postgres indexes");
+        app.send();
+        let texts: Vec<String> = app
+            .sessions
+            .current()
+            .chat
+            .messages()
+            .iter()
+            .map(|msg| msg.text.clone())
+            .collect();
+        assert!(texts.iter().any(|t| t.contains("powers: db")), "{texts:?}");
         std::fs::remove_dir_all(&dir).ok();
     }
 

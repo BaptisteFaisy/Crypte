@@ -191,13 +191,19 @@ fn sig_words(text: &str) -> Vec<String> {
 /// consigne questions, sinon consigne seule) — éphémère, jamais
 /// l'historique stocké.
 pub fn prefix_auto(wire: &mut Vec<(String, String)>, blocks: &[(String, String)]) {
+    prefix_tagged(wire, "steering", blocks);
+}
+
+/// Insère des blocs taggés `[tag:nom]` après le run `system` de
+/// tête (générique : steering `auto`, powers activés).
+pub fn prefix_tagged(wire: &mut Vec<(String, String)>, tag: &str, blocks: &[(String, String)]) {
     if blocks.is_empty() {
         return;
     }
     let at = wire.iter().take_while(|(role, _)| role == "system").count();
     let joined = blocks
         .iter()
-        .map(|(name, body)| format!("[steering:{name}]\n{body}"))
+        .map(|(name, body)| format!("[{tag}:{name}]\n{body}"))
         .collect::<Vec<_>>()
         .join("\n\n");
     wire.insert(at, (String::from("system"), joined));

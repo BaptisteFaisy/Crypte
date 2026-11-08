@@ -31,6 +31,8 @@ pub mod mcp_conn;
 pub mod mcp_pool;
 pub mod memory;
 pub mod memory_cmds;
+pub mod powers;
+pub mod powers_cmds;
 pub mod skills;
 pub mod skills_cmds;
 pub mod spec;
