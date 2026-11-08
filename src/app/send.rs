@@ -112,6 +112,12 @@ mod tests {
     #[tokio::test]
     async fn question_drain_then_digit_send_round_trip() {
         let mut app = test_app();
+        // Config vide injectée : hermétique au .kiro/ réel du dépôt (pas de spawn MCP).
+        let vide = std::env::temp_dir().join(format!("kh-send-{}", std::process::id()));
+        std::fs::create_dir_all(&vide).unwrap();
+        app.t5.kiro_project = vide.clone();
+        app.t5.kiro_global = None;
+        app.mcp = crate::kiro::mcp_pool::McpState::for_config(crate::kiro::mcp::Config::default());
         let raw = "look:\n```question\nShall we go on?\n1. Yes\n2. No thanks\n```";
         app.drain_chat(
             0,
@@ -145,5 +151,6 @@ mod tests {
             "digit sends the label"
         );
         assert!(sess.sending, "send goes out normally");
+        std::fs::remove_dir_all(&vide).ok();
     }
 }

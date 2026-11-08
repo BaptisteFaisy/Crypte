@@ -297,6 +297,13 @@ mod tests {
         path
     }
 
+    /// Dossier projet vide (hermétique au `.kiro/` réel du dépôt, à nettoyer).
+    fn empty_project_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("kh-lazy-{}-vide-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
     /// Texte du dernier message affiché du chat courant.
     fn last_text(app: &App) -> String {
         app.sessions
@@ -323,9 +330,12 @@ mod tests {
 
     #[test]
     fn lazy_charge_epingle_et_annonce_une_seule_fois() {
-        // Hermétique sans env : projet = cwd (sans .kiro), global = None.
+        // Projet vide injecté : hermétique au .kiro/ réel du dépôt.
         let path = tmp_file("unique", "contexte v1");
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
+        let vide = empty_project_dir("unique");
+        app.t5.kiro_project = vide.clone();
+        app.t5.kiro_global = None;
         app.ensure_agents_loaded();
         assert_eq!(app.agents_md.as_deref(), Some("contexte v1"));
         assert!(app.sessions.current().pinned_system);
@@ -338,6 +348,7 @@ mod tests {
         app.add_chat();
         assert!(app.sessions.current().pinned_system);
         std::fs::remove_file(&path).ok();
+        std::fs::remove_dir_all(&vide).ok();
     }
 
     #[test]
@@ -345,12 +356,16 @@ mod tests {
         let _env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let path = tmp_file("multi", "contexte");
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
+        let vide = empty_project_dir("multi");
+        app.t5.kiro_project = vide.clone();
+        app.t5.kiro_global = None;
         app.add_chat();
         assert_eq!(app.sessions.count(), 2);
         app.ensure_agents_loaded();
         assert!(app.sessions.get(0).unwrap().pinned_system);
         assert!(app.sessions.get(1).unwrap().pinned_system);
         std::fs::remove_file(&path).ok();
+        std::fs::remove_dir_all(&vide).ok();
     }
 
     #[test]
@@ -358,6 +373,9 @@ mod tests {
         let _env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let path = std::env::temp_dir().join(format!("kh-lazy-{}-absent", std::process::id()));
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
+        let vide = empty_project_dir("absent");
+        app.t5.kiro_project = vide.clone();
+        app.t5.kiro_global = None;
         app.ensure_agents_loaded();
         assert!(app.agents_md.is_none());
         assert!(!app.sessions.current().pinned_system);
@@ -367,5 +385,6 @@ mod tests {
         app.ensure_agents_loaded();
         assert!(app.agents_md.is_none());
         std::fs::remove_file(&path).ok();
+        std::fs::remove_dir_all(&vide).ok();
     }
 }

@@ -1,0 +1,30 @@
+{
+  "name": "crypte-sprite",
+  "description": "Cree un sprite de la Crypte : plan de grille, dessin, regeneration des planches et tests.",
+  "inputs": {
+    "creature": "prompt"
+  },
+  "steps": [
+    {
+      "type": "step",
+      "id": "plan",
+      "agent": "wf-planner",
+      "prompt": "Propose le plan d'un sprite pour : {{creature}}. Choisis l'ecran (bestiaire 32x32, hub, ou jeu Haunt), le slug de fichier, et la grille complete lettre par lettre avec la palette du README (W S U K O o R r G g P p Y y N, . transparent). N'edite aucun fichier source. Ecris le plan dans .kiro/workflow-output/sprite-plan.md. Termine par send_message severity success avec le plan en resume. Reponds en francais.",
+      "artifacts": {
+        "plan": ".kiro/workflow-output/sprite-plan.md"
+      }
+    },
+    {
+      "type": "step",
+      "id": "dessiner",
+      "agent": "crypte-pixel-artiste",
+      "prompt": "Plan propose :\n\n{{plan.output}}\n\n(Fichier : {{artifacts.plan}}.) Dessine le sprite exactement selon ce plan : ecris la grille dans assets/, respecte 32 lignes de 32 lettres pour le bestiaire, verifie chaque lettre contre la palette, puis regenere docs/bestiaire.png (--planche). Termine par send_message severity success avec slug, dimensions et ecran cible."
+    },
+    {
+      "type": "step",
+      "id": "verifier",
+      "agent": "wf-coder",
+      "prompt": "Sprite dessine :\n\n{{dessiner.output}}\n\nVerifie : `./target/debug/kiro-horror-tui --apercu /tmp/crypte.ans`, `--haunt-shot /tmp/haunt.png` si le jeu est concerne, puis `cargo test` (la nettete est testee dans gfx::tests). Corrige si besoin. Termine par send_message severity success avec les resultats observes. Reponds en francais."
+    }
+  ]
+}

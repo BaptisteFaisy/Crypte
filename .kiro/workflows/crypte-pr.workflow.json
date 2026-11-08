@@ -1,0 +1,43 @@
+{
+  "name": "crypte-pr",
+  "description": "Ouvre la PR vers main (squash, update par merge) puis repond aux revues et checks jusqu'au vert.",
+  "inputs": {
+    "titre": "string"
+  },
+  "steps": [
+    {
+      "type": "step",
+      "id": "ouvrir-pr",
+      "agent": "wf-pr-submitter",
+      "prompt": "Ouvre (ou reutilise) une pull request vers la branche main avec pour titre : {{titre}}. Discipline du depot : merge en squash, mise a jour par merge de main (jamais de rebase ni de force-push sur la branche), le label hold garde une PR hors file (ne l'ajoute pas sauf demande). Enregistre {\"url\": \"...\"} dans .kiro/workflow-output/pr.json. Termine par send_message severity success avec l'URL de la PR.",
+      "artifacts": {
+        "pr": ".kiro/workflow-output/pr.json"
+      }
+    },
+    {
+      "type": "repeat",
+      "id": "boucle-revue",
+      "maxIterations": 10,
+      "onMaxIterations": "pause",
+      "stopWhen": "attente-pr.terminal",
+      "steps": [
+        {
+          "type": "watch",
+          "id": "attente-pr",
+          "handler": "github-pr",
+          "config": {
+            "prRef": ".kiro/workflow-output/pr.json",
+            "pollIntervalSec": 60
+          },
+          "idleTimeoutSec": 3600
+        },
+        {
+          "type": "step",
+          "id": "repondre",
+          "agent": "wf-pr-responder",
+          "prompt": "Activite de la PR (revues, commentaires, checks, etat merge) :\n\n{{attente-pr.output}}\n\nTraite les nouveaux commentaires et les checks en echec (details via `gh pr view <url> --json statusCheckRollup` si besoin). Si mergeable est CONFLICTING, mets a jour par merge de main (commit de merge, jamais rebase ni force-push). Tolere les doublons (livraison au moins une fois). Si le payload est un idle-timeout ou un etat MERGED/CLOSED, rapporte-le sans rien changer. Termine par send_message severity success avec le resume de l'intervention."
+        }
+      ]
+    }
+  ]
+}
