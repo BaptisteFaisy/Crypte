@@ -68,6 +68,7 @@ impl App {
         sess.sending = true;
         sess.auto_hops = 0;
         sess.sending_since = Some(Instant::now());
+        let epoch = sess.epoch;
         if self.tools_on {
             let wire = crate::tools::flow::tooled_wire(history);
             let mcp = self.mcp.clone();
@@ -76,19 +77,34 @@ impl App {
                 let reply = provider
                     .complete_with_tools(&wire, &tools, &model, effort.as_deref())
                     .await;
-                let _ = tx.send(Incoming::Chat(id, reply)).await;
+                let _ = tx.send(Incoming::Chat(id, epoch, reply)).await;
             });
         } else {
             self.pool.spawn(async move {
                 let reply = provider
                     .complete_full(&history, &model, effort.as_deref())
                     .await;
-                let _ = tx.send(Incoming::Chat(id, reply)).await;
+                let _ = tx.send(Incoming::Chat(id, epoch, reply)).await;
             });
         }
         // Kiro juge le prompt en parallèle (même modèle, bulle), après
         // l'appel du chat : le permis du pool va d'abord à la réponse.
         self.critique(id, &judged);
+    }
+
+    /// Ctrl+C : stoppe le vol du chat courant (la réponse tardive sera
+    /// ignorée, voir `epoch`) ; la boucle outil du chat est annulée
+    /// aussi (livraisons orphelines ignorées). Sans effet si rien
+    /// n'est en vol, ne quitte jamais (`q` quitte).
+    pub(super) fn stop_chat(&mut self) {
+        let id = self.sessions.index();
+        let stopped = self
+            .sessions
+            .get_mut(id)
+            .is_some_and(|sess| sess.stop_sending());
+        if stopped && self.tool_run.as_ref().is_some_and(|run| run.chat == id) {
+            self.tool_run = None;
+        }
     }
 }
 
@@ -120,6 +136,7 @@ mod tests {
         app.mcp = crate::kiro::mcp_pool::McpState::for_config(crate::kiro::mcp::Config::default());
         let raw = "look:\n```question\nShall we go on?\n1. Yes\n2. No thanks\n```";
         app.drain_chat(
+            0,
             0,
             Ok(Completion {
                 text: raw.to_string(),

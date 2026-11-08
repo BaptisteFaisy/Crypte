@@ -288,7 +288,7 @@ mod flow_tests {
         app.run_command("/tell 2 premier");
         app.run_command("/tell 2 second");
         assert_eq!(last_text(&app, 0), "Chat 2 busy — queued");
-        app.drain_chat(1, Ok(done("ok")));
+        app.drain_chat(1, 0, Ok(done("ok")));
         let dest = app.sessions.get(1).unwrap();
         assert!(dest.sending); // réponse groupée relancée aussitôt
         assert!(dest.inbox.is_empty());
@@ -319,7 +319,7 @@ mod flow_tests {
         app.add_chat();
         app.run_command("/link 1 2");
         assert_eq!(last_text(&app, 1), "linked: Chat 1 → Chat 2");
-        app.drain_chat(0, Ok(done("salut")));
+        app.drain_chat(0, 0, Ok(done("salut")));
         let dest = app.sessions.get(1).unwrap();
         assert!(dest.sending);
         assert_eq!(last_text(&app, 1), "[auto Chat 1] salut");
@@ -386,7 +386,7 @@ mod flow_tests {
         app.run_command("/link 1 2");
         app.run_command("/link 2 1");
         app.sessions.get_mut(0).unwrap().auto_hops = 8;
-        app.drain_chat(0, Ok(done("x")));
+        app.drain_chat(0, 0, Ok(done("x")));
         assert_eq!(app.bus.capped, 1);
         assert_eq!(app.bus.forwarded, 0);
         assert!(!app.sessions.get(1).unwrap().sending);
@@ -460,7 +460,7 @@ mod flow_tests {
         app.drain_agent(0, id, 0, Ok(done("trouvaille")));
         assert_eq!(app.sessions.get(0).unwrap().inbox.len(), 1); // enfilée
         assert_eq!(last_text(&app, 0), "[agent#1] trouvaille"); // affichée
-        app.drain_chat(0, Ok(done("ok"))); // tombée : versée, sans relance
+        app.drain_chat(0, 0, Ok(done("ok"))); // tombée : versée, sans relance
         let dest = app.sessions.get(0).unwrap();
         assert!(!dest.sending);
         assert!(dest.inbox.is_empty());
@@ -480,7 +480,7 @@ mod flow_tests {
         let id = app.sessions.add_agent(0, "prompt", history).unwrap();
         app.run_command("/tell 2 bonjour"); // trigger:true, enfilé
         app.drain_agent(0, id, 1, Ok(done("trouvaille"))); // trigger:false
-        app.drain_chat(1, Ok(done("ok")));
+        app.drain_chat(1, 0, Ok(done("ok")));
         let dest = app.sessions.get(1).unwrap();
         assert!(dest.sending); // le tell déclenche, une seule réponse
         assert!(dest.inbox.is_empty());

@@ -43,7 +43,7 @@ async fn pump_until_idle(app: &mut App) -> u32 {
         rounds += 1;
         match recv_next(app).await {
             Some(Incoming::ToolDone(id, deliveries)) => app.drain_tool_done(id, deliveries),
-            Some(Incoming::Chat(id, reply)) => app.drain_chat(id, reply),
+            Some(Incoming::Chat(id, epoch, reply)) => app.drain_chat(id, epoch, reply),
             _ => break,
         }
     }
@@ -96,7 +96,7 @@ async fn live_boucle_shell_avec_muse() {
         .complete_with_tools(&wire, &defs(), &model, None)
         .await
         .expect("live first call");
-    app.drain_chat(0, Ok(reply));
+    app.drain_chat(0, 0, Ok(reply));
     let rounds = pump_until_idle(&mut app).await;
     assert!(rounds > 0, "loop stuck");
     assert!(

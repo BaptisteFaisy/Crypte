@@ -219,6 +219,7 @@ impl App {
         };
         let model = self.effective_model_for(chat);
         let effort = self.thinking.clone();
+        let epoch = self.sessions.get(chat).map(|s| s.epoch).unwrap_or(0);
         let tx = self.tx.clone();
         let mcp = self.mcp.clone();
         self.pool.spawn(async move {
@@ -226,7 +227,7 @@ impl App {
             let reply = provider
                 .complete_with_tools(&wire, &tools, &model, effort.as_deref())
                 .await;
-            let _ = tx.send(Incoming::Chat(chat, reply)).await;
+            let _ = tx.send(Incoming::Chat(chat, epoch, reply)).await;
         });
     }
 
@@ -421,10 +422,10 @@ mod tests {
     /// Prochaine réponse `Chat` en erreur (refus `localhost:9`).
     async fn recv_chat_err(app: &mut App) {
         for _ in 0..100 {
-            if let Ok(Incoming::Chat(id, reply)) = app.rx.try_recv() {
+            if let Ok(Incoming::Chat(id, epoch, reply)) = app.rx.try_recv() {
                 assert_eq!(id, 0);
                 assert!(reply.is_err());
-                app.drain_chat(id, reply);
+                app.drain_chat(id, epoch, reply);
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
