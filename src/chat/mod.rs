@@ -192,7 +192,7 @@ impl ChatState {
             ..area
         };
         self.draw_history(frame, hist, view);
-        self.draw_input(frame, input, view.tick);
+        self.draw_input(frame, input);
     }
 
     /// Historique : bloc arrondi, défilable (molette / PgUp / Shift+↑↓)
@@ -238,10 +238,10 @@ impl ChatState {
         frame.render_widget(Paragraph::new(visible), inner);
     }
 
-    /// Saisie : brouillon (ou aperçu) cadré sur la fin + curseur bougie.
+    /// Saisie : brouillon (ou aperçu) cadré sur la fin + curseur bougie fixe.
     /// Sans titre par défaut ; le label custom et le masquage (`•`)
     /// servent au flow `/connect` (seul cas avec un titre).
-    fn draw_input(&self, frame: &mut Frame, area: Rect, tick: u64) {
+    fn draw_input(&self, frame: &mut Frame, area: Rect) {
         let mut block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -251,8 +251,7 @@ impl ChatState {
             block = block.title(Line::from(label.clone()));
         }
         let inner_w = area.width.saturating_sub(3) as usize;
-        let cursor = if (tick / 5) % 2 == 0 { "▌" } else { " " };
-        let cursor = Span::styled(cursor, Style::new().fg(CANDLE));
+        let cursor = Span::styled("▌", Style::new().fg(CANDLE));
         let raw = self.input_preview.as_ref().unwrap_or(&self.input);
         let line = if raw.is_empty() {
             let hint = Style::new().fg(ASH).add_modifier(Modifier::ITALIC);
