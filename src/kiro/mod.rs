@@ -28,6 +28,7 @@ pub mod mcp;
 pub mod mcp_client;
 pub mod mcp_cmds;
 pub mod mcp_conn;
+pub mod mcp_lists;
 pub mod mcp_pool;
 pub mod memory;
 pub mod memory_cmds;

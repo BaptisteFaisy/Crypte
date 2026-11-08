@@ -28,7 +28,7 @@ impl Incoming {
         let billed = match self {
             Incoming::ToolDone(..)
             | Incoming::Vps(..)
-            | Incoming::McpRefresh(..)
+            | Incoming::McpText(..)
             | Incoming::HookDone(..)
             | Incoming::Cloud(..) => return None,
             Incoming::Chat(_, _, r)

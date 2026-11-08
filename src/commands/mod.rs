@@ -85,7 +85,7 @@ pub enum Command {
     SpecRun {
         name: String,
     },
-    Mcp(Option<String>),
+    Mcp(Vec<String>),
     Hooks,
     Cloud(Vec<String>),
     Workflow(Vec<String>),
@@ -142,7 +142,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/permissions" => Some(Command::Permissions(all_args(&mut parts))),
         "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
         "/kiro" => Some(Command::Kiro),
-        "/mcp" => Some(Command::Mcp(opt_arg(&mut parts))),
+        "/mcp" => Some(Command::Mcp(all_args(&mut parts))),
         "/hooks" => Some(Command::Hooks),
         "/cloud" => Some(Command::Cloud(all_args(&mut parts))),
         "/workflow" => Some(Command::Workflow(all_args(&mut parts))),

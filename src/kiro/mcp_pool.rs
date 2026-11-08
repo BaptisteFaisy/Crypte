@@ -7,12 +7,13 @@
 
 use std::sync::Arc;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
 use super::mcp::{self, Config, Server};
 use super::mcp_client::{self, CallOutcome, McpTool};
 use super::mcp_conn::Client;
+use super::mcp_lists::{McpPrompt, McpResource, ResourceContent};
 use crate::provider::truncate;
 use crate::tools::exec::Outcome;
 use crate::tools::wire::ToolDef;
@@ -133,6 +134,56 @@ impl McpState {
     pub async fn shutdown(&self) {
         self.inner.lock().await.shutdown().await;
     }
+
+    /// Resources par serveur (connexion paresseuse, erreur par serveur).
+    pub async fn resources(&self) -> Vec<(String, Result<Vec<McpResource>, String>)> {
+        let mut pool = self.inner.lock().await;
+        pool.query_all("resources/list", json!({}))
+            .await
+            .into_iter()
+            .map(|(name, result)| {
+                let parsed = result.and_then(|value| {
+                    super::mcp_lists::parse_resources(&value).map_err(|err| format!("{err:#}"))
+                });
+                (name, parsed)
+            })
+            .collect()
+    }
+
+    /// Prompts par serveur (connexion paresseuse, erreur par serveur).
+    pub async fn prompts(&self) -> Vec<(String, Result<Vec<McpPrompt>, String>)> {
+        let mut pool = self.inner.lock().await;
+        pool.query_all("prompts/list", json!({}))
+            .await
+            .into_iter()
+            .map(|(name, result)| {
+                let parsed = result.and_then(|value| {
+                    super::mcp_lists::parse_prompts(&value).map_err(|err| format!("{err:#}"))
+                });
+                (name, parsed)
+            })
+            .collect()
+    }
+
+    /// Lit une resource (`serveur`, `uri`) : contenu texte brut.
+    pub async fn read(&self, server: &str, uri: &str) -> Result<ResourceContent, String> {
+        let mut pool = self.inner.lock().await;
+        pool.ensure_connected().await;
+        let Some(idx) = pool.find_server(server) else {
+            return Err(format!("unknown MCP server: {server}"));
+        };
+        pool.read_one(idx, uri).await
+    }
+
+    /// Rend un prompt (`serveur`, `nom`, args JSON) : messages en texte.
+    pub async fn prompt(&self, server: &str, name: &str, args: Value) -> Result<String, String> {
+        let mut pool = self.inner.lock().await;
+        pool.ensure_connected().await;
+        let Some(idx) = pool.find_server(server) else {
+            return Err(format!("unknown MCP server: {server}"));
+        };
+        pool.prompt_one(idx, name, args).await
+    }
 }
 
 /// Serveur suivi : config + client + outils + erreur éventuelle.
@@ -227,10 +278,7 @@ impl McpPool {
         let name = tracked.name.clone();
         match tracked.client.as_mut() {
             Some(client) => client.call(&name, &tool, args).await,
-            None => match &tracked.error {
-                Some(err) => anyhow::bail!("MCP server '{name}' not connected: {err}"),
-                None => anyhow::bail!("MCP server '{name}' not connected"),
-            },
+            None => anyhow::bail!("{}", not_connected(tracked)),
         }
     }
 
@@ -264,6 +312,70 @@ impl McpPool {
         out
     }
 
+    /// Index d'un serveur par nom (`None` = inconnu ou désactivé).
+    fn find_server(&self, name: &str) -> Option<usize> {
+        self.servers.iter().position(|tracked| tracked.name == name)
+    }
+
+    /// Requête brute sur chaque serveur (erreur par serveur).
+    async fn query_all(
+        &mut self,
+        method: &str,
+        params: Value,
+    ) -> Vec<(String, Result<Value, String>)> {
+        self.ensure_connected().await;
+        let mut out = Vec::new();
+        for idx in 0..self.servers.len() {
+            let name = self.servers[idx].name.clone();
+            let tracked = &mut self.servers[idx];
+            let result = match tracked.client.as_mut() {
+                Some(client) => client
+                    .request(&name, method, params.clone())
+                    .await
+                    .map_err(|err| format!("{err:#}")),
+                None => Err(tracked
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| String::from("not connected"))),
+            };
+            out.push((name, result));
+        }
+        out
+    }
+
+    /// Lit une resource sur un serveur (connecté exigé, sinon clair).
+    async fn read_one(&mut self, idx: usize, uri: &str) -> Result<ResourceContent, String> {
+        let name = self.servers[idx].name.clone();
+        let tracked = &mut self.servers[idx];
+        match tracked.client.as_mut() {
+            Some(client) => {
+                let result = client
+                    .request(&name, "resources/read", json!({"uri": uri}))
+                    .await
+                    .map_err(|err| format!("{err:#}"))?;
+                Ok(super::mcp_lists::render_resource(uri, &result))
+            }
+            None => Err(not_connected(tracked)),
+        }
+    }
+
+    /// Rend un prompt sur un serveur (connecté exigé, sinon clair).
+    async fn prompt_one(&mut self, idx: usize, name: &str, args: Value) -> Result<String, String> {
+        let server = self.servers[idx].name.clone();
+        let tracked = &mut self.servers[idx];
+        match tracked.client.as_mut() {
+            Some(client) => {
+                let params = json!({"name": name, "arguments": args});
+                let result = client
+                    .request(&server, "prompts/get", params)
+                    .await
+                    .map_err(|err| format!("{err:#}"))?;
+                Ok(super::mcp_lists::render_prompt(&result))
+            }
+            None => Err(not_connected(tracked)),
+        }
+    }
+
     /// Arrête les clients (outils oubliés, erreurs effacées, reconnectable).
     async fn shutdown(&mut self) {
         for tracked in &mut self.servers {
@@ -273,6 +385,14 @@ impl McpPool {
             tracked.tools.clear();
             tracked.error = None;
         }
+    }
+}
+
+/// `MCP server 'x' not connected…` (cause notée si connue).
+fn not_connected(tracked: &Tracked) -> String {
+    match &tracked.error {
+        Some(err) => format!("MCP server '{}' not connected: {err}", tracked.name),
+        None => format!("MCP server '{}' not connected", tracked.name),
     }
 }
 
@@ -293,70 +413,4 @@ fn server_state(tracked: &Tracked) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    /// Config à deux serveurs (`old` désactivé, donc exclu).
-    fn cfg_two() -> Config {
-        let live = Server {
-            command: Some(String::from("kh-mcp-no-such-bin")),
-            auto_approve: vec![String::from("search")],
-            ..Default::default()
-        };
-        let dead = Server {
-            disabled: true,
-            ..Default::default()
-        };
-        Config {
-            mcp_servers: HashMap::from([(String::from("gh"), live), (String::from("old"), dead)]),
-        }
-    }
-
-    /// Config vide (aucun serveur).
-    fn cfg_empty() -> Config {
-        Config {
-            mcp_servers: HashMap::new(),
-        }
-    }
-
-    #[test]
-    fn vide_sans_config() {
-        let state = McpState::for_config(cfg_empty());
-        assert!(state.status().contains("no servers"), "{}", state.status());
-        assert!(!state.is_auto("mcp_gh_search"));
-        assert!(!state.is_auto("shell_run"));
-    }
-
-    #[tokio::test]
-    async fn defs_natifs_seuls_et_appel_inconnu() {
-        let state = McpState::for_config(cfg_empty());
-        assert_eq!(state.tooled_defs().await.len(), 14);
-        let out = state.call(0, "mcp_gh_search", "{}").await;
-        assert!(!out.ok);
-        assert!(out.text.contains("unknown MCP tool"), "{}", out.text);
-        let bad = state.call(0, "mcp_gh_search", "nope").await;
-        assert!(!bad.ok);
-        assert!(bad.text.contains("invalid JSON"), "{}", bad.text);
-    }
-
-    #[test]
-    fn statut_liste_enabled_seuls() {
-        let state = McpState::for_config(cfg_two());
-        let text = state.status();
-        assert!(text.contains("1 server"), "{text}");
-        assert!(text.contains("gh (stdio, not connected)"), "{text}");
-        assert!(!text.contains("old"), "{text}");
-    }
-
-    #[tokio::test]
-    async fn refresh_reconnecte_et_arret_propre() {
-        let state = McpState::for_config(cfg_empty());
-        state.shutdown().await;
-        let text = state.refresh_with(cfg_two()).await;
-        assert!(text.contains("1 server"), "{text}");
-        assert!(text.contains("gh (stdio, error: "), "{text}");
-        let back = state.refresh_with(cfg_empty()).await;
-        assert!(back.contains("no servers"), "{back}");
-    }
-}
+mod tests;
