@@ -24,7 +24,16 @@ impl App {
         self.ensure_agents_loaded();
         let spawn =
             crate::kiro::agents_md::spawn_messages(self, self.agents_md.as_deref(), &prompt);
-        let (messages, prompt) = (spawn.messages, spawn.prompt);
+        let (mut messages, prompt) = (spawn.messages, spawn.prompt);
+        // Consigne des questions IA devant le prompt (l'estimation suit, honnête).
+        let at = messages.len().saturating_sub(1);
+        messages.insert(
+            at,
+            (
+                String::from("system"),
+                crate::question::QUESTION_SYSTEM.to_string(),
+            ),
+        );
         let custom_model = spawn.model;
         let used = crate::tokens::context_estimate(&messages);
         if used > self.context_limit() {

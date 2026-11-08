@@ -34,6 +34,7 @@ mod permissions_cmds;
 mod persist;
 mod pool;
 mod provider;
+mod question;
 mod scroll;
 mod sessions;
 mod settings;

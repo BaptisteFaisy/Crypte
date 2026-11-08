@@ -48,6 +48,7 @@ maitre `master.key` ou `KH_SETTINGS_KEY`), ecran `ui.rs`, touches
 fichier illisible préservé en `.corrupt`),
 `connect.rs` (handlers + flow `/connect` : statut, store Muse, clé masquée → modèle),
 `history.rs` (fenêtre d'envoi + nommage des chats),
+`question.rs` (bloc ```question : parse, rendu, réponse par chiffre),
 `sessions.rs` + `sessions/` (chats `chat.rs` + sous-agents `subagents.rs` +
 fermeture `close.rs`),
 `workspace.rs` (workspaces `<session>/agent`, zéro token),

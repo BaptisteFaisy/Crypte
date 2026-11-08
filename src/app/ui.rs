@@ -111,6 +111,7 @@ impl App {
             title: &sess.name,
             tick: self.tick,
             sending: sess.sending,
+            question_pending: sess.pending.is_some(),
         };
         sess.chat.draw(frame, chat, view);
         let sending = sess.sending;
@@ -145,6 +146,7 @@ impl App {
             title: &sess.name,
             tick: self.tick,
             sending: sess.sending,
+            question_pending: sess.pending.is_some(),
         };
         sess.chat.draw(frame, chat, view);
     }
@@ -213,7 +215,8 @@ impl App {
             self.sessions.index() + 1,
             self.sessions.count()
         );
-        left.extend(pill(&chat, PUMPKIN, VOID));
+        let asking = sess.pending.is_some();
+        left.extend(pill(&chat, if asking { CANDLE } else { PUMPKIN }, VOID));
         let model = short_model(self.effective_model_ref());
         let model = if compact {
             model.chars().take(10).collect::<String>()

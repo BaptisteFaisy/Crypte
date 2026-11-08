@@ -35,9 +35,11 @@ fn window_cut(len: usize, pinned: bool) -> Option<(bool, usize)> {
 }
 
 /// Fenêtre d'historique envoyée au provider : 40 derniers, tête
-/// `system` pinnée gardée. Paresseux : ne clone que la queue gardée.
+/// `system` pinnée gardée, consigne des questions IA (après le pinné,
+/// sinon en tête — `/compact` et `--once` ne passent pas ici).
+/// Paresseux : ne clone que la queue gardée.
 pub(crate) fn send_window(history: &[(String, String)], pinned: bool) -> Vec<(String, String)> {
-    match window_cut(history.len(), pinned) {
+    let mut window = match window_cut(history.len(), pinned) {
         None => history.to_vec(),
         Some((keep_pin, start)) => {
             let mut window = Vec::with_capacity(MAX_HISTORY);
@@ -47,7 +49,16 @@ pub(crate) fn send_window(history: &[(String, String)], pinned: bool) -> Vec<(St
             window.extend(history[start..].iter().cloned());
             window
         }
-    }
+    };
+    let at = usize::from(pinned && !window.is_empty());
+    window.insert(
+        at,
+        (
+            String::from("system"),
+            crate::question::QUESTION_SYSTEM.to_string(),
+        ),
+    );
+    window
 }
 
 /// Estimation tokens de la fenêtre d'envoi (`+ pending` éventuel),
@@ -80,7 +91,7 @@ pub(crate) fn window_estimate(
     if let Some(text) = pending {
         sum = sum.saturating_add(crate::tokens::estimate(text) as u64);
     }
-    sum
+    sum.saturating_add(crate::tokens::estimate(crate::question::QUESTION_SYSTEM) as u64)
 }
 
 /// Nom de chat depuis le premier message : 18 premiers caractères du
@@ -99,14 +110,16 @@ mod tests {
             .map(|i| (String::from("user"), format!("m{i}")))
             .collect();
         let cut = send_window(&plain, false);
-        assert_eq!(cut.len(), MAX_HISTORY);
-        assert_eq!(cut[0].1, "m10");
+        assert_eq!(cut.len(), MAX_HISTORY + 1);
+        assert_eq!(cut[0].1, crate::question::QUESTION_SYSTEM);
+        assert_eq!(cut[1].1, "m10");
         let mut pinned = vec![(String::from("system"), String::from("pin"))];
         pinned.extend((0..50).map(|i| (String::from("user"), format!("m{i}"))));
         let kept = send_window(&pinned, true);
-        assert_eq!(kept.len(), MAX_HISTORY);
+        assert_eq!(kept.len(), MAX_HISTORY + 1);
         assert_eq!(kept[0].1, "pin");
-        assert_eq!(kept[1].1, "m11");
+        assert_eq!(kept[1].1, crate::question::QUESTION_SYSTEM);
+        assert_eq!(kept[2].1, "m11");
     }
 
     /// Ancien algorithme (clone tout + drain) : oracle d'équivalence.
@@ -120,6 +133,14 @@ mod tests {
                 window.drain(..drop);
             }
         }
+        let at = usize::from(pinned && !window.is_empty());
+        window.insert(
+            at,
+            (
+                String::from("system"),
+                crate::question::QUESTION_SYSTEM.to_string(),
+            ),
+        );
         window
     }
 
