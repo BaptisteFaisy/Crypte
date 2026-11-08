@@ -89,9 +89,9 @@ Environment variables (prioritary):
 With `--muse-auth`, defaults become base `https://api.meta.ai/v1`
 + model `muse-spark-1.3-contributor` (key read from `auth.json`).
 
-Or the provider saved with `/settings` (the last one connected is
-remembered and reused at startup and by `--once`) — the environment
-and `--config` still win over it.
+Or the provider saved with `/connect` or `/settings` (the last one
+connected is remembered and reused at startup and by `--once`) — the
+environment and `--config` still win over it.
 
 Or a TOML file via `--config <file>` (flat keys or `[provider]`
 section, overridden by the environment):
@@ -118,6 +118,9 @@ answer `not connected: /connect openai|muse`.
   unreadable, manual input`, default model
   `muse-spark-1.3-contributor`).
 - `Esc` cancels the flow (`connection cancelled`), the draft is kept.
+- Connecting stores the key encrypted in the vault (`key saved for
+  {provider} (encrypted)`) and reconnects it at the next startup;
+  `d` in `/settings` erases it.
 - The key is never displayed, logged or pushed into the chat:
   only the `connected to {provider} ({model})` confirmation shows.
 
