@@ -1,4 +1,4 @@
-//! Mise en page de la crypte : fond à la bougie, en-tête (onglets + jauge
+//! Mise en page de la crypte : fond chaud, en-tête (onglets + jauge
 //! de peur), corps selon l'écran, barre d'état powerline, overlay d'effets.
 //!
 //! Pensé pour Ghostty : truecolor partout, séparateurs powerline et blocs
