@@ -51,7 +51,7 @@ WORK = ''
 ia_ok, heur_ok, failed_files, regen_required = [], [], [], []
 rebased_onto, ia_hunks = '', {}
 
-arm_scrub(GH, PUSH_TOKEN, CFG['agnes_key'], CFG['key'])
+arm_scrub(GH, PUSH_TOKEN, CFG['fw_key'], CFG['key'])
 
 
 def read_attempts(num):
@@ -453,7 +453,7 @@ def selftest():
 
     check('config vide sans clés', not resolve.llm_available(CFG)
           if not os.environ.get('LLM_BASE')
-          and not os.environ.get('AGNES_API_KEY') else True)
+          and not os.environ.get('FIREWORKS_API_KEY') else True)
     check('constantes gate alignées',
           RESOLVER_CHECK == 'Hermes sous-agent (conflits)'
           and LABEL_FAILED == 'hermes/resolution-echouee')

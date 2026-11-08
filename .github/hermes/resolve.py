@@ -36,8 +36,10 @@ HUNK_MAX_COUNT = 50
 # Fichiers critiques : jamais de prise de côté — IA ou humain, sinon échec.
 CRITICAL_HINTS = ('.github/', 'Cargo.toml', 'src/', 'deploy/', 'Dockerfile')
 
-AGNES_URL = 'https://apihub.agnes-ai.com/v1/chat/completions'
-AGNES_TIMEOUT = 120
+FW_URL = 'https://api.fireworks.ai/inference/v1/chat/completions'
+FW_TIMEOUT = 120
+# Même modèle que l'agent fw (DeepSeek V4.1 Flash via Fireworks).
+FW_MODEL = 'accounts/fireworks/models/deepseek-v4p1-flash-1017'
 
 
 def load_llm_config():
@@ -49,12 +51,12 @@ def load_llm_config():
                      or 'muse-spark-1.3-contributor',
             'fallback': (os.environ.get('LLM_MODEL_FALLBACK') or '').strip()
                         or 'combo/cheap',
-            'agnes_key': (os.environ.get('AGNES_API_KEY') or '').strip()}
+            'fw_key': (os.environ.get('FIREWORKS_API_KEY') or '').strip()}
 
 
 def llm_available(cfg):
-    """Vrai si au moins une jambe LLM est configurée (passerelle ou Agnes)."""
-    return bool(cfg['base'] or cfg['agnes_key'])
+    """Vrai si au moins une jambe LLM est configurée (passerelle ou fw)."""
+    return bool(cfg['base'] or cfg['fw_key'])
 
 
 def is_derived(path):
@@ -86,7 +88,7 @@ def llm_skip_reason(path, *sides):
 
 
 def llm_chat(cfg, sysmsg, user_text, label, max_tokens=8000, timeout=180):
-    """Un appel LLM : passerelle locale d'abord, Agnes direct en repli.
+    """Un appel LLM : passerelle locale d'abord, Fireworks direct en repli.
 
     Rend le texte dépouillé de son bloc de code, ou None si aucun appel n'a
     servi (clés absentes, HTTP KO, sortie refusée). Jamais d'exception.
@@ -97,8 +99,8 @@ def llm_chat(cfg, sysmsg, user_text, label, max_tokens=8000, timeout=180):
         if cfg['fallback'] and cfg['fallback'] != cfg['model']:
             legs.append((cfg['base'] + '/chat/completions', cfg['fallback'],
                          'router'))
-    if cfg['agnes_key']:
-        legs.append((AGNES_URL, 'agnes-3.0-flash', 'agnes'))
+    if cfg['fw_key']:
+        legs.append((FW_URL, FW_MODEL, 'fw'))
     for url, model, prov in legs:
         payload = {'model': model,
                    'messages': [{'role': 'system', 'content': sysmsg},
@@ -106,14 +108,14 @@ def llm_chat(cfg, sysmsg, user_text, label, max_tokens=8000, timeout=180):
                    'max_tokens': max_tokens, 'temperature': 0.0}
         req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                      method='POST')
-        if prov == 'agnes':
-            req.add_header('Authorization', 'Bearer ' + cfg['agnes_key'])
+        if prov == 'fw':
+            req.add_header('Authorization', 'Bearer ' + cfg['fw_key'])
         elif cfg['key']:
             req.add_header('Authorization', 'Bearer ' + cfg['key'])
         req.add_header('Content-Type', 'application/json')
         try:
             with urllib.request.urlopen(
-                    req, timeout=(timeout if prov == 'router' else AGNES_TIMEOUT)
+                    req, timeout=(timeout if prov == 'router' else FW_TIMEOUT)
                     ) as rep:
                 data = json.loads(rep.read())
         except urllib.error.HTTPError as err:
@@ -370,8 +372,13 @@ def selftest():
           valid_output('a.json', '{"a": 1}\n', '{"a": 1}') is None)
     check('valid JSON ko',
           valid_output('a.json', '{"a": }\n', '{"a": 1}') is not None)
-    cfg = {'base': '', 'key': '', 'model': 'm', 'fallback': 'm', 'agnes_key': ''}
+    cfg = {'base': '', 'key': '', 'model': 'm', 'fallback': 'm', 'fw_key': ''}
     check('sans clés : indisponible', not llm_available(cfg))
+    check('jambe directe = Fireworks',
+          FW_URL.startswith('https://api.fireworks.ai/')
+          and FW_MODEL == 'accounts/fireworks/models/deepseek-v4p1-flash-1017')
+    cfg_fw = dict(cfg, fw_key='x')
+    check('clé fw : disponible', llm_available(cfg_fw))
     check('sans clés : resolve_file None',
           resolve_file(cfg, 'a.rs', 'a', 'b', 'c') is None)
     check('sans clés : resolve_hunks (None, 0)',

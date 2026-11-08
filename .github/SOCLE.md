@@ -24,7 +24,7 @@
   `--force-with-lease` et rapporte sur la PR. `Cargo.lock` et les binaires
   (`docs/bestiaire.png`, `assets/**`) : jamais soumis à l'IA, côté base +
   signalés. Sans clés LLM : 100 % déterministe + escalade humaine, jamais
-  silencieux. Secrets requis : `AGNES_API_KEY` (ou `HERMES_LLM_BASE`),
+  silencieux. Secrets requis : `FIREWORKS_API_KEY` (ou `HERMES_LLM_BASE`),
   `HERMES_PUSH_TOKEN` (PAT contenus, optionnel mais recommandé — sinon
   ré-armement par dispatch) ; vars : `HERMES_LLM_MODEL`,
   `HERMES_LLM_MODEL_FALLBACK`. Actif après merge (code lu sur `main`) et
