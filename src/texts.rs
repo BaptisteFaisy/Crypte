@@ -26,6 +26,7 @@ pub fn help_text() -> &'static str {
      /web <query> — web search + summary with cited sources\n\
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
      /kiro — kiro .kiro/ status (steering, specs, hooks, mcp)\n\
+     /vps [ip|name|off|status|add|del|install] — run this TUI on a VPS\n\
      /help — this help\n\
      Keys: F5 scare · F7 hub · Ctrl+N · Ctrl+W close\n\
      Context: ./AGENTS.md loaded at startup (restart to reload)"

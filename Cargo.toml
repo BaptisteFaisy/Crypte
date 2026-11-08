@@ -33,7 +33,7 @@ tiktoken-rs = "0.12"
 # rand : garde tel quel (random()/random_range() exigent thread_rng des features par defaut).
 rand = "0.9"
 # toml : default-features=false retire "display" (aucun to_string, seul from_str utilise).
-toml = { version = "1", default-features = false, features = ["std", "parse", "serde"] }
+toml = { version = "1", default-features = false, features = ["std", "parse", "serde", "display"] }
 anyhow = "1"
 # Deja minimales, inchangees : ratatui-image/crossterm-only, image/png-only.
 ratatui-image = { version = "8", default-features = false, features = ["crossterm"] }

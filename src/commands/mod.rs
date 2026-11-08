@@ -56,6 +56,9 @@ pub enum Command {
     Web(String),
     Tools(Option<String>),
     Kiro,
+    Vps {
+        args: Vec<String>,
+    },
     Unknown(String),
 }
 
@@ -112,6 +115,9 @@ pub fn parse(input: &str) -> Option<Command> {
         "/link" => parse_link(trimmed, word),
         "/unlink" => parse_unlink(trimmed, word),
         "/web" => parse_web(trimmed, word),
+        "/vps" => Some(Command::Vps {
+            args: parts.map(str::to_string).collect(),
+        }),
         _ => Some(Command::Unknown(word.to_string())),
     }
 }

@@ -28,6 +28,7 @@ pub enum Screen {
     Chat,
     Hub,
     Settings,
+    Vps,
 }
 
 /// Huitièmes de bloc pour une jauge lisse.
@@ -72,6 +73,7 @@ impl App {
             Screen::Chat => self.draw_chat(frame, body),
             Screen::Hub => self.draw_hub(frame, body),
             Screen::Settings => self.settings.draw(frame, body),
+            Screen::Vps => self.draw_vps(frame, body),
         }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
