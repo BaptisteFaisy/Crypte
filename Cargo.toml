@@ -42,6 +42,10 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # AEAD (chiffrement + authentification) : mauvais fichier = erreur, pas de dechiffrement partiel.
 chacha20poly1305 = "0.10"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std", "serde"] }
+# libc : sonde terminal maison (src/gfx.rs : poll + ioctl TIOCGWINSZ sur
+# /dev/tty). Remplace Picker::from_query_stdio (ratatui-image 8.1.1) dont le
+# thread de requete fuit et vole ~1 frappe sur 2 a crossterm sur stdin.
+libc = "0.2"
 
 # IMPL-1 (perf/mem-cargo) : profil release durci (absent avant -> defauts cargo :
 # opt-level=3, debug=false, strip=none, lto=false, codegen-units=256, panic=unwind).
