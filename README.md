@@ -364,10 +364,14 @@ global `~/.kiro/`), so a project moves back and forth between both:
   tool-using send, tools show as `mcp_<server>_<tool>`, `autoApprove`
   skips confirmation ; `/mcp` shows servers + tools, `/mcp refresh`
   reconnects.
-- **Custom agents** (`.kiro/agents/*.md`, our own format: frontmatter
-  `name`/`description`/`system`, body = system prompt, `system`
-  prefixed when present) : `/agents` lists them, `/agent <name>
-  <text>` spawns with the custom prompt.
+- **Custom agents** (`.kiro/agents/`, official Kiro format: `.json`
+  or `.md`, same fields `name`/`description`/`prompt`/`model`/
+  `tools`/`excludedTools`/`mcpServers`, md body = system prompt,
+  `team/<name>` subfolders, project wins over global, json wins
+  over md) : `/agents` lists them (model/tools/mcp shown when
+  declared), `/agent <name> <text>` spawns with the custom prompt
+  and its model when declared. `tools`/`mcpServers` are read and
+  shown but not executed yet (sub-agents have no tools).
 - **Skills** (`.kiro/skills/*/SKILL.md`, Claude-compatible frontmatter
   `name`/`description`, body = instructions) : `/skills` lists them,
   `/skill <name> [text]` prefixes the skill to the current draft
@@ -413,8 +417,9 @@ conversation with an agent (exchange kept, 20 messages max, `system`
 head kept); if it is running, queued and triggered once free.
 `/agents all` lists the agents of every chat (custom
 `.kiro/agents/` agents listed after, as `custom <name>`).
-`/agent <name> <text>` spawns with the custom system prompt when
-`<name>` is known, else the text is sent as-is. Each launch also
+`/agent <name> <text>` spawns with the custom system prompt (and
+its model when declared) when `<name>` is known, else the text is
+sent as-is. Each launch also
 creates the agent's disk workspace
 `~/.config/kiro-horror-tui/workspaces/<session>/agent-<id>/`
 (pure code, zero LLM tokens), for future tools (`<session>` =
