@@ -4,9 +4,8 @@
 
 use super::boss::{Deed, DYING};
 use super::foes::{Foe, Kind};
-use super::level::TILE;
 use super::shots::{Flame, Loot, Pickup, Weapon};
-use super::{Haunt, SUB, VIEW_W};
+use super::{Haunt, SUB, VIEW_H, VIEW_W};
 use crate::theme;
 
 impl Haunt {
@@ -31,14 +30,14 @@ impl Haunt {
     /// Faucheuse : un pas, ses faux, ses fantômes, son agonie.
     pub(super) fn run_boss(&mut self) {
         let prey = self.kiro.center();
-        let ground = 9.0 * TILE;
+        let ground = self.level.mark('R').map_or(self.level.height(), |m| m.y);
         let Some(boss) = &mut self.boss else {
             return;
         };
         match boss.think(prey, ground, &mut self.dice) {
             Some(Deed::Throw(bolt)) => self.bolts.push(bolt),
             Some(Deed::Summon(x, y)) => {
-                for dx in [-22.0, 22.0] {
+                for dx in [-12.0, 12.0] {
                     self.foes.push(Foe::new(Kind::Wisp, x + dx, y));
                 }
             }
@@ -162,7 +161,8 @@ impl Haunt {
                 hit = Some(b.x);
                 return false;
             }
-            b.x > lo && b.x < hi && b.y > -48.0 && b.y < 240.0 && u32::from(b.age) < 400 * SUB
+            let below = (VIEW_H + 48) as f32;
+            b.x > lo && b.x < hi && b.y > -48.0 && b.y < below && u32::from(b.age) < 400 * SUB
         });
         if let Some(x) = hit {
             self.hurt_kiro(x);

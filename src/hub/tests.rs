@@ -180,7 +180,7 @@ fn kitty_render_sends_one_image_then_a_frame_per_draw() {
     assert!(first.contains("\x1b_G"), "1re frame non transmise");
     hub.step();
     render::draw(&mut hub, &s, area, &mut buf, Some((10, 20)));
-    let frame = hub.view.take_pending().expect("frame suivante");
+    let frame = hub.view.wait_pending().expect("frame suivante");
     assert!(frame.starts_with("\x1b_Ga=T,f=100,U=1,q=2,i="));
     assert!(hub.room >= 3.0 && hub.room <= 14.0);
 }

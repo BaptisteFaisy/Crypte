@@ -5,7 +5,7 @@
 
 use super::boss::Reaper;
 use super::foes::{Foe, Kind};
-use super::level::Zone;
+use super::level::{Zone, TILE};
 use super::player::Kiro;
 use super::shots::{Loot, Platform};
 use super::{Haunt, CANDLE, SUB, VIEW_W};
@@ -48,7 +48,7 @@ impl Haunt {
                 }
                 'g' => {
                     for k in 0..3 {
-                        let (dx, dy) = (k as f32 * 16.0, k as f32 * 10.0 - 10.0);
+                        let (dx, dy) = (k as f32 * 8.0, k as f32 * 6.0 - 6.0);
                         self.foes.push(Foe::new(Kind::Wisp, m.x + dx, m.y + dy));
                     }
                 }
@@ -86,7 +86,7 @@ impl Haunt {
             }
             Zone::Ghosts => {
                 if self.count(Kind::Wisp) < MAX_WISPS {
-                    let y = self.dice.range(20.0, 90.0);
+                    let y = self.kiro.body.y + self.dice.range(-90.0, 40.0);
                     let x = self.cam + VIEW_W as f32 + 8.0;
                     self.foes.push(Foe::new(Kind::Wisp, x, y));
                 }
@@ -95,7 +95,7 @@ impl Haunt {
             Zone::Bats => {
                 if self.count(Kind::Bat) < MAX_BATS {
                     let mut bat = Foe::new(Kind::Bat, self.cam + VIEW_W as f32 + 12.0, 0.0);
-                    bat.base = self.dice.range(40.0, 100.0);
+                    bat.base = self.kiro.body.y + self.dice.range(-50.0, 10.0);
                     bat.awake = true;
                     self.foes.push(bat);
                 }
@@ -104,7 +104,8 @@ impl Haunt {
             Zone::Heads => {
                 if self.count(Kind::Head) < MAX_HEADS {
                     let x = self.cam + VIEW_W as f32 + 10.0;
-                    self.foes.push(Foe::new(Kind::Head, x, 40.0));
+                    let y = self.kiro.body.y - 40.0;
+                    self.foes.push(Foe::new(Kind::Head, x, y));
                 }
                 64 + pause
             }
@@ -121,12 +122,14 @@ impl Haunt {
     /// un sol plein (jamais au-dessus du vide ni de l'ectoplasme).
     fn raise_mummy(&mut self) {
         let side = self.dice.sign();
-        let x = self.kiro.body.cx() + side * self.dice.range(48.0, 130.0);
-        let x = x.clamp(self.cam + 16.0, self.cam + VIEW_W as f32 - 16.0);
-        if (x - self.kiro.body.cx()).abs() < 36.0 {
+        let x = self.kiro.body.cx() + side * self.dice.range(30.0, 110.0);
+        let x = x.clamp(self.cam + 8.0, self.cam + VIEW_W as f32 - 8.0);
+        if (x - self.kiro.body.cx()).abs() < 20.0 {
             return;
         }
-        if let Some(g) = self.level.ground_below(x, 0.0) {
+        let feet = self.kiro.body.feet();
+        let ground = self.level.ground_below(x, feet - 30.0);
+        if let Some(g) = ground.filter(|g| *g < feet + 60.0) {
             self.foes.push(Foe::new(Kind::Mummy, x, g));
         }
     }
@@ -155,8 +158,8 @@ impl Haunt {
         let Some(gate) = self.level.mark('R') else {
             return;
         };
-        if self.kiro.body.cx() > gate.x + 40.0 {
-            let left = gate.x - 8.0;
+        if self.kiro.body.cx() > gate.x + 24.0 {
+            let left = gate.x - TILE / 2.0;
             self.arena = Some(left);
             self.boss = Some(Reaper::new(left));
             self.foes.retain(|f| f.kind == Kind::Coffin);
@@ -168,7 +171,11 @@ impl Haunt {
     /// neuve, créatures balayées, repères suivants réarmés.
     pub(super) fn respawn(&mut self) {
         let x = self.checkpoint;
-        let feet = self.level.ground_below(x, 0.0).unwrap_or(144.0);
+        let mark = self.level.marks.iter().find(|m| (m.x - x).abs() < 0.5);
+        let feet = mark
+            .map(|m| m.y)
+            .or_else(|| self.level.ground_below(x, 0.0));
+        let feet = feet.unwrap_or(self.level.height());
         let weapon = self.kiro.weapon;
         self.kiro = Kiro::spawn(x, feet, weapon);
         for (i, m) in self.level.marks.iter().enumerate() {
@@ -190,7 +197,7 @@ impl Haunt {
             .collect();
         self.candle = CANDLE;
         self.director = 45 * SUB as u16;
-        let max = self.level.width() - VIEW_W as f32;
-        self.cam = (x - 120.0).clamp(0.0, max);
+        let max = (self.level.width() - VIEW_W as f32).max(0.0);
+        self.cam = (x - super::LEAD).clamp(0.0, max);
     }
 }

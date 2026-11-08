@@ -32,9 +32,9 @@ pub fn draw(cv: &mut RgbaImage, game: &Haunt, cam: f32, top: f32) {
     kiro(cv, game, cam, top);
     for f in &game.flames {
         let img = &game.sprites.flame[(u32::from(f.age) / (3 * SUB) % 2) as usize];
-        let (x, y) = ((f.x - cam) as i64, (f.y - top) as i64 - 14);
-        blit(cv, img, x - 10, y, Ink::SOLID);
-        blit(cv, img, x, y - 2, Ink::SOLID);
+        let (x, y) = ((f.x - cam) as i64, (f.y - top) as i64 - 6);
+        blit(cv, img, x - 4, y, Ink::SOLID);
+        blit(cv, img, x, y - 1, Ink::SOLID);
     }
     for s in &game.shots {
         token(cv, s, cam, top);
@@ -99,7 +99,7 @@ fn foe(cv: &mut RgbaImage, game: &Haunt, f: &Foe, cam: f32, top: f32) {
     let mut at = (cx, feet);
     if f.rise > 0 {
         ink.clip = feet.round() as i64;
-        at.1 += f32::from(f.rise) / f32::from(RISE) * 30.0;
+        at.1 += f32::from(f.rise) / f32::from(RISE) * 11.0;
     } else if matches!(f.kind, Kind::Mummy | Kind::Runner) {
         at.1 -= (f.age / (6 * SUB) % 2) as f32;
     }
@@ -194,33 +194,34 @@ fn token(cv: &mut RgbaImage, s: &Shot, cam: f32, top: f32) {
     let [fill, edge, ink] = token_colours(s.weapon);
     for k in 1..4i64 {
         let tx = if back < 0 {
-            x0 - k * 3
+            x0 - k * 2
         } else {
-            x0 + r.w as i64 + k * 3
+            x0 + r.w as i64 + k * 2
         };
-        put(cv, tx, y0 + 4, edge);
+        put(cv, tx, y0 + 3, edge);
     }
-    pill(cv, x0, y0, s.word, [fill, edge, ink]);
+    pill(cv, (x0, y0), s.word, [fill, edge, ink], 1);
 }
 
-/// Pastille arrondie : bord, fond, mot en police 3×5 (aussi pour le HUD).
+/// Pastille arrondie (7 px de haut ×`k`) : bord, fond, mot en police
+/// 3×5 (tokens en vol ×1, HUD ×2).
 pub fn pill(
     cv: &mut RgbaImage,
-    x0: i64,
-    y0: i64,
+    (x0, y0): (i64, i64),
     word: &str,
     [fill, edge, ink]: [image::Rgba<u8>; 3],
+    k: i64,
 ) {
-    let w = font::width(word) + 4;
-    for dy in 0..9i64 {
-        for dx in 0..w {
-            let corner = (dx == 0 || dx == w - 1) && (dy == 0 || dy == 8);
-            if corner {
+    let (w, h) = (font::width(word) + 4, 7i64);
+    for dy in 0..h * k {
+        for dx in 0..w * k {
+            let (u, v) = (dx / k, dy / k);
+            let (side, cap) = (u == 0 || u == w - 1, v == 0 || v == h - 1);
+            if side && cap {
                 continue;
             }
-            let border = dx == 0 || dx == w - 1 || dy == 0 || dy == 8;
-            put(cv, x0 + dx, y0 + dy, if border { edge } else { fill });
+            put(cv, x0 + dx, y0 + dy, if side || cap { edge } else { fill });
         }
     }
-    font::paint(cv, x0 + 2, y0 + 2, word, 1, |_| ink);
+    font::paint(cv, x0 + 2 * k, y0 + k, word, k, |_| ink);
 }

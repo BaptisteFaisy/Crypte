@@ -1,19 +1,33 @@
-//! Rendu : compose le canevas 320×192 (ciel, niveau éclairé sur son
-//! calque, mares d'ectoplasme lumineuses, acteurs, brume, HUD) puis le
-//! présente.
-//! - Kitty (Ghostty) : agrandi ×k **entier** au plus proche voisin, image
-//!   renvoyée à chaque frame sous le même identifiant (`hub::live`).
-//! - Ailleurs : réduit au plus proche voisin, en demi-blocs.
+//! Rendu : compose le canevas 960×576 (ciel précalculé, plans en
+//! parallaxe, niveau éclairé sur son calque, mares d'ectoplasme
+//! lumineuses, acteurs, brume, vignette, HUD) puis le présente.
+//! - Kitty (Ghostty) : ×k **entier** au plus proche voisin (souvent ×1,
+//!   ×2 en HiDPI), image renvoyée à chaque frame sous le même
+//!   identifiant (`hub::live`), sur les seules cellules qui la portent.
+//! - Ailleurs ou trop petit : réduit au plus proche voisin.
+//!
+//! Les tampons (`Painter`) sont réutilisés d'une frame à l'autre : à
+//! 240 images/s, ni allocation ni ciel recalculé.
 
 use image::{imageops, RgbaImage};
 use ratatui::{buffer::Buffer, layout::Rect};
 
-use super::backdrop::{self, hash, Light};
-use super::level::{Tile, DECOR, TILE};
+use super::backdrop::{self, hash, Light, Sky};
+use super::level::{Tile, TILE};
 use super::{actors, hud, Haunt, DT, SUB, VIEW_H, VIEW_W};
 use crate::canvas::{blit, px, Ink};
 use crate::hub::{live::present_kitty, render::to_cells};
 use crate::theme;
+
+/// Tampons de rendu réutilisés : ciel fixe, calque du niveau, éclairement,
+/// canevas final.
+#[derive(Default)]
+pub struct Painter {
+    sky: Option<Sky>,
+    world: RgbaImage,
+    factors: Vec<f32>,
+    cv: RgbaImage,
+}
 
 /// Dessine le jeu dans `area` ; `cell` = taille de cellule en pixels si
 /// le terminal parle Kitty (sinon demi-blocs).
@@ -21,26 +35,32 @@ pub fn render(game: &mut Haunt, area: Rect, buf: &mut Buffer, cell: Option<(u16,
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let cv = compose(game);
+    paint(game);
     match cell {
-        Some(cell) => kitty(game, &cv, area, buf, cell),
+        Some(cell) => kitty(game, area, buf, cell),
         None => {
             let (w, h) = (u32::from(area.width), u32::from(area.height) * 2);
-            to_cells(&fit_down(&cv, w, h), area, buf);
+            to_cells(&fit_down(&game.painter.cv, w, h), area, buf);
         }
     }
 }
 
-/// Kitty : agrandi ×k entier, posé sur les seules cellules qui le
-/// contiennent (centrées) : l'image envoyée à chaque frame ne transporte
-/// pas les marges, le reste de la zone garde le fond de la crypte.
-fn kitty(game: &mut Haunt, cv: &RgbaImage, area: Rect, buf: &mut Buffer, (fw, fh): (u16, u16)) {
+/// Canevas complet d'une frame, copié (`--haunt-shot`, tests).
+pub fn snapshot(game: &mut Haunt) -> RgbaImage {
+    paint(game);
+    game.painter.cv.clone()
+}
+
+/// Kitty : agrandi ×k entier sur les seules cellules qui le contiennent
+/// (centrées) ; le reste de la zone garde le fond de la crypte.
+fn kitty(game: &mut Haunt, area: Rect, buf: &mut Buffer, (fw, fh): (u16, u16)) {
     let (fw, fh) = (u32::from(fw.max(1)), u32::from(fh.max(1)));
     let (bw, bh) = (u32::from(area.width) * fw, u32::from(area.height) * fh);
     let scale = (bw / VIEW_W).min(bh / VIEW_H);
+    let view = &mut game.view;
     if scale == 0 {
-        let small = fit_down(cv, bw, bh);
-        return present_kitty(&mut game.view, &small, 1, (bw, bh), area, buf);
+        let small = fit_down(&game.painter.cv, bw, bh);
+        return present_kitty(view, &small, 1, (bw, bh), area, buf);
     }
     let cols = (VIEW_W * scale).div_ceil(fw).min(u32::from(area.width)) as u16;
     let rows = (VIEW_H * scale).div_ceil(fh).min(u32::from(area.height)) as u16;
@@ -50,43 +70,59 @@ fn kitty(game: &mut Haunt, cv: &RgbaImage, area: Rect, buf: &mut Buffer, (fw, fh
         cols,
         rows,
     );
-    let void = crate::theme::VOID;
     for y in area.top()..area.bottom() {
         for x in area.left()..area.right() {
             if let Some(c) = buf.cell_mut((x, y)) {
                 c.reset();
-                c.set_bg(void);
+                c.set_bg(theme::VOID);
             }
         }
     }
     let size = (u32::from(cols) * fw, u32::from(rows) * fh);
-    present_kitty(&mut game.view, cv, scale, size, sub, buf);
+    present_kitty(view, &game.painter.cv, scale, size, sub, buf);
 }
 
-/// Canevas complet d'une frame (aussi pour `--haunt-shot` et les tests).
-pub fn compose(game: &Haunt) -> RgbaImage {
-    let (cam, top) = shake(game);
-    let flash = game.flash > 0;
-    let mut cv = RgbaImage::from_pixel(VIEW_W, VIEW_H, px(theme::VOID));
-    backdrop::sky(&mut cv, &game.sprites, cam, game.step, flash);
-    let mut world = RgbaImage::new(VIEW_W, VIEW_H);
-    decor(&mut world, game, cam, top);
-    tiles(&mut world, game, cam, top);
-    backdrop::light(&mut world, &lights(game, cam, top), flash);
-    imageops::overlay(&mut cv, &world, 0, 0);
-    ecto(&mut cv, game, cam, top);
-    actors::draw(&mut cv, game, cam, top);
-    backdrop::fog(
-        &mut cv,
-        cam,
-        game.step,
-        156..VIEW_H,
-        0.12,
-        theme::SPECTRE_DARK,
-    );
-    backdrop::vignette(&mut cv);
-    hud::draw(&mut cv, game);
-    cv
+/// Compose la frame dans `game.painter.cv`.
+fn paint(game: &mut Haunt) {
+    let mut p = std::mem::take(&mut game.painter);
+    p.compose(game);
+    game.painter = p;
+}
+
+impl Painter {
+    /// Ciel, plans, niveau éclairé, ectoplasme, acteurs, brume, HUD.
+    fn compose(&mut self, game: &Haunt) {
+        let (cam, top) = shake(game);
+        let flash = game.flash > 0;
+        let sky = self.sky.get_or_insert_with(Sky::new);
+        if self.cv.dimensions() != (VIEW_W, VIEW_H) {
+            self.cv = RgbaImage::new(VIEW_W, VIEW_H);
+            self.world = RgbaImage::new(VIEW_W, VIEW_H);
+        }
+        sky.paint(&mut self.cv, flash);
+        backdrop::layers(&mut self.cv, &game.sprites, cam, game.step);
+        self.world.fill(0);
+        decor(&mut self.world, game, cam, top);
+        tiles(&mut self.world, game, cam, top);
+        let lights = lights(game, cam, top);
+        backdrop::light(&mut self.world, &lights, flash, &mut self.factors);
+        overlay(&mut self.cv, &self.world);
+        ecto(&mut self.cv, game, cam, top);
+        actors::draw(&mut self.cv, game, cam, top);
+        let mist = theme::SPECTRE_DARK;
+        backdrop::fog(&mut self.cv, cam, game.step, 470..VIEW_H, 0.12, mist);
+        hud::draw(&mut self.cv, game);
+    }
+}
+
+/// Copie les pixels peints du calque (opaques) sur le canevas.
+fn overlay(cv: &mut RgbaImage, layer: &RgbaImage) {
+    let dst: &mut [u8] = cv;
+    for (d, s) in dst.chunks_exact_mut(4).zip(layer.chunks_exact(4)) {
+        if s[3] != 0 {
+            d.copy_from_slice(s);
+        }
+    }
 }
 
 /// Vue secouée : (bord gauche, bord haut) du monde à l'écran.
@@ -102,11 +138,16 @@ fn shake(game: &Haunt) -> (f32, f32) {
     (cam + dx * amp * 0.5, dy * amp * 0.5)
 }
 
+/// Colonnes de dalles visibles.
+fn visible(cam: f32) -> std::ops::RangeInclusive<i64> {
+    let first = (cam / TILE).floor() as i64;
+    first..=first + (VIEW_W as f32 / TILE) as i64 + 1
+}
+
 /// Dalles visibles (l'ectoplasme est peint à part, lumineux).
 fn tiles(layer: &mut RgbaImage, game: &Haunt, cam: f32, top: f32) {
     let level = &game.level;
-    let first = (cam / TILE).floor() as i64;
-    for c in first..=first + (VIEW_W as f32 / TILE) as i64 + 1 {
+    for c in visible(cam) {
         for r in 0..level.rows as i64 {
             let i = match level.tile(c, r) {
                 Tile::Earth if !level.tile(c, r - 1).solid() => 0,
@@ -134,7 +175,7 @@ fn tiles(layer: &mut RgbaImage, game: &Haunt, cam: f32, top: f32) {
 fn decor(layer: &mut RgbaImage, game: &Haunt, cam: f32, top: f32) {
     let sp = &game.sprites;
     for m in &game.level.marks {
-        if m.x < cam - 40.0 || m.x > cam + VIEW_W as f32 + 40.0 {
+        if m.x < cam - 20.0 || m.x > cam + VIEW_W as f32 + 20.0 {
             continue;
         }
         let (pair, ink) = match m.ch {
@@ -146,7 +187,6 @@ fn decor(layer: &mut RgbaImage, game: &Haunt, cam: f32, top: f32) {
             'k' => (&sp.lantern, Ink::alpha(0.35)),
             _ => continue,
         };
-        debug_assert!(DECOR.contains(m.ch) || m.ch == 'k');
         let facing = if hash(m.x as i64, 1) % 2 == 0 {
             1.0
         } else {
@@ -160,26 +200,26 @@ fn decor(layer: &mut RgbaImage, game: &Haunt, cam: f32, top: f32) {
 }
 
 /// Sources de lumière à l'écran : Kiro, citrouilles, lanternes allumées,
-/// flammes et tokens brûlants.
+/// flammes.
 fn lights(game: &Haunt, cam: f32, top: f32) -> Vec<Light> {
-    let flicker = (hash((game.step / u64::from(2 * SUB)) as i64, 9) % 100) as f32 / 100.0 * 0.12;
+    let beat = game.step / u64::from(2 * SUB);
+    let flicker = (hash(beat as i64, 9) % 100) as f32 / 100.0 * 0.12;
     let (kx, ky) = game.kiro.center();
     let mut out = vec![Light {
         x: kx - cam,
         y: ky - top,
-        r: 86.0,
+        r: 72.0,
         k: 0.62,
     }];
     for m in &game.level.marks {
         let lit = m.ch == 'o' || (m.ch == 'k' && m.x <= game.checkpoint);
-        if lit && (m.x - cam).abs() < VIEW_W as f32 + 60.0 {
-            let k = 0.5 + flicker;
-            let (x, y, r) = (m.x - cam, m.y - 14.0 - top, 52.0);
+        if lit && m.x > cam - 40.0 && m.x < cam + VIEW_W as f32 + 40.0 {
+            let (x, y, r, k) = (m.x - cam, m.y - 5.0 - top, 38.0, 0.5 + flicker);
             out.push(Light { x, y, r, k });
         }
     }
     for f in &game.flames {
-        let (x, y, r, k) = (f.x - cam, f.y - 8.0 - top, 40.0, 0.6 + flicker);
+        let (x, y, r, k) = (f.x - cam, f.y - 3.0 - top, 26.0, 0.6 + flicker);
         out.push(Light { x, y, r, k });
     }
     out
@@ -189,8 +229,7 @@ fn lights(game: &Haunt, cam: f32, top: f32) -> Vec<Light> {
 fn ecto(cv: &mut RgbaImage, game: &Haunt, cam: f32, top: f32) {
     let level = &game.level;
     let t = game.step as f32 * DT * 0.12;
-    let first = (cam / TILE).floor() as i64;
-    for c in first..=first + (VIEW_W as f32 / TILE) as i64 + 1 {
+    for c in visible(cam) {
         for r in 0..level.rows as i64 {
             if level.tile(c, r) != Tile::Ecto {
                 continue;
@@ -199,7 +238,7 @@ fn ecto(cv: &mut RgbaImage, game: &Haunt, cam: f32, top: f32) {
             for dx in 0..TILE as i64 {
                 let wx = c * TILE as i64 + dx;
                 let wave = if surface {
-                    3.0 + ((wx as f32) * 0.35 + t).sin() * 1.5
+                    1.5 + ((wx as f32) * 0.5 + t).sin()
                 } else {
                     0.0
                 };
@@ -218,13 +257,13 @@ fn pool_column(cv: &mut RgbaImage, x: i64, r: i64, wave: f32, top: f32, step: u6
         return;
     }
     let surface = wave > 0.0;
-    let bubble =
-        (hash(wx, 5) % 11 == 0).then(|| 30 - ((step / u64::from(SUB) + hash(wx, 6)) % 30) as i64);
+    let rise = (step / u64::from(SUB) + hash(wx, 6)) % 30;
+    let bubble = (hash(wx, 5) % 11 == 0).then_some(30 - rise as i64);
     for dy in 0..TILE as i64 {
         let depth = if surface {
             dy as f32 - wave
         } else {
-            dy as f32 + TILE - 3.0
+            dy as f32 + TILE - 1.0
         };
         if depth < 0.0 {
             continue;
@@ -237,7 +276,7 @@ fn pool_column(cv: &mut RgbaImage, x: i64, r: i64, wave: f32, top: f32, step: u6
             theme::lerp(
                 theme::ECTO,
                 theme::ECTO_DARK,
-                (depth / 14.0).min(1.0) * 0.85,
+                (depth / 12.0).min(1.0) * 0.85,
             )
         };
         let y = (r as f32 * TILE + dy as f32 - top) as i64;
@@ -288,7 +327,7 @@ mod tests {
         ] {
             game.phase = phase;
             game.tick();
-            let cv = compose(&game);
+            let cv = snapshot(&mut game);
             assert_eq!(cv.dimensions(), (VIEW_W, VIEW_H));
             assert!(colours(&cv) > 40, "{phase:?} : {} couleurs", colours(&cv));
         }
@@ -311,15 +350,13 @@ mod tests {
 
     #[test]
     fn fit_down_keeps_proportions_without_smoothing() {
-        let cv = compose(&Haunt::new());
+        let cv = snapshot(&mut Haunt::new());
         let out = fit_down(&cv, 160, 200);
         assert_eq!(out.dimensions(), (160, 200));
         let src: HashSet<_> = cv.pixels().map(|p| p.0).collect();
         let void = px(theme::VOID).0;
-        assert!(
-            out.pixels().all(|p| p.0 == void || src.contains(&p.0)),
-            "aucune couleur inventée"
-        );
+        let invented = out.pixels().any(|p| p.0 != void && !src.contains(&p.0));
+        assert!(!invented, "aucune couleur inventée");
     }
 
     /// Budget d'une frame (composition + agrandissement + PNG Kitty) :
@@ -335,16 +372,16 @@ mod tests {
         ] {
             let area = Rect::new(0, 0, cells.0, cells.1);
             let mut buf = Buffer::empty(area);
-            let n = 120;
+            let (n, mut shown) = (240, 0);
             let t = Instant::now();
             for _ in 0..n {
                 game.tick();
                 render(&mut game, area, &mut buf, Some(cell));
-                let _ = game.view.take_pending();
+                shown += usize::from(game.view.take_pending().is_some());
             }
-            let per = t.elapsed() / n;
-            let fps = 1.0 / per.as_secs_f64();
-            println!("{label}: {per:?} par frame ≈ {fps:.0} images/s");
+            let secs = t.elapsed().as_secs_f64();
+            let (drawn, sent) = (n as f64 / secs, shown as f64 / secs);
+            println!("{label}: {drawn:.0} frames/s composées, {sent:.0} images/s envoyées");
         }
     }
 }

@@ -34,15 +34,15 @@ impl Sparks {
     pub fn burst(&mut self, (x, y): (f32, f32), n: usize, colours: &[Color], dice: &mut Dice) {
         for i in 0..n {
             let a = dice.range(0.0, std::f32::consts::TAU);
-            let v = dice.range(0.8, 3.2);
+            let v = dice.range(0.4, 1.6);
             self.push(Spark {
                 x,
                 y,
                 vx: a.cos() * v,
-                vy: a.sin() * v - 1.5,
+                vy: a.sin() * v - 0.8,
                 ttl: (14 + dice.below(16) as u16) * SUB as u16,
                 colour: px(colours[i % colours.len().max(1)]),
-                gravity: 0.18,
+                gravity: 0.1,
             });
         }
     }
@@ -51,10 +51,10 @@ impl Sparks {
     pub fn soul(&mut self, x: f32, y: f32, dice: &mut Dice) {
         for i in 0..8 {
             self.push(Spark {
-                x: x + dice.range(-4.0, 4.0),
-                y: y - i as f32 * 2.0,
-                vx: dice.range(-0.3, 0.3),
-                vy: -dice.range(0.6, 1.4),
+                x: x + dice.range(-2.0, 2.0),
+                y: y - i as f32,
+                vx: dice.range(-0.2, 0.2),
+                vy: -dice.range(0.3, 0.8),
                 ttl: (30 + dice.below(20) as u16) * SUB as u16,
                 colour: px(if i % 3 == 0 { theme::BONE } else { theme::ECTO }),
                 gravity: -0.01,

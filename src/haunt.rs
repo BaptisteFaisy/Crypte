@@ -7,9 +7,10 @@
 //!   tir bas ; `s`+`w` traverse une dalle), Espace = token, Entrée,
 //!   `p` pause (flèches aussi, voir `app/haunt.rs`).
 //! - Linceul = armure : le premier coup l'arrache, le second tue ; 3 vies,
-//!   une reprise à mi-niveau, 2:30 avant que la bougie ne s'éteigne.
-//! - « 32 bits » : canevas 320×192, parallaxe, ciel tramé, éclairage
-//!   (`backdrop.rs`, `draw.rs`), sprites 32×32 du bestiaire.
+//!   une reprise à mi-niveau, 4:00 avant que la bougie ne s'éteigne.
+//! - « 32 bits » : canevas 960×576, parallaxe, ciel en bandes, éclairage
+//!   (`backdrop.rs`, `draw.rs`) ; mini-sprites (6 à 18 px) dans le style
+//!   du bestiaire, dalles de 6 px : un grand niveau de plateformes.
 //! - Simulation à **240 Hz** (`pump`, pas fixe de 1/240 s : physique,
 //!   entrées, IA), rendu cadencé jusqu'à 240 images/s ; vitesses et
 //!   durées écrites en pas de référence de 1/30 s (`SUB`, `DT`).
@@ -44,6 +45,7 @@ pub use self::input::Act;
 
 use self::boss::Reaper;
 use self::dice::Dice;
+use self::draw::Painter;
 use self::foes::Foe;
 use self::input::Input;
 use self::level::Level;
@@ -54,8 +56,8 @@ use self::sprites::Sprites;
 use crate::hub::live::View;
 
 /// Canevas (pixels d'art).
-pub const VIEW_W: u32 = 320;
-pub const VIEW_H: u32 = 192;
+pub const VIEW_W: u32 = 960;
+pub const VIEW_H: u32 = 576;
 /// Pas de simulation par seconde.
 pub const HZ: u32 = 240;
 /// Vitesses et durées sont écrites en pas de référence de 1/30 s :
@@ -68,14 +70,16 @@ pub const STEP: Duration = Duration::from_nanos(1_000_000_000 / HZ as u64);
 const CATCH_UP: u32 = 32;
 /// Vies au départ.
 const LIVES: u8 = 3;
-/// Bougie : 2 min 30 par vie (en pas).
-const CANDLE: u32 = 150 * HZ;
+/// Bougie : 4 min par vie (en pas), le niveau fait six écrans.
+const CANDLE: u32 = 240 * HZ;
 /// Pas avant d'accepter Entrée (fin de partie) : pas de saut involontaire.
 const SETTLE: u16 = 45 * SUB as u16;
 /// Durée d'un message (pas).
 const TOAST: u16 = 60 * SUB as u16;
 /// Fenêtre d'un appui (pas) : un appui reste valable ~0,1 s.
 const PRESS: u64 = 3 * SUB as u64;
+/// Kiro se tient à un tiers de la vue (on voit loin devant).
+const LEAD: f32 = VIEW_W as f32 / 3.0;
 /// Graine du dé (parties identiques à commandes identiques).
 const SEED: u64 = 0x5EED_C0FF_1A57_B0E5;
 
@@ -126,6 +130,7 @@ pub struct Haunt {
     input: Input,
     pub view: View,
     sprites: Sprites,
+    painter: Painter,
 }
 
 impl Haunt {
@@ -166,6 +171,7 @@ impl Haunt {
             input: Input::default(),
             view: View::new(),
             sprites: Sprites::load(),
+            painter: Painter::default(),
         };
         game.new_run();
         game.phase = Phase::Title;
@@ -298,10 +304,10 @@ impl Haunt {
     /// Vue : suit Kiro (un tiers d'écran devant lui), ne recule jamais ;
     /// glisse sur l'arène quand elle se ferme.
     fn follow(&mut self) {
-        let max = self.level.width() - VIEW_W as f32;
-        let want = (self.kiro.body.cx() - 120.0).clamp(0.0, max);
+        let max = (self.level.width() - VIEW_W as f32).max(0.0);
+        let want = (self.kiro.body.cx() - LEAD).clamp(0.0, max);
         self.cam = match self.arena {
-            Some(x) => self.cam + (x - self.cam) * 0.15,
+            Some(x) => self.cam + (x.min(max) - self.cam) * 0.15 * DT,
             None => self.cam.max(want),
         };
     }

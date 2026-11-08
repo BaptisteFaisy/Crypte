@@ -10,18 +10,18 @@ use super::shots::{Shot, Weapon, WORDS};
 use super::{Haunt, DT, SUB};
 
 /// Boîte de Kiro debout / enfoncé (pixels).
-pub const W: f32 = 16.0;
-pub const H: f32 = 24.0;
-pub const SUNK: f32 = 14.0;
+pub const W: f32 = 6.0;
+pub const H: f32 = 9.0;
+pub const SUNK: f32 = 5.0;
 /// Pesanteur et chute maximale (pixels par pas de référence de 1/30 s).
-pub const GRAVITY: f32 = 0.5;
-pub const MAX_FALL: f32 = 7.0;
+pub const GRAVITY: f32 = 0.36;
+pub const MAX_FALL: f32 = 4.5;
 /// Durée de l'animation de mort (pas).
 pub const DEATH: u16 = 70 * SUB as u16;
-const SPEED: f32 = 2.0;
+const SPEED: f32 = 1.3;
 /// Accélération horizontale en l'air : on corrige à peine un saut.
-const AIR: f32 = 0.16;
-const JUMP: f32 = -7.4;
+const AIR: f32 = 0.1;
+const JUMP: f32 = -4.4;
 /// Saut accepté quelques pas après avoir quitté le bord / avant d'atterrir.
 const COYOTE: u8 = 3 * SUB as u8;
 const BUFFER: u64 = 4 * SUB as u64;
@@ -86,8 +86,8 @@ impl Kiro {
 
     /// Départ des tokens : devant la bouche, plus bas enfoncé.
     pub fn muzzle(&self) -> (f32, f32) {
-        let y = if self.sunk { 5.0 } else { 9.0 };
-        (self.body.cx() + self.facing * 10.0, self.body.y + y)
+        let y = if self.sunk { 1.5 } else { 3.5 };
+        (self.body.cx() + self.facing * 5.0, self.body.y + y)
     }
 
     /// S'enfonce (boîte basse) ou se relève s'il y a la place.
@@ -109,7 +109,7 @@ impl Haunt {
     pub(super) fn move_kiro(&mut self) {
         if !self.kiro.alive() {
             self.kiro.dead += 1;
-            self.kiro.body.y -= 0.8 * DT;
+            self.kiro.body.y -= 0.5 * DT;
             return;
         }
         let k = &mut self.kiro;
@@ -158,7 +158,7 @@ impl Haunt {
         k.sink(down, room);
         if k.sunk {
             k.body.vx = 0.0;
-            let slab = self.level.at(k.body.cx(), k.body.feet() + 2.0) == Tile::Slab;
+            let slab = self.level.at(k.body.cx(), k.body.feet() + 1.0) == Tile::Slab;
             if slab && input.take(Act::Up, now, BUFFER) {
                 k.drop = DROP;
                 k.sink(false, true);
@@ -238,8 +238,8 @@ impl Haunt {
         k.stun = true;
         k.sink(false, true);
         let away = if k.body.cx() >= from_x { 1.0 } else { -1.0 };
-        k.body.vx = away * 2.6;
-        k.body.vy = -4.5;
+        k.body.vx = away * 1.6;
+        k.body.vy = -2.8;
         k.body.ground = false;
         let (x, y) = k.center();
         self.sparks.rags(x, y, &mut self.dice);

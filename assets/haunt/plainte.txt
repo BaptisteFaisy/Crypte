@@ -1,9 +1,5 @@
-..PPPPP..
-.PpppppP.
-PppWWWppP
-PpW...WpP
-PpW.K.WpP
-PpW...WpP
-PppWWWppP
-.PpppppP.
-..PPPPP..
+.PPP.
+PpWpP
+PW.WP
+PpWpP
+.PPP.

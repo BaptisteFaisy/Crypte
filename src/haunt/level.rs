@@ -1,4 +1,4 @@
-//! Niveau en dalles 16×16 lu depuis une grille texte (`assets/haunt/`),
+//! Niveau en dalles 6×6 lu depuis une grille texte (`assets/haunt/`),
 //! éditable à la main comme les sprites : une lettre par dalle (terrain,
 //! créatures, décor) ; la dernière ligne donne les zones du « directeur »
 //! (apparitions continues sous les pas de Kiro).
@@ -19,7 +19,7 @@ use anyhow::{bail, Result};
 use super::body::Rect;
 
 /// Côté d'une dalle (pixels).
-pub const TILE: f32 = 16.0;
+pub const TILE: f32 = 6.0;
 /// Lettres des créatures et repères (déclenchés en jeu).
 pub const ACTORS: &str = "PkRChbmlgH";
 /// Lettres du décor (dessiné, sans collision).

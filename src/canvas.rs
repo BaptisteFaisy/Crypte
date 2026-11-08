@@ -61,6 +61,10 @@ pub fn blit(cv: &mut RgbaImage, img: &RgbaImage, x0: i64, y0: i64, ink: Ink) {
             continue;
         }
         let src = ink.tint.unwrap_or(*p).0;
+        if alpha >= 1.0 {
+            cv.put_pixel(cx as u32, cy as u32, Rgba([src[0], src[1], src[2], 255]));
+            continue;
+        }
         let d = cv.get_pixel(cx as u32, cy as u32).0;
         let mix =
             |i: usize| (f32::from(d[i]) + (f32::from(src[i]) - f32::from(d[i])) * alpha) as u8;

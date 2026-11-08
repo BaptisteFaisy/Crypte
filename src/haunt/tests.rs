@@ -67,9 +67,17 @@ const FLAT: [&str; 13] = [
 #[test]
 fn level_one_parses_with_its_landmarks() {
     let level = Level::first();
-    assert_eq!((level.rows, level.cols), (12, 230));
+    assert_eq!((level.rows, level.cols), (96, 960));
     let start = level.mark('P').unwrap();
-    assert_eq!(level.ground_below(start.x, 0.0), Some(144.0));
+    assert_eq!(level.ground_below(start.x, start.y - 1.0), Some(start.y));
+    let slabs = (0..level.rows as i64)
+        .flat_map(|r| (0..level.cols as i64).map(move |c| (c, r)))
+        .filter(|&(c, r)| level.tile(c, r) == super::level::Tile::Slab)
+        .count();
+    assert!(
+        slabs > 1000,
+        "un vrai niveau de plateformes : {slabs} dalles"
+    );
     assert!(level.mark('k').is_some() && level.mark('R').is_some());
     assert_eq!(level.marks.iter().filter(|m| m.ch == 'C').count(), 4);
     assert!(level.marks.iter().filter(|m| m.ch == 'H').count() >= 3);
@@ -89,23 +97,28 @@ fn level_parse_rejects_bad_grids() {
 #[test]
 fn sprites_load_in_the_bestiary_style() {
     let sp = super::sprites::Sprites::load();
-    assert!(sp.tiles.iter().all(|t| t.dimensions() == (16, 16)));
-    assert_eq!(sp.reaper.get(1.0).dimensions(), (64, 64));
-    assert_eq!(sp.shroud[0].get(-1.0).dimensions(), (32, 32));
-    assert_eq!(sp.kiro[0].pad, 1, "Kiro posé sur ses franges");
+    assert!(sp.tiles.iter().all(|t| t.dimensions() == (6, 6)));
+    assert_eq!(sp.reaper.get(1.0).dimensions(), (32, 36));
+    assert_eq!(
+        sp.shroud[0].get(-1.0).dimensions(),
+        (9, 11),
+        "fantôme du hub"
+    );
+    assert_eq!(sp.kiro[0].get(1.0).dimensions(), (9, 11));
+    assert_eq!(sp.kiro[0].pad, 0, "Kiro posé sur ses franges");
 }
 
 #[test]
-fn kiro_lands_then_walks_two_pixels_per_reference_step() {
+fn kiro_lands_then_walks_39_pixels_per_second() {
     let mut game = on(&FLAT);
     run(&mut game, 10);
     assert!(game.kiro.body.ground);
-    assert_eq!(game.kiro.body.feet(), 144.0);
+    assert_eq!(game.kiro.body.feet(), 9.0 * TILE);
     let x0 = game.kiro.body.x;
     press(&mut game, Act::Right);
     run(&mut game, 30);
     let walked = game.kiro.body.x - x0;
-    assert!((58.0..=62.0).contains(&walked), "{walked} px en 1 s");
+    assert!((37.0..=41.0).contains(&walked), "{walked} px en 1 s");
     release(&mut game, Act::Right);
     let x1 = game.kiro.body.x;
     run(&mut game, 5);
@@ -113,7 +126,7 @@ fn kiro_lands_then_walks_two_pixels_per_reference_step() {
 }
 
 #[test]
-fn jump_clears_three_tiles_and_lands() {
+fn jump_clears_four_tiles_and_lands() {
     let mut game = on(&FLAT);
     run(&mut game, 5);
     press(&mut game, Act::Up);
@@ -122,8 +135,11 @@ fn jump_clears_three_tiles_and_lands() {
         game.tick();
         top = top.min(game.kiro.body.feet());
     }
-    let height = 144.0 - top;
-    assert!((48.0..=58.0).contains(&height), "saut de {height} px");
+    let height = 9.0 * TILE - top;
+    assert!(
+        (24.0..=29.0).contains(&height),
+        "saut de {height} px (4 dalles)"
+    );
     assert!(game.kiro.body.ground);
 }
 
@@ -139,7 +155,7 @@ fn walls_stop_kiro() {
 fn slabs_carry_from_above_and_drop_with_sink_and_jump() {
     let mut game = on(&FLAT);
     let slab_x = 12.0 * TILE;
-    game.kiro = Kiro::spawn(slab_x, 100.0, Weapon::Token);
+    game.kiro = Kiro::spawn(slab_x, 30.0, Weapon::Token);
     run(&mut game, 20);
     assert_eq!(game.kiro.body.feet(), 7.0 * TILE, "posé sur la dalle");
     press(&mut game, Act::Down);
@@ -168,12 +184,12 @@ fn shroud_absorbs_one_hit_then_kiro_dies() {
 #[test]
 fn pits_ectoplasm_and_spikes_are_deadly() {
     let mut game = on(&FLAT);
-    game.kiro = Kiro::spawn(15.0 * TILE, 100.0, Weapon::Token);
+    game.kiro = Kiro::spawn(15.0 * TILE, 30.0, Weapon::Token);
     run(&mut game, 40);
     assert!(!game.kiro.alive(), "fosse");
     assert_eq!(game.cause, "SWALLOWED BY THE DARK");
     let mut game = on(&FLAT);
-    game.kiro = Kiro::spawn(21.0 * TILE, 100.0, Weapon::Token);
+    game.kiro = Kiro::spawn(21.0 * TILE, 30.0, Weapon::Token);
     run(&mut game, 20);
     assert_eq!(game.cause, "DROWNED IN ECTOPLASM");
 }
@@ -183,7 +199,7 @@ fn a_token_destroys_a_black_ghost_and_scores() {
     let mut game = on(&FLAT);
     run(&mut game, 5);
     let (x, y) = game.kiro.muzzle();
-    game.foes.push(Foe::new(Kind::Wisp, x + 60.0, y + 6.0));
+    game.foes.push(Foe::new(Kind::Wisp, x + 40.0, y + 3.0));
     press(&mut game, Act::Fire);
     run(&mut game, 20);
     assert!(game.foes.iter().all(|f| f.kind != Kind::Wisp));
@@ -221,14 +237,20 @@ fn candle_burning_out_kills_and_three_deaths_end_the_run() {
 #[test]
 fn checkpoint_is_where_kiro_rises_again() {
     let mut game = playing();
-    let k = game.level.mark('k').unwrap().x;
-    game.kiro = Kiro::spawn(k + 20.0, 144.0, Weapon::Sharp);
+    let mark = game.level.mark('k').unwrap();
+    let k = mark.x;
+    game.kiro = Kiro::spawn(k + 10.0, mark.y, Weapon::Sharp);
     run(&mut game, 1);
     assert_eq!(game.checkpoint, k);
     game.kill_kiro("TEST");
     run(&mut game, 80);
     assert!(game.kiro.alive() && game.kiro.shroud);
     assert!((game.kiro.body.cx() - k).abs() < 1.0);
+    assert_eq!(
+        game.kiro.body.feet(),
+        mark.y,
+        "debout au pied de la lanterne"
+    );
     assert_eq!(game.kiro.weapon, Weapon::Sharp, "l'arme reste");
     assert_eq!(game.lives, 2);
 }
@@ -236,17 +258,16 @@ fn checkpoint_is_where_kiro_rises_again() {
 #[test]
 fn the_reaper_locks_the_arena_and_falls() {
     let mut game = playing();
-    let gate = game.level.mark('R').unwrap().x;
-    game.kiro = Kiro::spawn(gate + 60.0, 144.0, Weapon::Token);
-    game.cam = gate - 150.0;
+    let gate = game.level.mark('R').unwrap();
+    game.kiro = Kiro::spawn(gate.x + 40.0, gate.y, Weapon::Token);
+    game.cam = gate.x - 400.0;
     run(&mut game, 1);
-    assert_eq!(game.arena, Some(gate - 8.0));
+    let left = gate.x - TILE / 2.0;
+    assert_eq!(game.arena, Some(left));
     assert!(game.boss.is_some());
-    run(&mut game, 60);
-    assert!(
-        (game.cam - (gate - 8.0)).abs() < 1.0,
-        "vue fermée sur l'arène"
-    );
+    run(&mut game, 100);
+    let lock = left.min(game.level.width() - super::VIEW_W as f32);
+    assert!((game.cam - lock).abs() < 1.0, "vue fermée sur l'arène");
     let boss = game.boss.as_mut().unwrap();
     boss.hp = 1;
     assert!(boss.hurt(1));
@@ -262,8 +283,8 @@ fn the_reaper_locks_the_arena_and_falls() {
 fn coffins_open_on_their_loot() {
     let mut game = on(&FLAT);
     run(&mut game, 5);
-    let x = game.kiro.body.cx() + 40.0;
-    let mut coffin = Foe::new(Kind::Coffin, x, 144.0);
+    let x = game.kiro.body.cx() + 20.0;
+    let mut coffin = Foe::new(Kind::Coffin, x, 9.0 * TILE);
     coffin.loot = Some(Loot::Hot);
     game.foes.push(coffin);
     let j = game.foes.len() - 1;
@@ -272,7 +293,7 @@ fn coffins_open_on_their_loot() {
     }
     assert!(game.foes[j].open);
     assert_eq!(game.pickups.len(), 1);
-    game.pickups[0] = Pickup::new(Loot::Hot, game.kiro.body.cx(), 144.0);
+    game.pickups[0] = Pickup::new(Loot::Hot, game.kiro.body.cx(), 9.0 * TILE);
     run(&mut game, 2);
     assert_eq!(game.kiro.weapon, Weapon::Hot);
     assert!(game.pickups.is_empty());
@@ -338,4 +359,40 @@ fn a_long_random_run_stays_sane() {
         assert!(game.foes.len() < 80, "créatures sans fin");
         assert!(game.sparks.list.len() <= 420);
     }
+}
+
+/// Kiro peut-il se tenir sur la dalle (c, r) ? Sol plein ou dalle fine,
+/// pas de pieux, deux dalles d'air au-dessus.
+fn standable(level: &Level, c: i64, r: i64) -> bool {
+    use super::level::Tile;
+    let floor = level.tile(c, r);
+    let roof = (1..=2).all(|k| !level.tile(c, r - k).solid());
+    (floor.solid() || floor == Tile::Slab) && floor != Tile::Spikes && roof
+}
+
+#[test]
+fn level_one_arena_is_reachable_by_jumps() {
+    let level = Level::first();
+    let start = level.mark('P').unwrap();
+    let gate = level.mark('R').unwrap();
+    let cell = |x: f32, y: f32| ((x / TILE) as i64, (y / TILE) as i64);
+    let (cols, rows) = (level.cols as i64, level.rows as i64);
+    let mut seen = std::collections::HashSet::from([cell(start.x, start.y)]);
+    let mut todo = vec![cell(start.x, start.y)];
+    while let Some((c, r)) = todo.pop() {
+        for c2 in (c - 9).max(0)..=(c + 9).min(cols - 1) {
+            for r2 in 2..rows {
+                let (dx, dy) = ((c2 - c).abs(), r2 - r);
+                let jump = dy >= -4 && dx <= 5 || dy > 0 && dx <= 5 + dy / 2;
+                if jump && standable(&level, c2, r2) && seen.insert((c2, r2)) {
+                    todo.push((c2, r2));
+                }
+            }
+        }
+    }
+    let far = seen.iter().map(|&(c, _)| c).max().unwrap();
+    assert!(
+        far > cell(gate.x, gate.y).0,
+        "arène hors d'atteinte (col {far})"
+    );
 }

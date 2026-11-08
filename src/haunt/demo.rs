@@ -1,32 +1,32 @@
 //! Planche de démonstration (`--haunt-shot <png>`) : 4 frames du jeu
-//! agrandies ×2 (titre, cimetière, marais, Faucheuse), sans terminal.
+//! (titre, cimetière, marais, Faucheuse) en 2×2, sans terminal.
 //! À regénérer après une retouche de sprite, de tuile ou du niveau.
 
 use anyhow::{Context, Result};
 use crossterm::event::KeyEventKind;
 use image::{imageops, RgbaImage};
 
-use super::draw::compose;
+use super::draw::snapshot;
 use super::foes::{Foe, Kind};
 use super::input::Act;
 use super::shots::Weapon;
 use super::{Haunt, Phase, SUB, VIEW_H, VIEW_W};
 
-/// Agrandissement de la planche.
-const ZOOM: u32 = 2;
+/// Agrandissement de la planche (les frames font déjà 960×576).
+const ZOOM: u32 = 1;
 
-/// Écrit la planche PNG (2×2 frames ×2) dans `path`.
+/// Écrit la planche PNG (2×2 frames) dans `path`.
 pub fn write_shot(path: &str) -> Result<()> {
     let mut game = Haunt::new();
     let mut frames = Vec::with_capacity(4);
     game.run(20);
-    frames.push(compose(&game));
+    frames.push(snapshot(&mut game));
     game.graveyard();
-    frames.push(compose(&game));
+    frames.push(snapshot(&mut game));
     game.swamp();
-    frames.push(compose(&game));
+    frames.push(snapshot(&mut game));
     game.arena_fight();
-    frames.push(compose(&game));
+    frames.push(snapshot(&mut game));
     let (w, h) = (VIEW_W * ZOOM, VIEW_H * ZOOM);
     let mut sheet = RgbaImage::new(w * 2, h * 2);
     for (i, f) in frames.iter().enumerate() {
@@ -52,17 +52,17 @@ impl Haunt {
         }
     }
 
-    /// Kiro au cœur du cimetière : momies qui sortent de terre, main de
-    /// tombe, chauve-souris, tokens en vol.
+    /// Kiro au cœur du cimetière : momies qui sortent de terre,
+    /// chauve-souris, tokens en vol, escaliers de dalles.
     fn graveyard(&mut self) {
         self.new_run();
-        self.teleport(330.0);
-        for (x, rise) in [(392.0, 0), (436.0, 9), (268.0, 0)] {
-            let mut f = Foe::new(Kind::Mummy, x, 144.0);
+        let feet = self.teleport(300.0);
+        for (x, rise) in [(340.0, 0), (372.0, 9), (262.0, 0)] {
+            let mut f = Foe::new(Kind::Mummy, x, feet);
             f.rise = rise * SUB as u8;
             self.foes.push(f);
         }
-        let mut bat = Foe::new(Kind::Bat, 420.0, 80.0);
+        let mut bat = Foe::new(Kind::Bat, 352.0, feet - 30.0);
         bat.awake = true;
         self.foes.push(bat);
         self.run(10);
@@ -75,8 +75,8 @@ impl Haunt {
         self.kiro.weapon = Weapon::Sharp;
         self.checkpoint = self.level.mark('k').map_or(0.0, |m| m.x);
         self.respawn();
-        self.teleport(2140.0);
-        let mut lady = Foe::new(Kind::Lady, 2230.0, 144.0);
+        let feet = self.teleport(2146.0);
+        let mut lady = Foe::new(Kind::Lady, 2196.0, feet);
         lady.age = 30 * SUB;
         self.foes.push(lady);
         self.run(14);
@@ -89,16 +89,19 @@ impl Haunt {
         let gate = self.level.mark('R').map_or(0.0, |m| m.x);
         self.checkpoint = gate - 16.0;
         self.respawn();
-        self.teleport(gate + 60.0);
+        self.teleport(gate + 120.0);
         self.run(150);
     }
 
-    /// Kiro posé au sol en `x`, vue recentrée.
-    fn teleport(&mut self, x: f32) {
-        let feet = self.level.ground_below(x, 0.0).unwrap_or(144.0);
+    /// Kiro posé au sol (pas sur une dalle) en `x`, vue recentrée ; rend
+    /// la hauteur du sol.
+    fn teleport(&mut self, x: f32) -> f32 {
+        let low = self.level.height() - 60.0;
+        let feet = self.level.ground_below(x, low).unwrap_or(low);
         self.kiro.body.x = x - self.kiro.body.w / 2.0;
         self.kiro.body.y = feet - self.kiro.body.h;
-        let max = self.level.width() - VIEW_W as f32;
-        self.cam = (x - 120.0).clamp(0.0, max);
+        let max = (self.level.width() - VIEW_W as f32).max(0.0);
+        self.cam = (x - super::LEAD).clamp(0.0, max);
+        feet
     }
 }

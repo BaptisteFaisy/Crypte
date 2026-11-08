@@ -21,9 +21,9 @@ pub const RISE: u8 = 24 * SUB as u8;
 /// 3 plaintes, fondu (18), absence.
 const LADY_CYCLE: u32 = 132;
 /// La main de tombe jaillit quand Kiro est à moins de ça (pixels).
-const HAND_REACH: f32 = 72.0;
+const HAND_REACH: f32 = 36.0;
 /// La chauve-souris pique quand Kiro est à moins de ça (pixels).
-const BAT_REACH: f32 = 150.0;
+const BAT_REACH: f32 = 110.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -41,13 +41,13 @@ impl Kind {
     /// Boîte de collision (largeur, hauteur), plus petite que le dessin.
     pub fn size(self) -> (f32, f32) {
         match self {
-            Kind::Mummy | Kind::Runner => (14.0, 28.0),
-            Kind::Bat => (18.0, 10.0),
-            Kind::Hand => (12.0, 22.0),
-            Kind::Wisp => (10.0, 12.0),
-            Kind::Lady => (16.0, 28.0),
-            Kind::Head => (18.0, 18.0),
-            Kind::Coffin => (18.0, 28.0),
+            Kind::Mummy | Kind::Runner => (6.0, 10.0),
+            Kind::Bat => (9.0, 4.0),
+            Kind::Hand => (8.0, 9.0),
+            Kind::Wisp => (5.0, 6.0),
+            Kind::Lady => (6.0, 11.0),
+            Kind::Head => (7.0, 7.0),
+            Kind::Coffin => (6.0, 10.0),
         }
     }
 
@@ -169,7 +169,7 @@ impl Foe {
         if self.age % (120 * SUB) == 0 {
             self.face(prey);
         }
-        self.body.vx = self.facing * 0.6;
+        self.body.vx = self.facing * 0.35;
         self.body.fall(GRAVITY, MAX_FALL);
         self.body.travel(level, false);
         if self.body.wall || (self.body.ground && self.body.ledge(level, self.facing)) {
@@ -179,7 +179,7 @@ impl Foe {
 
     /// Momie pressée : fonce sans regarder où elle met les pieds.
     fn charge(&mut self, level: &Level) {
-        self.body.vx = self.facing * 3.0;
+        self.body.vx = self.facing * 1.8;
         self.body.fall(GRAVITY, MAX_FALL);
         self.body.travel(level, false);
         if self.body.wall {
@@ -195,14 +195,14 @@ impl Foe {
                 self.face(prey);
                 self.age = 0;
             }
-            let bob = (self.age as f32 * DT * 0.1).sin() * 2.0;
+            let bob = (self.age as f32 * DT * 0.1).sin();
             self.body.y = self.base + bob - self.body.h / 2.0;
             return;
         }
         let t = self.age as f32 * DT;
-        self.base += (prey.1 - 4.0 - self.base) * 0.035 * DT;
-        self.body.x += self.facing * 1.9 * DT;
-        self.body.y = self.base + (t * 0.18).sin() * 16.0 - self.body.h / 2.0;
+        self.base += (prey.1 - 2.0 - self.base) * 0.035 * DT;
+        self.body.x += self.facing * 1.2 * DT;
+        self.body.y = self.base + (t * 0.18).sin() * 8.0 - self.body.h / 2.0;
     }
 
     /// Main de tombe : jaillit quand Kiro approche.
@@ -220,8 +220,8 @@ impl Foe {
         let (cx, cy) = self.center();
         let (dx, dy) = (prey.0 - cx, prey.1 - cy);
         let d = (dx * dx + dy * dy).sqrt().max(1.0);
-        let wobble = (self.age as f32 * DT * 0.2).sin() * 0.5;
-        let (tx, ty) = (dx / d * 1.25, dy / d * 1.25 + wobble);
+        let wobble = (self.age as f32 * DT * 0.2).sin() * 0.3;
+        let (tx, ty) = (dx / d * 0.8, dy / d * 0.8 + wobble);
         self.body.vx += (tx - self.body.vx) * 0.08 * DT;
         self.body.vy += (ty - self.body.vy) * 0.08 * DT;
         self.body.x += self.body.vx * DT;
@@ -236,8 +236,8 @@ impl Foe {
         let beat = self.age % SUB == 0;
         let p = self.age / SUB % LADY_CYCLE;
         if beat && p == 0 {
-            let x = prey.0 + dice.sign() * dice.range(70.0, 110.0);
-            if let Some(g) = level.ground_below(x, prey.1 - 40.0) {
+            let x = prey.0 + dice.sign() * dice.range(45.0, 80.0);
+            if let Some(g) = level.ground_below(x, prey.1 - 20.0) {
                 self.body = Body::new(x, g, self.body.w, self.body.h);
             }
         }
@@ -249,7 +249,7 @@ impl Foe {
         };
         if beat && matches!(p, 32 | 60 | 88) {
             self.face(prey);
-            let mouth = (self.body.cx() + self.facing * 4.0, self.body.y + 8.0);
+            let mouth = (self.body.cx() + self.facing * 2.0, self.body.y + 3.0);
             return Some(Bolt::aimed(BoltKind::Wail, mouth, prey));
         }
         None
@@ -265,8 +265,8 @@ impl Foe {
         }
         if self.body.ground {
             self.face(prey);
-            self.body.vy = -6.2;
-            self.body.vx = self.facing * 1.7;
+            self.body.vy = -3.4;
+            self.body.vx = self.facing * 1.0;
         }
     }
 

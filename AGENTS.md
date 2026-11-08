@@ -71,7 +71,8 @@ opacité/teinte/découpe). `haunt.rs` + `haunt/` (jeu F9, plateforme
 et tir, niveau 1 très difficile : Kiro envoie des tokens) : `level.rs`
 grille texte `assets/haunt/niveau-1.txt` (une lettre par dalle,
 dernière ligne = zones du directeur), `body.rs` physique en dalles,
-`player.rs` Kiro (linceul = armure), `foes.rs` créatures du bestiaire,
+`player.rs` Kiro (linceul = armure), `foes.rs` créatures (mini-sprites
+6-18 px, dalles 6 px, vue 960×576 : un grand niveau de plateformes),
 `boss.rs` Faucheuse, `shots.rs` tokens/butin/cercueils flottants,
 `combat.rs`, `spawn.rs` repères + directeur + reprise, `backdrop.rs`
 ciel 32 bits + éclairage, `draw.rs` composition + présentation,
@@ -80,6 +81,8 @@ Simulation à pas fixe **240 Hz** : vitesses/durées écrites en pas de
 référence de 1/30 s, toujours multipliées par `DT` / `SUB`.
 `app/haunt.rs` (écran, touches a/w/s/d + Espace, protocole clavier
 Kitty empilé seulement en jeu). Sprites du jeu : `assets/haunt/*.txt`.
+`hub/live.rs` : encodage PNG Kitty sur 3 fils (frames numérotées,
+jamais d'attente) — hub et jeu.
 `almanac.rs` (tokens par jour, bloc `/usage`) + `almanac/disk.rs`
 (JSON `~/.local/share/kiro-horror-tui/`, relu avant chaque écriture,
 jamais réécrit s'il est illisible).
