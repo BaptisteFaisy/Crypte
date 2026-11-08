@@ -275,10 +275,10 @@ impl App {
         if self.tick % 10 == 0 {
             self.refresh_ctx_cache();
         }
+        crate::mbox::eveil::tour(&self.events);
     }
 
-    /// Rafraîchit la jauge contexte mise en cache (1×/s depuis `tick`,
-    /// + 1× à la construction) : la frame ne fait plus que lire.
+    /// Rafraîchit la jauge contexte en cache (1×/s + 1× construction).
     pub(crate) fn refresh_ctx_cache(&mut self) {
         self.ctx_used = self.context_used();
         self.ctx_limit = self.context_limit();

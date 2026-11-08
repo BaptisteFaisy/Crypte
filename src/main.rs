@@ -5,13 +5,15 @@
 //! `--once <texte>` (un appel puis exit), `--muse-auth` (cle depuis le store Muse),
 //! `--agents-file <fichier>` (contexte systeme, prime sur ./AGENTS.md puis ./AGENT.md, lu au premier envoi),
 //! `--planche <png>` (bestiaire en PNG), `--apercu <fichier>` (frames en ANSI),
-//! `--haunt-shot <png>` (4 frames du jeu Haunt en PNG).
+//! `--haunt-shot <png>` (4 frames du jeu Haunt en PNG),
+//! `--mbox <cmd...>` (broadcast agents : send/bus/tail/ordre/..., voir `bcast help`).
 
 mod agent_view;
 mod agents;
 mod almanac;
 mod app;
 mod apparition;
+mod args;
 mod bestiary;
 mod bus;
 mod canvas;
@@ -33,6 +35,7 @@ mod haunt;
 mod history;
 mod hub;
 mod kiro;
+mod mbox;
 mod mouse;
 mod permissions;
 mod permissions_cmds;
@@ -67,6 +70,7 @@ use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
 
 use crate::almanac::Almanac;
 use crate::app::{App, Screen};
+use crate::args::{parse_args, Args};
 use crate::chat::Role;
 use crate::events::{Event, EventLog};
 use crate::provider::{Provider, ProviderConfig};
@@ -89,6 +93,8 @@ OPTIONS:
         --haunt-shot <png>  Write 4 frames of the haunt game (x2) as PNG
         --demo            Offline demo crypt (populated chats + agents)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
+        --mbox <cmd...>  Broadcast agents (send/bus/tail/rotate/digest/hb/ordre/jeton/doctor/metriques/fantome)
+            BCAST_DIR overrides the root (else the machine broadcast dir); --token nom:secret for new/revoque/ack
 
 SETTINGS (/settings):
     Encrypted provider vault: $XDG_DATA_HOME/kiro-horror-tui/providers.enc
@@ -163,78 +169,6 @@ COMMANDS (in chat):
     context limit: model window capped at 1M est. tokens (see /usage)
 ";
 
-/// Options CLI parsees (sans dependance externe).
-struct Args {
-    help: bool,
-    smoke: bool,
-    demo: bool,
-    config: Option<String>,
-    once: Option<String>,
-    muse_auth: bool,
-    agents_file: Option<String>,
-    planche: Option<String>,
-    apercu: Option<String>,
-    haunt_shot: Option<String>,
-    events_log: Option<String>,
-}
-
-/// Parse `std::env::args` : `--help`/`-h`, `--smoke`, `--config`, `--once`,
-/// `--muse-auth`, `--agents-file`.
-fn parse_args() -> Result<Args> {
-    let mut args = Args {
-        help: false,
-        smoke: false,
-        demo: false,
-        config: None,
-        once: None,
-        muse_auth: false,
-        agents_file: None,
-        planche: None,
-        apercu: None,
-        haunt_shot: None,
-        events_log: None,
-    };
-    let mut it = std::env::args().skip(1).peekable();
-    while let Some(arg) = it.next() {
-        match arg.as_str() {
-            "-h" | "--help" => args.help = true,
-            "--smoke" => args.smoke = true,
-            "--demo" => args.demo = true,
-            "--config" => {
-                let path = it.next().context("--config expects a file path")?;
-                args.config = Some(path);
-            }
-            "--once" => {
-                let prompt = it.next().context("--once expects a prompt text")?;
-                args.once = Some(prompt);
-            }
-            "--muse-auth" => args.muse_auth = true,
-            "--agents-file" => {
-                let path = it.next().context("--agents-file expects a file path")?;
-                args.agents_file = Some(path);
-            }
-            "--apercu" | "--preview" => {
-                let path = it.next().context("--preview expects a file path")?;
-                args.apercu = Some(path);
-            }
-            "--haunt-shot" => {
-                let path = it.next().context("--haunt-shot expects a .png path")?;
-                args.haunt_shot = Some(path);
-            }
-            "--planche" | "--sheet" => {
-                let path = it.next().context("--sheet expects a .png path")?;
-                args.planche = Some(path);
-            }
-            "--events-log" => {
-                let path = it.next().context("--events-log expects a file path")?;
-                args.events_log = Some(path);
-            }
-            other => anyhow::bail!("unknown option: {other} (see --help)"),
-        }
-    }
-    Ok(args)
-}
-
 /// Resout la config : `--muse-auth` > `--config` > environnement.
 fn resolve_config(args: &Args) -> Result<ProviderConfig> {
     if args.muse_auth {
@@ -289,32 +223,47 @@ fn main() -> Result<()> {
         .block_on(async_main())
 }
 
-async fn async_main() -> Result<()> {
-    let args = parse_args()?;
+/// Sorties précoces : `--help`, `--mbox`, `--smoke`, exports PNG/ANSI,
+/// `--once`. Vrai = traité, `async_main` s'arrête là.
+async fn sortie_precoce(args: &Args) -> Result<bool> {
     if args.help {
         print!("{HELP}");
-        return Ok(());
+        return Ok(true);
+    }
+    if let Some(cmd) = &args.mbox {
+        crate::mbox::outils::lance_mbox(cmd);
     }
     if args.smoke {
-        return smoke();
+        smoke()?;
+        return Ok(true);
     }
     if let Some(path) = args.planche.as_deref() {
         crate::bestiary::write_sheet(path)?;
         println!("bestiary sheet: {path}");
-        return Ok(());
+        return Ok(true);
     }
     if let Some(path) = args.apercu.as_deref() {
-        return apercu(path);
+        apercu(path)?;
+        return Ok(true);
     }
     if let Some(path) = args.haunt_shot.as_deref() {
         crate::haunt::write_shot(path)?;
         println!("haunt shot: {path}");
-        return Ok(());
+        return Ok(true);
     }
     if let Some(prompt) = args.once.as_deref() {
-        let cfg = resolve_or_stored(&args)
+        let cfg = resolve_or_stored(args)
             .context("no API key: --config, KH_API_KEY or a /settings entry")?;
-        return run_once(&cfg, prompt).await;
+        run_once(&cfg, prompt).await?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+async fn async_main() -> Result<()> {
+    let args = parse_args()?;
+    if sortie_precoce(&args).await? {
+        return Ok(());
     }
     let mut app = match resolve_or_stored(&args) {
         _ if args.demo => App::offline()?,
