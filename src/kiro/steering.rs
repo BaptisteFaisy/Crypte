@@ -1,8 +1,10 @@
 //! Steering Kiro (`.kiro/steering/*.md`, projet + global).
 //!
-//! Frontmatter YAML minimal en tête (`inclusion`, `fileMatchPattern`) ;
-//! sans frontmatter → `always` (défaut Kiro). `select` retient `always`
-//! + `fileMatch` sur les chemins en contexte (`manual`/`auto` = T2).
+//! Frontmatter YAML minimal en tête (`inclusion`, `fileMatchPattern`,
+//! `name`, `description`) ; sans frontmatter → `always` (défaut Kiro).
+//! `select` retient `always` + `fileMatch` sur les chemins en contexte,
+//! `find_manual` sert `/steer`, `auto_for` matche les descriptions
+//! `auto` à la demande (mots significatifs, pas de sémantique).
 
 use std::path::Path;
 
@@ -43,8 +45,15 @@ pub struct Steering {
     pub name: String,
     pub inclusion: Inclusion,
     pub patterns: Vec<String>,
+    pub description: String,
     pub body: String,
 }
+
+/// Mots pleins exclus du matching `auto` (courts déjà coupés à 5).
+const STOPWORDS: &[&str] = &[
+    "cette", "comme", "entre", "avant", "apres", "après", "aussi", "contre", "about", "which",
+    "their", "there", "these", "those",
+];
 
 /// Parse un fichier (`name` = nom sans extension).
 pub fn parse(name: &str, raw: &str) -> Steering {
@@ -53,6 +62,7 @@ pub fn parse(name: &str, raw: &str) -> Steering {
         name: name.to_string(),
         inclusion: Inclusion::Always,
         patterns: Vec::new(),
+        description: String::new(),
         body: body.to_string(),
     };
     if let Some(front) = front {
@@ -81,10 +91,10 @@ fn apply_frontmatter(file: &mut Steering, front: &str) {
             let value = unquote(value.trim());
             match key.as_str() {
                 "inclusion" => file.inclusion = Inclusion::parse(&value),
-                _ if is_pattern_key(&key) => {
-                    if !value.is_empty() {
-                        file.patterns.push(value);
-                    }
+                "name" if !value.is_empty() => file.name = value,
+                "description" => file.description = value,
+                _ if is_pattern_key(&key) && !value.is_empty() => {
+                    file.patterns.push(value);
                 }
                 _ => {}
             }
@@ -133,6 +143,62 @@ pub fn combined(files: &[Steering], paths: &[&str]) -> Vec<(String, String)> {
         .into_iter()
         .map(|file| (file.name.clone(), file.body.clone()))
         .collect()
+}
+
+/// Fichier `manual` par nom (exact, comme `skills::find`), pour `/steer`.
+pub fn find_manual<'a>(files: &'a [Steering], name: &str) -> Option<&'a Steering> {
+    files
+        .iter()
+        .find(|file| file.inclusion == Inclusion::Manual && file.name == name)
+}
+
+/// Fichiers `auto` dont la description matche la demande (mots plein
+/// communs, heuristique documentée : Kiro fait du sémantique).
+pub fn auto_for<'a>(files: &'a [Steering], prompt: &str) -> Vec<&'a Steering> {
+    let words = sig_words(prompt);
+    if words.is_empty() {
+        return Vec::new();
+    }
+    files
+        .iter()
+        .filter(|file| {
+            file.inclusion == Inclusion::Auto
+                && !file.description.trim().is_empty()
+                && sig_words(&file.description)
+                    .iter()
+                    .any(|word| words.contains(word))
+        })
+        .collect()
+}
+
+/// Mots significatifs : minuscules, alphanumériques, 5+ lettres,
+/// hors stop-mots (pas de stemming, déterministe et testé).
+fn sig_words(text: &str) -> Vec<String> {
+    let mut words: Vec<String> = text
+        .to_lowercase()
+        .split(|ch: char| !ch.is_alphanumeric())
+        .filter(|word| word.chars().count() >= 5 && !STOPWORDS.contains(word))
+        .map(str::to_string)
+        .collect();
+    words.sort_unstable();
+    words.dedup();
+    words
+}
+
+/// Insère les blocs `auto` après le run `system` de tête (pinné puis
+/// consigne questions, sinon consigne seule) — éphémère, jamais
+/// l'historique stocké.
+pub fn prefix_auto(wire: &mut Vec<(String, String)>, blocks: &[(String, String)]) {
+    if blocks.is_empty() {
+        return;
+    }
+    let at = wire.iter().take_while(|(role, _)| role == "system").count();
+    let joined = blocks
+        .iter()
+        .map(|(name, body)| format!("[steering:{name}]\n{body}"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    wire.insert(at, (String::from("system"), joined));
 }
 
 #[cfg(test)]
@@ -205,6 +271,76 @@ mod tests {
         assert_eq!(names(&[]), vec!["g"]);
         assert_eq!(names(&["src/main.rs"]), vec!["g", "r"]);
         assert_eq!(names(&["README.md"]), vec!["g"]);
+    }
+
+    #[test]
+    fn frontmatter_nom_et_description() {
+        let file = parse(
+            "fichier",
+            "---\nname: joli\ninclusion: auto\ndescription: Règles Rust.\n---\nCorps.",
+        );
+        assert_eq!(file.name, "joli");
+        assert_eq!(file.inclusion, Inclusion::Auto);
+        assert_eq!(file.description, "Règles Rust.");
+        let vide = parse("v", "---\ndescription:\n---\nx");
+        assert!(vide.description.is_empty());
+    }
+
+    #[test]
+    fn find_manual_exact_et_manuels_seuls() {
+        let files = vec![
+            parse("m", "---\ninclusion: manual\n---\nHelp."),
+            parse("g", "# global"),
+        ];
+        assert!(find_manual(&files, "m").is_some());
+        assert!(find_manual(&files, "g").is_none());
+        assert!(find_manual(&files, "M").is_none());
+        assert!(find_manual(&files, "x").is_none());
+    }
+
+    #[test]
+    fn auto_for_mots_pleins_communs() {
+        let files = vec![
+            parse(
+                "r",
+                "---\ninclusion: auto\ndescription: Règles du borrow-checker Rust.\n---\nCorps.",
+            ),
+            parse(
+                "s",
+                "---\ninclusion: auto\ndescription: Recettes de crêpes.\n---\nMiam.",
+            ),
+            parse("vide", "---\ninclusion: auto\n---\nSans description."),
+            parse(
+                "m",
+                "---\ninclusion: manual\ndescription: borrow-checker partout.\n---\nNon.",
+            ),
+        ];
+        let names = |prompt: &str| {
+            auto_for(&files, prompt)
+                .iter()
+                .map(|f| f.name.as_str())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names("explique le borrow checker"), vec!["r"]);
+        assert_eq!(names("bonjour"), Vec::<&str>::new());
+        assert_eq!(names("des crêpes s'il vous plaît"), vec!["s"]);
+    }
+
+    #[test]
+    fn prefix_auto_apres_run_system() {
+        let sys = |t: &str| (String::from("system"), t.to_string());
+        let usr = |t: &str| (String::from("user"), t.to_string());
+        let blocks = vec![(String::from("r"), String::from("Corps."))];
+        let mut wire = vec![sys("pin"), sys("?"), usr("hi")];
+        prefix_auto(&mut wire, &blocks);
+        assert_eq!(wire[2], sys("[steering:r]\nCorps."));
+        assert_eq!(wire.len(), 4);
+        let mut seul = vec![usr("hi")];
+        prefix_auto(&mut seul, &blocks);
+        assert_eq!(seul[0].0, "system");
+        let mut vide = vec![usr("hi")];
+        prefix_auto(&mut vide, &[]);
+        assert_eq!(vide.len(), 1);
     }
 
     #[test]

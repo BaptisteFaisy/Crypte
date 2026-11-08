@@ -168,12 +168,6 @@ impl Sessions {
         self.current = self.current.checked_sub(1).unwrap_or(self.chats.len() - 1);
     }
 
-    /// Chat suivant (cyclique) — utilisé par les tests (plus de raccourci clavier).
-    #[cfg(test)]
-    pub fn next(&mut self) {
-        self.current = (self.current + 1) % self.chats.len();
-    }
-
     /// Rend le chat `idx` courant (ignoré hors bornes).
     pub fn select(&mut self, idx: usize) {
         if idx < self.chats.len() {

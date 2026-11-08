@@ -199,12 +199,10 @@ impl Settings {
             return;
         };
         let value = edit.buf.trim().to_string();
-        if value.is_empty() {
-            if edit.field == Field::Key {
-                self.notice = Some(String::from("empty key: type it or Esc to cancel"));
-                self.edit = Some(edit);
-                return;
-            }
+        if value.is_empty() && edit.field == Field::Key {
+            self.notice = Some(String::from("empty key: type it or Esc to cancel"));
+            self.edit = Some(edit);
+            return;
         }
         let mut cred = self
             .vault

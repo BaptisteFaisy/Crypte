@@ -438,8 +438,10 @@ global `~/.kiro/`), so a project moves back and forth between both:
 
 - **Steering** (`.kiro/steering/*.md`, project + global, YAML
   frontmatter) : `always` files join the pinned context at first
-  send, `fileMatch` files join when their paths are in context
-  (`manual`/`auto` are parsed but not applied yet).
+  send, `fileMatch` files join when their paths are in context,
+  `manual` files arm on demand (`/steer <name>`, transient like
+  `/skill`), `auto` files join when their description matches the
+  request (keyword heuristic, announced).
 - **Specs** (`.kiro/specs/<name>/`) : `/spec new <name> <idea>` drafts
   requirements, design and tasks in 3 chained LLM calls (progress shown,
   existing specs never overwritten); `/spec <name>` shows status (docs,

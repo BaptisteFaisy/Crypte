@@ -223,7 +223,7 @@ fn extract_sse(raw: &str) -> Result<Value> {
 
 /// Client MCP connecté (stdio ou distant), handshake fait.
 pub enum Client {
-    Stdio(StdioConn),
+    Stdio(Box<StdioConn>),
     Http(HttpConn),
 }
 
@@ -236,7 +236,7 @@ impl Client {
             .as_deref()
             .is_some_and(|cmd| !cmd.trim().is_empty())
         {
-            Ok(Self::Stdio(StdioConn::spawn(name, server).await?))
+            Ok(Self::Stdio(Box::new(StdioConn::spawn(name, server).await?)))
         } else if server
             .url
             .as_deref()

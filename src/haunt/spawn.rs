@@ -143,7 +143,7 @@ impl Haunt {
             .iter()
             .filter(|m| m.ch == 'k' && m.x < x && m.x > self.checkpoint)
             .map(|m| m.x)
-            .last();
+            .next_back();
         if let Some(at) = passed {
             self.checkpoint = at;
             self.say("CHECKPOINT");
