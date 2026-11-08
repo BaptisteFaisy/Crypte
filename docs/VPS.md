@@ -110,6 +110,30 @@ The file is reopened on every event, so a plain rename works (no
 }
 ```
 
+## 7. From inside the TUI (`/vps`)
+
+No terminal juggling: drive remote machines without leaving the app.
+`/vps` opens the VPS screen (profiles + live status, ↑/↓ + Enter to
+launch, Esc back). By IP or by saved name:
+
+```sh
+/vps 192.0.2.10              # ad-hoc: user defaults to $USER
+/vps deploy@192.0.2.10:2222  # ad-hoc with user + port
+/vps add r630 baptiste@100.124.18.48   # save a profile
+/vps r630                     # launch there (tmux + events log)
+/vps status                   # refresh all profiles
+/vps off r630                 # stop the remote session
+/vps install r630             # clone/pull + release build there
+/vps del r630                 # forget a profile
+```
+
+Profiles live in `~/.config/kiro-horror-tui/vps.toml` (`[[vps]]` with
+`name host user port key dir`, editable by hand too). SSH is key-only
+(`BatchMode`, no password prompts; unknown host keys accepted on first
+use). After a launch the chat shows the
+attach command (`ssh -t … 'tmux attach -t crypte'`) and the events
+stream (`ssh … 'tail -F ~/.crypte-log/events.jsonl'`).
+
 ## Limits
 
 - Sessions live in RAM: tmux survives SSH drops, not VPS reboots.
