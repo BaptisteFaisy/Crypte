@@ -6,7 +6,7 @@
 
 mod keys;
 mod known;
-mod store;
+pub(crate) mod store;
 #[cfg(test)]
 mod tests;
 mod ui;

@@ -233,7 +233,7 @@ fn decode_hex(hex: &str) -> Result<[u8; KEY_LEN]> {
 }
 
 /// Writes `bytes` to `path` atomically, with mode 0600 on Unix.
-fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())

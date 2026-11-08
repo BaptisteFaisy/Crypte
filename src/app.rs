@@ -273,6 +273,7 @@ impl App {
         if self.tick % 10 == 0 {
             self.refresh_ctx_cache();
         }
+        crate::mbox::sonde::tour(&self.events);
     }
 
     /// Rafraîchit la jauge contexte mise en cache (1×/s depuis `tick`,

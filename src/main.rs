@@ -5,7 +5,8 @@
 //! `--once <texte>` (un appel puis exit), `--muse-auth` (cle depuis le store Muse),
 //! `--agents-file <fichier>` (contexte systeme, prime sur ./AGENTS.md puis ./AGENT.md, lu au premier envoi),
 //! `--planche <png>` (bestiaire en PNG), `--apercu <fichier>` (frames en ANSI),
-//! `--haunt-shot <png>` (4 frames du jeu Haunt en PNG).
+//! `--haunt-shot <png>` (4 frames du jeu Haunt en PNG),
+//! `--mbox <cmd...>` (broadcast agents : send/bus/tail/ordre/..., voir `bcast help`).
 
 mod agents;
 mod almanac;
@@ -32,6 +33,7 @@ mod haunt;
 mod history;
 mod hub;
 mod kiro;
+mod mbox;
 mod mouse;
 mod permissions;
 mod permissions_cmds;
@@ -88,6 +90,8 @@ OPTIONS:
         --haunt-shot <png>  Write 4 frames of the haunt game (x2) as PNG
         --demo            Offline demo crypt (populated chats + agents)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
+        --mbox <cmd...>  Broadcast agents (send/bus/tail/rotate/digest/hb/ordre/jeton/doctor)
+            BCAST_DIR overrides the root (else the machine broadcast dir); --token nom:secret for new/revoque/ack
 
 SETTINGS (/settings):
     Encrypted provider vault: $XDG_DATA_HOME/kiro-horror-tui/providers.enc
@@ -175,6 +179,7 @@ struct Args {
     apercu: Option<String>,
     haunt_shot: Option<String>,
     events_log: Option<String>,
+    mbox: Option<Vec<String>>,
 }
 
 /// Parse `std::env::args` : `--help`/`-h`, `--smoke`, `--config`, `--once`,
@@ -192,6 +197,7 @@ fn parse_args() -> Result<Args> {
         apercu: None,
         haunt_shot: None,
         events_log: None,
+        mbox: None,
     };
     let mut it = std::env::args().skip(1).peekable();
     while let Some(arg) = it.next() {
@@ -228,6 +234,7 @@ fn parse_args() -> Result<Args> {
                 let path = it.next().context("--events-log expects a file path")?;
                 args.events_log = Some(path);
             }
+            "--mbox" => args.mbox = Some(it.by_ref().collect()),
             other => anyhow::bail!("unknown option: {other} (see --help)"),
         }
     }
@@ -293,6 +300,9 @@ async fn async_main() -> Result<()> {
     if args.help {
         print!("{HELP}");
         return Ok(());
+    }
+    if let Some(cmd) = args.mbox {
+        std::process::exit(crate::mbox::cli::exec_defaut(&cmd));
     }
     if args.smoke {
         return smoke();

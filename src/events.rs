@@ -93,6 +93,12 @@ pub enum Event {
         backend: String,
         text: String,
     },
+    Mailbox {
+        ts: u64,
+        canal: String,
+        priorite: String,
+        texte: String,
+    },
 }
 
 /// Secondes epoch (0 si l'horloge est illisible).
@@ -234,6 +240,16 @@ impl Event {
             chat: idx + 1,
             backend: backend.to_string(),
             text: text.to_string(),
+        }
+    }
+
+    /// Fait mailbox : boîte/bus/ordres/ACK/hb/alerte (`mbox/sonde`).
+    pub fn mailbox(canal: &str, priorite: &str, texte: &str) -> Self {
+        Self::Mailbox {
+            ts: now(),
+            canal: canal.to_string(),
+            priorite: priorite.to_string(),
+            texte: texte.to_string(),
         }
     }
 }
