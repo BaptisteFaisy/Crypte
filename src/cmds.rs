@@ -59,6 +59,7 @@ impl App {
             Some(Command::SpecRun { name }) => self.cmd_spec_run(name),
             Some(Command::Mcp(arg)) => self.cmd_mcp(arg),
             Some(Command::Hooks) => self.cmd_hooks(),
+            Some(Command::Cloud(args)) => self.cmd_cloud(args),
             Some(Command::Skills) => self.cmd_skills(),
             Some(Command::Skill { name, text }) => self.cmd_skill(name, text),
             Some(Command::Checkpoints) => self.cmd_checkpoints(),

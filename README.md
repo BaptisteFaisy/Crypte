@@ -476,6 +476,12 @@ global `~/.kiro/`), so a project moves back and forth between both:
   the project file (created if missing, checkpointed).
 - **Ignore** (`.kiroignore`) : loaded, enforced on file hooks
   (last matching pattern wins, `!` re-includes, `dir/` = subtree).
+- **Cloud sessions** (`kiro-cli` 2.17+ headless) : `/cloud run
+  [--repo o/r] <task>` starts a Kiro agent in a managed sandbox
+  (progress streams as `[cloud#n]`, final note = session id +
+  resume command + web link) ; `/cloud list|attach|delete|stop`
+  manage sessions ; the sandbox clones the remote, so unpushed
+  work is warned about. See [docs/CLOUD.md](docs/CLOUD.md).
 
 `/kiro` shows what was loaded (steering, specs, hooks, servers);
 `/hooks` shows hooks by trigger, queued agent prompts and recent firings.

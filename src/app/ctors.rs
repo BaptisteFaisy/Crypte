@@ -163,6 +163,7 @@ impl App {
             chats_path: None,
             events: EventLog::disabled(),
             vps: crate::vps::VpsRuntime::load(),
+            cloud: crate::kiro::cloud::CloudJobs::new(),
             tx,
             rx,
             pool: SpawnPool::new(),
