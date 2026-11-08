@@ -2,7 +2,7 @@
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
 //! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/hooks`
 //! `/skills` `/skill` `/checkpoints` `/rewind` `/remember` `/critic`
-//! `/settings` `/help`).
+//! `/settings` `/cloud` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -85,6 +85,7 @@ pub enum Command {
     },
     Mcp(Option<String>),
     Hooks,
+    Cloud(Vec<String>),
     Unknown(String),
 }
 
@@ -142,6 +143,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/kiro" => Some(Command::Kiro),
         "/mcp" => Some(Command::Mcp(opt_arg(&mut parts))),
         "/hooks" => Some(Command::Hooks),
+        "/cloud" => Some(Command::Cloud(all_args(&mut parts))),
         "/critic" => Some(Command::Critic(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/skills" => Some(Command::Skills),

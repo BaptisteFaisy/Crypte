@@ -13,6 +13,8 @@ pub mod agents_md;
 pub mod agents_parse;
 pub mod checkpoint;
 pub mod checkpoint_cmds;
+pub mod cloud;
+pub mod cloud_cmds;
 pub mod cmds;
 pub mod frontmatter;
 pub mod glob;

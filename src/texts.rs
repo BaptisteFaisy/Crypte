@@ -2,7 +2,7 @@
 //!
 //! Extrait de `commands.rs` (limite 500 lignes) : pur, sans état.
 
-/// Aide : les 33 commandes + rappel des touches + contexte agents.md.
+/// Aide : les 34 commandes + rappel des touches + contexte agents.md.
 pub fn help_text() -> &'static str {
     "Commands:\n\
      /usage — token usage (chat + session + all-time almanac)\n\
@@ -37,6 +37,7 @@ pub fn help_text() -> &'static str {
      /remember <text> — memorize into .kiro/MEMORY.md\n\
      /critic [on|off] — Kiro roams and judges your prompts (click to hit him)\n\
      /vps [ip|name|off|status|add|del|install] — run this TUI on a VPS\n\
+     /cloud [status|run|list|attach|delete|stop] — kiro agents in a cloud sandbox\n\
      /help — this help\n\
      Questions: the AI may ask you — reply with the number or in your own words\n\
      Keys: F5 scare · F6 shop · F9 haunt (game) · Ctrl+N · Ctrl+W close (+ click) · Ctrl+C stop\n\

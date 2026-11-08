@@ -354,3 +354,18 @@ fn parse_spec_malforme_aide() {
     assert_eq!(parse("/spec auth run x"), Some(Command::Hint(SPEC_USAGE)));
     assert_eq!(parse("/spec auth x"), Some(Command::Hint(SPEC_USAGE)));
 }
+
+#[test]
+fn parse_cloud_args_bruts() {
+    assert_eq!(parse("/cloud"), Some(Command::Cloud(vec![])));
+    assert_eq!(
+        parse("/cloud run --repo o/r hello"),
+        Some(Command::Cloud(vec![
+            String::from("run"),
+            String::from("--repo"),
+            String::from("o/r"),
+            String::from("hello"),
+        ]))
+    );
+    assert!(crate::texts::help_text().contains("/cloud"));
+}

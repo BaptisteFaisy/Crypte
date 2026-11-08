@@ -114,8 +114,11 @@ dans `spec_cmds/tests.rs`), `spec_prompts.rs` (prompts purs),
 + `agents_parse.rs` (parse `.json`/`.md` schéma Kiro),
 `skills.rs` + `skills_cmds.rs` (`/skills`, `/skill`),
 `checkpoint.rs` + `checkpoint_cmds.rs` (`/checkpoints`, `/rewind`),
-`memory.rs` + `memory_cmds.rs` (`/remember`) ; steering `always` +
-mémoire fusionnés au pin agents.md, voir `agents::load_merged_in`).
+`memory.rs` + `memory_cmds.rs` (`/remember`), `cloud.rs` (sessions
+cloud : détection CLI, `argv` headless, parsers, git) +
+`cloud_cmds.rs` (`/cloud`, tests dans `cloud_cmds/tests.rs`) ;
+steering `always` + mémoire fusionnés au pin agents.md, voir
+`agents::load_merged_in`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async, outillé si `/tools on` ;
