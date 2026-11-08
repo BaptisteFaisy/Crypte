@@ -6,6 +6,23 @@ fn def(name: &str) -> ToolDef {
     ToolDef::new(name, "jouet", serde_json::Value::Null)
 }
 
+/// Évier hooks sans hooks (dossier partagé, lecture seule, sans race).
+fn empty_sink() -> (HookSink, tokio::sync::mpsc::Receiver<Incoming>) {
+    let dir = std::env::temp_dir().join(format!("kh-agent-hook-vide-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join(".kiro/hooks")).unwrap();
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
+    (
+        HookSink {
+            paths: HookPaths {
+                project: dir,
+                global: None,
+            },
+            tx,
+        },
+        rx,
+    )
+}
+
 #[test]
 fn filtre_vide_garde_tout() {
     let all = vec![def("shell_run"), def("mcp_gh_search")];
@@ -57,7 +74,12 @@ fn decision_regles_prient_sur_mode() {
 
 #[test]
 fn resume_vide_sans_appels_compte_sinon() {
-    assert!(summarize(&[]).is_empty());
+    assert!(summarize(&[], &HookStats::default()).is_empty());
+    let hooks = HookStats {
+        commands: 2,
+        prompts: 1,
+    };
+    assert_eq!(summarize(&[], &hooks), "\n\n(hooks: 2 commands, 1 prompt)");
     let calls = vec![
         CallRecord {
             name: String::from("a"),
@@ -71,9 +93,14 @@ fn resume_vide_sans_appels_compte_sinon() {
         },
     ];
     assert_eq!(
-        summarize(&calls),
+        summarize(&calls, &HookStats::default()),
         "\n\n(tools: 2 calls — 1 ok, 0 failed, 1 refused [refused: b])"
     );
+    let hooks = HookStats {
+        commands: 1,
+        prompts: 0,
+    };
+    assert!(summarize(&calls, &hooks).contains("(hooks: 1 command, 0 prompts)"));
 }
 
 #[tokio::test]
@@ -153,10 +180,12 @@ async fn boucle_shell_puis_texte_final() {
         mcp: &mcp,
         chat: 0,
     };
+    let (sink, _rx) = empty_sink();
     let done = run_loop(
         ctx,
         vec![(String::from("user"), String::from("salut ?"))],
         vec![exec::shell_def()],
+        &sink,
     )
     .await
     .unwrap();
@@ -192,14 +221,97 @@ async fn boucle_refus_auto_rejoue_sans_executer() {
         mcp: &mcp,
         chat: 0,
     };
+    let (sink, _rx) = empty_sink();
     let done = run_loop(
         ctx,
         vec![(String::from("user"), String::from("go"))],
         vec![exec::shell_def()],
+        &sink,
     )
     .await
     .unwrap();
     stub.await.unwrap();
     assert!(done.text.contains("pigé"), "texte : {}", done.text);
     assert!(done.text.contains("0 ok, 0 failed, 1 refused"));
+}
+
+#[tokio::test]
+async fn boucle_hooks_tombee_et_resume() {
+    let dir = std::env::temp_dir().join(format!("kh-agent-hook-tir-{}", std::process::id()));
+    let hooks = dir.join(".kiro/hooks");
+    std::fs::create_dir_all(&hooks).unwrap();
+    std::fs::write(
+        hooks.join("mix.json"),
+        r#"{"hooks":[{"name":"log","trigger":"PreToolUse","matcher":"shell",
+            "action":{"type":"command","command":"echo croa"}}]}"#,
+    )
+    .unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+    let sink = HookSink {
+        paths: HookPaths {
+            project: dir.clone(),
+            global: None,
+        },
+        tx,
+    };
+    let tool = r#"{"choices":[{"message":{"content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"shell_run","arguments":"{\"cmd\":\"echo go\"}"}}]}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}"#;
+    let final_msg = r#"{"choices":[{"message":{"content":"fini","tool_calls":[]}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}"#;
+    let (base, stub) = stub_provider(vec![tool.to_string(), final_msg.to_string()]).await;
+    let provider = Provider::new(crate::provider::ProviderConfig {
+        base_url: base,
+        api_key: String::from("test"),
+        model: String::from("jouet"),
+    })
+    .unwrap();
+    let mcp = McpState::for_config(crate::kiro::mcp::Config::default());
+    let rules = Rules::default();
+    let ctx = Ctx {
+        provider: &provider,
+        model: "jouet",
+        effort: None,
+        rules: &rules,
+        mode: Mode::Yolo,
+        mcp: &mcp,
+        chat: 0,
+    };
+    let done = run_loop(
+        ctx,
+        vec![(String::from("user"), String::from("go"))],
+        vec![exec::shell_def()],
+        &sink,
+    )
+    .await
+    .unwrap();
+    stub.await.unwrap();
+    assert!(
+        done.text.contains("(hooks: 1 command, 0 prompts)"),
+        "{}",
+        done.text
+    );
+    let got = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let Incoming::HookDone(out) = got else {
+        panic!("attendu HookDone");
+    };
+    assert_eq!(out.name, "log");
+    assert!(out.ok);
+    assert!(out.text.contains("croa"), "{}", out.text);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn push_prompts_injecte_et_compte() {
+    let fired = crate::kiro::hook_agent::HookFired {
+        commands: 1,
+        prompts: vec![String::from("Résume.")],
+    };
+    let vide = crate::kiro::hook_agent::HookFired::default();
+    let mut wire = Vec::new();
+    let mut stats = HookStats::default();
+    push_prompts(&mut wire, &mut stats, [&fired, &vide]);
+    assert_eq!(wire.len(), 1);
+    assert_eq!(stats.prompts, 1);
+    assert_eq!(stats.commands, 0);
 }

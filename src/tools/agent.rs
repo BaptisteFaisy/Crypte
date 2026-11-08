@@ -4,9 +4,14 @@
 //! chats (natifs + MCP) quand `/tools on`. Différences : aucune interaction
 //! n'est possible, donc les décisions `Ask`/`Deny` deviennent des refus
 //! rejoués au modèle ; la boucle est bornée ([`MAX_ROUNDS`] tours,
-//! [`MAX_CALLS`] appels) car personne ne surveille ; les hooks `PreToolUse`
-//! ne sont pas déclenchés (tâches détachées, sans accès `App`).
+//! [`MAX_CALLS`] appels) car personne ne surveille. Les hooks outils
+//! (`PreToolUse`/`PostToolUse`) tirent comme pour les chats (commandes en
+//! fond, tombée sur le chat propriétaire ; prompts `agent` injectés au
+//! tour suivant) ; seuls les outils exécutés tirent (jamais les refusés).
 
+use crate::app::Incoming;
+use crate::kiro::hook_agent::{fire_tool_hooks, HookPaths};
+use crate::kiro::hooks::Trigger;
 use crate::kiro::mcp_client::{is_mcp_name, sanitize};
 use crate::kiro::mcp_pool::McpState;
 use crate::permissions::{Decision, Mode, Rules};
@@ -14,6 +19,7 @@ use crate::provider::{Completion, Provider};
 use crate::tools::exec::{self, Outcome};
 use crate::tools::flow::tooled_wire;
 use crate::tools::wire::{ToolCall, ToolDef, WireMsg};
+use tokio::sync::mpsc::Sender;
 
 /// Tours LLM outillés max par réponse d'agent (les chats n'ont pas de
 /// limite, l'utilisateur surveille ; un agent seul ne doit pas dépenser
@@ -55,6 +61,28 @@ pub struct Ctx<'a> {
     pub chat: usize,
 }
 
+/// Évier hooks d'une réponse d'agent (chemins + canal de tombée).
+#[derive(Debug, Clone)]
+pub struct HookSink {
+    pub paths: HookPaths,
+    pub tx: Sender<Incoming>,
+}
+
+/// Compteurs hooks d'une réponse (résumé de livraison).
+#[derive(Debug, Clone, Default)]
+pub struct HookStats {
+    pub commands: usize,
+    pub prompts: usize,
+}
+
+impl HookStats {
+    /// Ajoute le tour (commandes lancées + prompts injectés).
+    fn add(&mut self, commands: usize, prompts: usize) {
+        self.commands += commands;
+        self.prompts += prompts;
+    }
+}
+
 /// Réponse d'agent, outillée ou non : schémas natifs + MCP, filtre custom,
 /// boucle ([`run_loop`]) ou appel simple si `/tools off` ou filtre vide.
 pub async fn agent_reply(
@@ -62,6 +90,7 @@ pub async fn agent_reply(
     messages: Vec<(String, String)>,
     filter: &Filter,
     tooled: bool,
+    hooks: &HookSink,
 ) -> anyhow::Result<Completion> {
     if !tooled {
         return ctx
@@ -77,7 +106,7 @@ pub async fn agent_reply(
             .complete_full(&messages, ctx.model, ctx.effort)
             .await;
     }
-    run_loop(ctx, messages, tools).await
+    run_loop(ctx, messages, tools, hooks).await
 }
 
 /// Outils visibles de l'agent : `tools` non vide = allowlist (nom exact,
@@ -129,37 +158,53 @@ pub fn refusal(name: &str) -> String {
     )
 }
 
-/// Résumé livré avec le texte final (`""` sans appels ; les refusés et
-/// ratés sont nommés pour que le user voie ce qui n'a pas tourné).
-pub fn summarize(calls: &[CallRecord]) -> String {
-    if calls.is_empty() {
-        return String::new();
+/// Résumé livré avec le texte final (`""` sans appels ni hooks ; les
+/// refusés et ratés sont nommés pour que le user voie ce qui n'a pas
+/// tourné, les hooks comptés à part).
+pub fn summarize(calls: &[CallRecord], hooks: &HookStats) -> String {
+    let mut out = String::new();
+    if !calls.is_empty() {
+        let ok = calls.iter().filter(|c| c.ok && !c.refused).count();
+        let refused: Vec<&str> = calls
+            .iter()
+            .filter(|c| c.refused)
+            .map(|c| c.name.as_str())
+            .collect();
+        let failed: Vec<&str> = calls
+            .iter()
+            .filter(|c| !c.ok && !c.refused)
+            .map(|c| c.name.as_str())
+            .collect();
+        let plural = if calls.len() > 1 { "s" } else { "" };
+        out.push_str(&format!(
+            "\n\n(tools: {} call{plural} — {ok} ok, {} failed, {} refused",
+            calls.len(),
+            failed.len(),
+            refused.len()
+        ));
+        if !failed.is_empty() {
+            out.push_str(&format!(" [failed: {}]", failed.join(", ")));
+        }
+        if !refused.is_empty() {
+            out.push_str(&format!(" [refused: {}]", refused.join(", ")));
+        }
+        out.push(')');
     }
-    let ok = calls.iter().filter(|c| c.ok && !c.refused).count();
-    let refused: Vec<&str> = calls
-        .iter()
-        .filter(|c| c.refused)
-        .map(|c| c.name.as_str())
-        .collect();
-    let failed: Vec<&str> = calls
-        .iter()
-        .filter(|c| !c.ok && !c.refused)
-        .map(|c| c.name.as_str())
-        .collect();
-    let plural = if calls.len() > 1 { "s" } else { "" };
-    let mut out = format!(
-        "\n\n(tools: {} call{plural} — {ok} ok, {} failed, {} refused",
-        calls.len(),
-        failed.len(),
-        refused.len()
-    );
-    if !failed.is_empty() {
-        out.push_str(&format!(" [failed: {}]", failed.join(", ")));
+    if hooks.commands > 0 || hooks.prompts > 0 {
+        if out.is_empty() {
+            out.push_str("\n\n");
+        } else {
+            out.push(' ');
+        }
+        let plural = |count: usize| if count == 1 { "" } else { "s" };
+        out.push_str(&format!(
+            "(hooks: {} command{}, {} prompt{})",
+            hooks.commands,
+            plural(hooks.commands),
+            hooks.prompts,
+            plural(hooks.prompts)
+        ));
     }
-    if !refused.is_empty() {
-        out.push_str(&format!(" [refused: {}]", refused.join(", ")));
-    }
-    out.push(')');
     out
 }
 
@@ -180,6 +225,7 @@ pub async fn run_loop(
     ctx: Ctx<'_>,
     history: Vec<(String, String)>,
     tools: Vec<ToolDef>,
+    hooks: &HookSink,
 ) -> anyhow::Result<Completion> {
     let mut wire = tooled_wire(history);
     wire.push(WireMsg::text(
@@ -189,6 +235,7 @@ pub async fn run_loop(
     let mut prompt_tokens = 0u64;
     let mut completion_tokens = 0u64;
     let mut calls: Vec<CallRecord> = Vec::new();
+    let mut hook_stats = HookStats::default();
     let mut text = String::new();
     for _ in 0..MAX_ROUNDS {
         let Some(done) = llm_turn(ctx, &wire, &tools, &mut text, &calls).await? else {
@@ -201,13 +248,14 @@ pub async fn run_loop(
             break;
         }
         wire.push(WireMsg::assistant_calls(&done.text, &done.tool_calls));
-        run_calls(&done.tool_calls, &mut wire, &mut calls, ctx).await;
+        let turn = run_calls(&done.tool_calls, &mut wire, &mut calls, ctx, hooks).await;
+        hook_stats.add(turn.commands, turn.prompts);
         if calls.len() >= MAX_CALLS {
             text.push_str(&format!("\n\n(stopped: {MAX_CALLS} tool calls max)"));
             break;
         }
     }
-    text.push_str(&summarize(&calls));
+    text.push_str(&summarize(&calls, &hook_stats));
     Ok(Completion {
         text,
         tool_calls: Vec::new(),
@@ -250,19 +298,38 @@ fn push_text(text: &mut String, chunk: &str) {
     text.push_str(chunk);
 }
 
-/// Exécute les appels du tour (ou refuse), rejoue chaque résultat au fil.
+/// Exécute les appels du tour (ou refuse), rejoue chaque résultat au
+/// fil ; rend les compteurs hooks du tour (commandes + prompts).
 async fn run_calls(
     decided: &[ToolCall],
     wire: &mut Vec<WireMsg>,
     calls: &mut Vec<CallRecord>,
     ctx: Ctx<'_>,
-) {
+    hooks: &HookSink,
+) -> HookStats {
+    let mut stats = HookStats::default();
     for call in decided {
         if calls.len() >= MAX_CALLS {
             break;
         }
         let (ok, refused, out) = if allowed(ctx.rules, ctx.mode, &call.name) {
+            let pre = fire_tool_hooks(
+                &hooks.paths,
+                &hooks.tx,
+                Trigger::PreToolUse,
+                &call.name,
+                ctx.chat,
+            );
             let out = execute_one(ctx.mcp, ctx.chat, &call.name, &call.args).await;
+            let post = fire_tool_hooks(
+                &hooks.paths,
+                &hooks.tx,
+                Trigger::PostToolUse,
+                &call.name,
+                ctx.chat,
+            );
+            push_prompts(wire, &mut stats, [&pre, &post]);
+            stats.add(pre.commands + post.commands, 0);
             (out.ok, false, out.text)
         } else {
             (false, true, refusal(&call.name))
@@ -273,6 +340,19 @@ async fn run_calls(
             refused,
         });
         wire.push(WireMsg::result(call.id.clone(), out));
+    }
+    stats
+}
+
+/// Injecte les prompts `agent` au fil (messages user du tour suivant).
+fn push_prompts(
+    wire: &mut Vec<WireMsg>,
+    stats: &mut HookStats,
+    fired: [&crate::kiro::hook_agent::HookFired; 2],
+) {
+    for prompts in fired.iter().flat_map(|fire| fire.prompts.iter()) {
+        wire.push(WireMsg::text(String::from("user"), prompts.clone()));
+        stats.prompts += 1;
     }
 }
 
