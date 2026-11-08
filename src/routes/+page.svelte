@@ -9,6 +9,7 @@
   import ChatView from "../lib/chat/ChatView.svelte";
   import FxOverlay from "../lib/chat/FxOverlay.svelte";
   import KiroWidget from "../lib/chat/KiroWidget.svelte";
+  import ToolConfirm from "../lib/chat/ToolConfirm.svelte";
   import Sidebar from "../lib/chat/Sidebar.svelte";
   import { keyAction } from "../lib/chat/keys";
   import {
@@ -95,6 +96,7 @@
 
 <div class="crypte-chat page">
   <FxOverlay />
+  <ToolConfirm />
   {#if loadError}
     <p class="fatal" role="alert">the crypt did not wake: {loadError}</p>
   {:else if !ready}

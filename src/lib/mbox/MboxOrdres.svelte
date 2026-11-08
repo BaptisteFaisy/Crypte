@@ -26,6 +26,12 @@
 
   let pullAgent = $state("");
 
+  let dlgFor = $state<string | null>(null);
+  let dlgTo = $state("");
+  let dlgResume = $state("");
+  let dlgPieces = $state("");
+  let dlgToken = $state("");
+
   async function refresh(): Promise<void> {
     error = null;
     try {
@@ -107,6 +113,31 @@
       error = errText(e);
     }
   }
+
+  async function delegate(source: string): Promise<void> {
+    if (!dlgTo || !dlgResume || !dlgToken) return;
+    error = null;
+    info = null;
+    try {
+      const pieces = dlgPieces.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
+      const res = await invokeCmd<{ id: string }>("mbox_ordre_delegate", {
+        to: dlgTo,
+        resume: dlgResume,
+        pieces,
+        source,
+        token: dlgToken,
+      });
+      info = `Ordre ${source} délégué à ${dlgTo} (${res.id}).`;
+      dlgFor = null;
+      dlgTo = "";
+      dlgResume = "";
+      dlgPieces = "";
+      dlgToken = "";
+      await refresh();
+    } catch (e) {
+      error = errText(e);
+    }
+  }
 </script>
 
 {#if error}<p class="err">{error}</p>{/if}
@@ -167,9 +198,19 @@
                   <button onclick={() => void ack(o.id)} disabled={!ackToken}>OK</button>
                   <button onclick={() => { ackFor = null; ackToken = ""; }}>X</button>
                 </div>
+              {:else if dlgFor === o.id}
+                <div class="row">
+                  <input bind:value={dlgTo} placeholder="délégué à…" />
+                  <input bind:value={dlgResume} placeholder="résumé…" />
+                  <input bind:value={dlgPieces} placeholder="pièces (a,b,…)" />
+                  <input type="password" bind:value={dlgToken} autocomplete="off" placeholder="jeton" />
+                  <button onclick={() => void delegate(o.id)} disabled={!dlgTo || !dlgResume || !dlgToken}>OK</button>
+                  <button onclick={() => { dlgFor = null; dlgToken = ""; }}>X</button>
+                </div>
               {:else}
                 <div class="row">
                   <button onclick={() => { ackFor = o.id; ackVerdict = "lu"; }}>Accuser</button>
+                  <button onclick={() => { dlgFor = o.id; }}>Déléguer</button>
                   <button class="danger" onclick={() => { const t = prompt(`Jeton pour révoquer ${o.id} :`); if (t) void revoke(o.id, t); }}>
                     Révoquer
                   </button>

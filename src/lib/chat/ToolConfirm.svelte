@@ -3,7 +3,6 @@
 <script lang="ts">
   import { invokeCmd, errText } from "../tauri";
   import CrypteDialog from "../widgets/CrypteDialog.svelte";
-  import { invokeCmd, errText } from "../tauri";
   import { pendingConfirm } from "./store";
 
   let busy = $state(false);
