@@ -63,6 +63,8 @@ pub struct ChatView<'a> {
 pub struct ChatState {
     messages: Vec<Message>,
     pub input: String,
+    /// Curseur de saisie (position en caractères, 0 = devant tout).
+    pub cursor: usize,
     prompt_label: Option<String>,
     mask_input: bool,
     input_preview: Option<String>,
@@ -142,19 +144,39 @@ impl ChatState {
         bytes
     }
 
-    /// Tape un caractère dans le brouillon.
+    /// Tape un caractère au curseur (puis avance).
     pub fn input_push(&mut self, c: char) {
-        self.input.push(c);
+        self.input.insert(self.cursor_byte(), c);
+        self.cursor += 1;
     }
 
-    /// Efface le dernier caractère du brouillon.
+    /// Efface le caractère à gauche du curseur (Backspace, rien à 0).
     pub fn input_pop(&mut self) {
-        self.input.pop();
+        if self.cursor > 0 {
+            self.cursor -= 1;
+            self.input.remove(self.cursor_byte());
+        }
     }
 
-    /// Colle `s` (déjà assaini) à la fin du brouillon.
+    /// Colle `s` (déjà assaini) au curseur (puis avance).
     pub fn input_insert(&mut self, s: &str) {
-        self.input.push_str(s);
+        self.input.insert_str(self.cursor_byte(), s);
+        self.cursor += s.chars().count();
+    }
+
+    /// Déplace le curseur de `delta` (borné au texte).
+    pub fn move_cursor(&mut self, delta: isize) {
+        let len = self.input.chars().count() as isize;
+        self.cursor = (self.cursor as isize + delta).clamp(0, len) as usize;
+    }
+
+    /// Octet du curseur (borné, fin du texte si hors limites).
+    fn cursor_byte(&self) -> usize {
+        let at = self.cursor.min(self.input.chars().count());
+        self.input
+            .char_indices()
+            .nth(at)
+            .map_or(self.input.len(), |(i, _)| i)
     }
 
     /// Lignes visibles en texte brut (gouttière retirée) pour la sélection.
@@ -175,8 +197,9 @@ impl ChatState {
             .collect()
     }
 
-    /// Prend le brouillon (le vide) pour l'envoyer.
+    /// Prend le brouillon (le vide, curseur à 0) pour l'envoyer.
     pub fn take_input(&mut self) -> String {
+        self.cursor = 0;
         std::mem::take(&mut self.input)
     }
 
@@ -285,7 +308,8 @@ impl ChatState {
         frame.render_widget(Paragraph::new(visible), inner);
     }
 
-    /// Saisie : brouillon (ou aperçu) cadré sur la fin + curseur bougie fixe.
+    /// Saisie : brouillon cadré sur le curseur bougie (←/→ pour bouger).
+    /// L'aperçu (outil en cours, flow `/connect`) reste cadré sur la fin.
     /// Sans titre par défaut ; le label custom et le masquage (`•`)
     /// servent au flow `/connect` (seul cas avec un titre).
     /// Question IA en attente : l'invite suggère chiffre ou mots.
@@ -310,8 +334,24 @@ impl ChatState {
             Line::from(vec![cursor, Span::styled(text, hint)])
         } else {
             let shown = mask_text(raw, self.mask_input);
-            let text = tail_chars(&shown, inner_w.max(1));
-            Line::from(vec![Span::styled(text, Style::new().fg(BONE)), cursor])
+            let chars: Vec<char> = shown.chars().collect();
+            // Aperçu : curseur fictif en fin (cadré comme avant).
+            let at = if self.input_preview.is_some() {
+                chars.len()
+            } else {
+                self.cursor.min(chars.len())
+            };
+            let wide = inner_w.max(1);
+            let from = chars.len().saturating_sub(wide).min(at);
+            let to = (from + wide).min(chars.len());
+            let before: String = chars[from..at].iter().collect();
+            let after: String = chars[at..to].iter().collect();
+            let bone = Style::new().fg(BONE);
+            Line::from(vec![
+                Span::styled(before, bone),
+                cursor,
+                Span::styled(after, bone),
+            ])
         };
         frame.render_widget(Paragraph::new(line).block(block), area);
     }
@@ -452,18 +492,6 @@ fn mask_text(s: &str, mask: bool) -> Cow<'_, str> {
         Cow::Owned(s.chars().map(|_| '•').collect())
     } else {
         Cow::Borrowed(s)
-    }
-}
-
-/// Garde les `n` derniers caractères (cadrage saisie longue sur la fin),
-/// sans `Vec` transitoire (frontière d'octets trouvée par la fin).
-fn tail_chars(s: &str, n: usize) -> String {
-    if n == 0 {
-        return String::new();
-    }
-    match s.char_indices().rev().take(n).last() {
-        Some((start, _)) => s[start..].to_string(),
-        None => String::new(),
     }
 }
 

@@ -19,8 +19,8 @@ inclusion: always
 ## Outils agent (`tools/`, `/permissions`)
 
 - Lectures seules (snapshot, read, screenshots, liste fenêtres) : libres.
-- Toute modification : confirmation `allow …? (y/n)` en mode `auto` (défaut) ;
-  `yolo` exécute sans demander ; règles fines `/permissions <outil>
+- Toute modification : confirmation `allow …? (y/n)` en mode `auto` ;
+  `yolo` (défaut) exécute sans demander ; règles fines `/permissions <outil>
   <allow|ask|deny>` (nom exact ou `préfixe_*`, plus long match gagne) ;
   `deny` refuse sans demander et prévient le modèle.
 - Le modèle ne reçoit jamais ni mots de passe ni codes 2FA (l'utilisateur les

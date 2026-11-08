@@ -71,6 +71,8 @@ impl App {
             KeyCode::F(9) => self.cmd(|s| s.open_haunt()),
             KeyCode::Left if ctrl => self.cmd(|s| s.resize_right(2)),
             KeyCode::Right if ctrl => self.cmd(|s| s.resize_right(-2)),
+            KeyCode::Left => self.cmd(|s| s.move_cursor(-1)),
+            KeyCode::Right => self.cmd(|s| s.move_cursor(1)),
             _ => true,
         }
     }
@@ -88,6 +90,14 @@ impl App {
         let idx = self.sessions.index();
         if let Some(sess) = self.sessions.get_mut(idx) {
             sess.chat.input_pop();
+        }
+    }
+
+    /// ←/→ : déplace le curseur dans la barre (ignoré sans chat).
+    fn move_cursor(&mut self, delta: isize) {
+        let idx = self.sessions.index();
+        if let Some(sess) = self.sessions.get_mut(idx) {
+            sess.chat.move_cursor(delta);
         }
     }
 
@@ -276,5 +286,26 @@ mod tests {
         assert!(app.on_key(ctrl(KeyCode::Char('n')))); // recrée
         assert_eq!(app.sessions.count(), 1);
         assert_eq!(app.sessions.current().name, "Chat 1");
+    }
+
+    #[test]
+    fn fleches_gauche_droite_deplacent_le_curseur_borne() {
+        let mut app = test_app();
+        for c in "abc".chars() {
+            app.sessions.current_mut().chat.input_push(c);
+        }
+        let key = |c| KeyEvent::new(c, KeyModifiers::empty());
+        let at = |app: &App| app.sessions.current().chat.cursor;
+        assert_eq!(at(&app), 3);
+        assert!(app.on_key(key(KeyCode::Left)));
+        assert_eq!(at(&app), 2);
+        assert!(app.on_key(key(KeyCode::Right)));
+        assert_eq!(at(&app), 3);
+        assert!(app.on_key(key(KeyCode::Right)), "fin : borné");
+        assert_eq!(at(&app), 3);
+        for _ in 0..9 {
+            assert!(app.on_key(key(KeyCode::Left)));
+        }
+        assert_eq!(at(&app), 0, "début : borné");
     }
 }

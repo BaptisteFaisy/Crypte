@@ -111,7 +111,7 @@ fn clear_invalide_le_cache_de_rendu() {
 #[test]
 fn prompt_masked_hides_key_length_only() {
     let mut chat = ChatState::new();
-    chat.input.push_str("brouillon");
+    chat.input_insert("brouillon");
     chat.set_prompt(Some(String::from("Muse API key (masked)")), true);
     chat.set_input_preview(Some(String::from("sk-secret")));
     assert_eq!(chat.prompt_label.as_deref(), Some("Muse API key (masked)"));
@@ -133,7 +133,7 @@ fn prompt_masked_hides_key_length_only() {
 fn curseur_saisie_fixe_ne_clignote_pas() {
     use ratatui::{backend::TestBackend, Terminal};
     let mut chat = ChatState::new();
-    chat.input.push_str("bonsoir");
+    chat.input_insert("bonsoir");
     let dump = |chat: &mut ChatState, tick: u64| {
         let view = ChatView {
             title: "test",
@@ -155,4 +155,53 @@ fn curseur_saisie_fixe_ne_clignote_pas() {
     let b = dump(&mut chat, 5);
     assert_eq!(a, b);
     assert!(a.contains('▌'), "curseur fixe absent : {a}");
+}
+
+#[test]
+fn curseur_saisie_fleches_insertion_et_rendu_milieu() {
+    use ratatui::{backend::TestBackend, Terminal};
+    let mut chat = ChatState::new();
+    for c in "abcdef".chars() {
+        chat.input_push(c);
+    }
+    assert_eq!(chat.cursor, 6);
+    chat.move_cursor(-2);
+    assert_eq!(chat.cursor, 4);
+    chat.input_push('X');
+    assert_eq!(chat.input, "abcdXef");
+    assert_eq!(chat.cursor, 5);
+    chat.input_pop();
+    assert_eq!(chat.input, "abcdef");
+    assert_eq!(chat.cursor, 4);
+    chat.input_insert("YZ");
+    assert_eq!(chat.input, "abcdYZef");
+    assert_eq!(chat.cursor, 6);
+    // Bornes : rien sous 0, rien au-delà de la fin.
+    chat.move_cursor(-100);
+    assert_eq!(chat.cursor, 0);
+    chat.input_pop();
+    assert_eq!(chat.input, "abcdYZef");
+    chat.move_cursor(100);
+    assert_eq!(chat.cursor, 8);
+    // Rendu : le bloc bougie coupe le texte à la position.
+    chat.move_cursor(-4);
+    let view = ChatView {
+        title: "test",
+        tick: 0,
+        sending: false,
+        question_pending: false,
+        agents: crate::agent_view::AgentCtx::empty(),
+    };
+    let mut term = Terminal::new(TestBackend::new(40, 14)).unwrap();
+    term.draw(|f| chat.draw(f, f.area(), view)).unwrap();
+    let buf = term.backend().buffer().clone();
+    let frame: String = (0..14)
+        .map(|y| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(frame.contains("abcd▌YZef"), "curseur mal placé : {frame}");
+    // Envoi : le brouillon part, le curseur repart à 0.
+    assert_eq!(chat.take_input(), "abcdYZef");
+    assert_eq!(chat.cursor, 0);
+    assert!(chat.input.is_empty());
 }
