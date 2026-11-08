@@ -316,6 +316,24 @@ impl Settings {
             .find_map(|name| self.config_for(name))
     }
 
+    /// Stores a live `/connect` (credential + last provider) in the vault.
+    /// Always saves (a retry after a failed write must hit the disk again)
+    /// and returns the notice to show (save error included on failure).
+    /// No secret comparison: same-principal dirty checks are not an oracle.
+    pub fn remember(&mut self, name: &str, cfg: &ProviderConfig) -> String {
+        self.vault.providers.insert(
+            name.to_string(),
+            Credential {
+                base_url: cfg.base_url.clone(),
+                model: cfg.model.clone(),
+                key: cfg.api_key.clone(),
+            },
+        );
+        self.vault.last = Some(name.to_string());
+        self.rebuild();
+        self.with_save(format!("key saved for {name} (encrypted)"))
+    }
+
     /// Remembers `name` as the provider to reconnect at startup.
     pub fn mark_connected(&mut self, name: &str) {
         if self.vault.last.as_deref() == Some(name) {
