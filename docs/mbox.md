@@ -419,7 +419,7 @@ branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
   + `tests/mbox_vague5.rs`, tous sous les plafonds (ex. `cli.rs`
   497 L/18 fn, `sonde.rs` 489 L/25 fn, `autorite.rs` 487 L/27 fn,
   `json.rs` 483 L/27 fn, `tests/mbox_interop.rs` 482 L/22 fn,
-  `eveil.rs` 346 L/20 fn, `tests/mbox_vague5.rs` 292 L/13 fn).
+  `eveil.rs` 402 L/23 fn, `tests/mbox_vague5.rs` 292 L/13 fn).
 - **Zéro duplication** : une seule implémentation par logique (époque
   unique dans `format`, verrou unique dans `verrou`, découpage unique
   dans `outils`).
@@ -430,3 +430,32 @@ branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
   interop + vague 5, et la garde des limites ; tout nouveau job respecte le
   budget 5 min (`timeout-minutes: 5`, `concurrency` + cancel,
   `fetch-depth: 1`, cache cargo).
+
+### 2.6 Portabilité (compatibilité Tauri : Windows/macOS)
+
+- Socle 100 % `std` + `libc` déclarée : aucune crate native
+  supplémentaire, donc `cargo build` passe tel quel sous Windows et
+  macOS (cible Tauri). Les 3 appels Unix sont isolés derrière
+  `#[cfg(target_os = "linux")]` avec repli documenté :
+- `eveil.rs` (inotify) : hors Linux, `ouvrir` rend un veilleur d'emblée
+  hors service → `tour` replie sur `sonde::tour` throttlée 15 s
+  (comportement § 1.15 « fallback », zéro régression, juste la latence
+  ≤ 100 ms qui redevient ≤ 15 s).
+- `verrou.rs` (`flock`) : hors Unix, `verrouiller` rend un garde no-op
+  (succès immédiat). Suffisant pour Tauri mono-processus ; à plusieurs
+  écrivains sur des processus distincts, préférer un seul processus
+  écrivain ou un verrou du shell hôte.
+- `fichier.rs` (`MetadataExt`/inode dans `identite_fichier`) : hors
+  Unix, identité dégradée `(taille, mtime, 0)` — rotation détectée
+  sauf même taille + même mtime à la seconde près (acceptable en
+  local, le throttle borne la casse).
+- `0600`/`0700` de l'autorité (`autorite.rs:212-219`) : Unix seul ;
+  hors Unix les permissions sont celles du défaut OS (machine
+  mono-utilisateur Tauri : risque résiduel assumé, jamais de secret
+  en clair ailleurs que dans ce fichier).
+- `BCAST_DIR` reste piloté par variable d'environnement : le shell
+  Tauri le pointe vers son dossier applicatif, le code ne suppose
+  aucun chemin système.
+- Preuve : `cargo check --tests` avec les `cfg(target_os = "linux")`
+  retournés (simulation non-Linux) compile avec 0 erreur et 0
+  warning de code ; la CI Linux garde `clippy -D warnings` à zéro.

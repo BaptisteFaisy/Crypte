@@ -140,6 +140,27 @@ pub fn epoque_fichier(chemin: &Path) -> Option<u64> {
         .map(|d| d.as_secs())
 }
 
+/// Identité fichier pour la détection de rotation (`dev:ino:pos`, `sonde`).
+/// Unix : vrai couple `(dev, ino)` ; ailleurs (Tauri/Windows, pas d'inode
+/// en std) : `(taille, mtime, 0)` — même format à 3 champs, fichiers locaux.
+#[cfg(unix)]
+pub(crate) fn identite_fichier(meta: &fs::Metadata) -> (u64, u64, u64) {
+    use std::os::unix::fs::MetadataExt;
+    (meta.dev(), meta.ino(), meta.len())
+}
+
+/// Identité dégradée hors Unix, voir ci-dessus.
+#[cfg(not(unix))]
+pub(crate) fn identite_fichier(meta: &fs::Metadata) -> (u64, u64, u64) {
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    (meta.len(), mtime, 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

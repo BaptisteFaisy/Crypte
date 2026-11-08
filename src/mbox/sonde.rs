@@ -31,7 +31,6 @@
 
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
@@ -90,7 +89,7 @@ fn lit_nouveau(dir: &BcastDir, log: &EventLog, chemin: &Path, tag: &str) -> Vec<
     let Ok(meta) = fs::metadata(chemin) else {
         return Vec::new();
     };
-    let (dev, ino, taille) = (meta.dev(), meta.ino(), meta.len());
+    let (dev, ino, taille) = super::fichier::identite_fichier(&meta);
     let offset = dir.racine().join(format!(".mbox-sonde.{tag}.offset"));
     let base = chemin.file_name().and_then(|b| b.to_str()).unwrap_or(tag);
     let pos = match lit_offset(&offset) {
@@ -458,6 +457,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)] // `utimensat` : pas d'équivalent std sur Windows.
     fn hb_muet_marqueur() {
         use std::ffi::CString;
 

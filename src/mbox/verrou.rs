@@ -6,9 +6,15 @@
 //! lectures/écritures ; `throttle` (fail-open) et `autorite`/`fichier`
 //! (fail-closed, via [`avec_verrou`]) partagent la boucle via
 //! [`verrouiller`], un seul point d'attente.
+//!
+//! Portabilité (Tauri) : `flock` n'existe que sur Unix. Hors Unix
+//! (Windows : `LockFileEx` hors std, pas de dép. réseau) le verrou est
+//! un no-op documenté — usage mono-processus inchangé, exclusion
+//! inter-processus indisponible (voir `docs/mbox.md` § Portabilité).
 
 use std::fs::{self, File, OpenOptions};
 use std::io;
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -17,6 +23,7 @@ use std::time::{Duration, Instant};
 pub const ATTENTE_VERROU_SECS: u64 = 10;
 
 /// Pas d'attente entre deux tentatives de `flock` non bloquant.
+#[cfg(unix)]
 const PAS_VERROU_MS: u64 = 50;
 
 /// Chemin du verrou d'une cible : `"<cible>.lock"`, à l'identique du shell.
@@ -34,6 +41,7 @@ pub fn chemin_verrou(cible: &Path) -> PathBuf {
 /// Boucle `LOCK_EX | LOCK_NB` : `EWOULDBLOCK` = réessayer jusqu'au délai,
 /// `EINTR` = réessayer aussitôt, autre erreur = échec immédiat.
 /// Dépassement du délai = erreur `TimedOut`.
+#[cfg(unix)]
 pub fn prendre_verrou(fichier: &File, attente_secs: u64) -> io::Result<()> {
     let fd = fichier.as_raw_fd();
     let limite = Instant::now() + Duration::from_secs(attente_secs);
@@ -61,6 +69,7 @@ pub fn prendre_verrou(fichier: &File, attente_secs: u64) -> io::Result<()> {
 }
 
 /// Rend un verrou pris par [`prendre_verrou`] (best-effort, comme `flock -u`).
+#[cfg(unix)]
 pub fn rendre_verrou(fichier: &File) {
     // SAFETY : mêmes conditions que prendre_verrou ; l'échec est ignoré
     // car la fermeture du File libère le verrou de toute façon.
@@ -68,6 +77,16 @@ pub fn rendre_verrou(fichier: &File) {
         libc::flock(fichier.as_raw_fd(), libc::LOCK_UN);
     }
 }
+
+/// Hors Unix : no-op (voir l'en-tête du module).
+#[cfg(not(unix))]
+pub fn prendre_verrou(_fichier: &File, _attente_secs: u64) -> io::Result<()> {
+    Ok(())
+}
+
+/// Hors Unix : no-op (voir l'en-tête du module).
+#[cfg(not(unix))]
+pub fn rendre_verrou(_fichier: &File) {}
 
 /// Politique quand le verrou est impossible (délai dépassé ou erreur).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,6 +187,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)] // Contention réelle `flock` : no-op hors Unix.
     fn verrou_delai_depasse_est_erreur() {
         let dir = dossier_test();
         let lock = dir.join("pris.lock");
