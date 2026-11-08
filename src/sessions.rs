@@ -8,14 +8,16 @@ mod close;
 mod subagents;
 
 pub use chat::ChatSession;
-pub use close::{shift_bus_links, unlink_chat, CloseOutcome};
+pub use close::{shift_bus_links, CloseOutcome};
 pub use subagents::{AgentStatus, AskError, SubAgent};
 
 use std::path::Path;
 
 use crate::tokens::TokenLedger;
 
-/// Chats ouverts + position du courant (jamais vide, index toujours valide).
+/// Chats ouverts + position du courant (vide si le dernier est fermé,
+/// `[+]` / Ctrl+N recrée un chat ; `current` exige un chat, `index`
+/// est neutre à vide).
 /// Accès direct par index (`Vec`), sans table secondaire : quelques chats,
 /// `select`/`get` en O(1) sans surcoût mémoire d'index redondant.
 pub struct Sessions {
@@ -37,12 +39,12 @@ impl Sessions {
         }
     }
 
-    /// Chat courant (lecture).
+    /// Chat courant (lecture). Panique si aucun chat (vérifier `count()`).
     pub fn current(&self) -> &ChatSession {
         &self.chats[self.current]
     }
 
-    /// Chat courant (écriture).
+    /// Chat courant (écriture). Panique si aucun chat (vérifier `count()`).
     pub fn current_mut(&mut self) -> &mut ChatSession {
         &mut self.chats[self.current]
     }

@@ -22,8 +22,13 @@ const COMPACT_INSTRUCTION: &str = "Summarize this conversation in under 20 lines
 
 impl App {
     /// Exécute une commande locale (`/usage`, `/new`, `/model`, …).
+    /// Sans chat, seul `/new` passe (les autres exigent un courant).
     pub(crate) fn run_command(&mut self, text: &str) {
-        match commands::parse(text) {
+        let cmd = commands::parse(text);
+        if self.sessions.count() == 0 && !matches!(cmd, Some(Command::New)) {
+            return; // aucun chat : [+] / Ctrl+N / /new pour recommencer
+        }
+        match cmd {
             Some(Command::Usage) => self.cmd_usage(),
             Some(Command::New) => self.add_chat(),
             Some(Command::Clear) => self.cmd_clear(),
@@ -350,7 +355,10 @@ impl App {
     /// Contexte estimé du chat courant : fenêtre d'envoi + saisie en
     /// cours, sans copie (même somme que la fenêtre réellement envoyée).
     pub(crate) fn context_used(&self) -> u64 {
-        let sess = self.sessions.current();
+        let idx = self.sessions.index();
+        let Some(sess) = self.sessions.get(idx) else {
+            return 0; // aucun chat : jauge à zéro
+        };
         let input = sess.chat.input.trim();
         let pending = if input.is_empty() { None } else { Some(input) };
         window_estimate(&sess.history, sess.pinned_system, pending)
@@ -427,6 +435,21 @@ mod tests {
         let last = app.sessions.current().chat.messages().last().unwrap();
         assert_eq!(last.text, "reply in flight — retry");
         assert_eq!(app.sessions.current().chat.messages().len(), 2);
+    }
+
+    #[test]
+    fn sans_chat_seul_new_passe_les_autres_sont_ignores() {
+        let mut app = test_app();
+        app.close_chat(0);
+        assert_eq!(app.sessions.count(), 0);
+        app.run_command("/usage"); // exigent un courant : ignorés, sans panique
+        app.run_command("/model spectre-1");
+        app.run_command("/compact");
+        app.run_command("/clear");
+        assert_eq!(app.sessions.count(), 0);
+        app.run_command("/new");
+        assert_eq!(app.sessions.count(), 1);
+        assert_eq!(app.sessions.current().name, "Chat 1");
     }
 
     #[test]
