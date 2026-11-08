@@ -1,0 +1,69 @@
+name: hermes-conflict-resolver
+
+# Résolution AUTOMATIQUE des conflits — portage minimal du résolveur duello.
+# Dispatché par le gate (hermes-lite) sur VRAI conflit (jamais en PR directe).
+# La logique vit dans .github/hermes/resolver.py (+ resolve.py, common.py),
+# stdlib seule : rebase, résolution IA (fichier/hunk), repli déterministe,
+# validation cargo (fmt, clippy, build, test), push --force-with-lease, rapport.
+#
+# Budget : timeout-minutes 5 (garde ci-budget, exigée par la file Mergify).
+# Un run ne tient pas toujours en 5 min (1er build cargo froid, gros conflits)
+# : ce n'est PAS un état terminal — le gate re-dispatche avec backoff, le
+# cache cargo du runner (CARGO_HOME persistant) rend les retries rapides.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Numéro de la PR à rebaser'
+        required: true
+        type: string
+      head_ref:
+        description: 'Branche de la PR (rebasée et poussée)'
+        required: true
+        type: string
+      base_ref:
+        description: 'Branche de base (main en général)'
+        required: true
+        type: string
+      head_sha:
+        description: 'SHA head au dispatch (protection anti-course)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+  actions: write # ré-armement ci.yml + hermes-lite sur le nouveau head
+
+concurrency:
+  group: hermes-resolver-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  resolver:
+    name: Rebase + résolution des conflits
+    runs-on: [self-hosted, horror_cli-worker]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (scripts — le résolveur clone lui-même en /tmp)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Rebase + résolution + validation cargo + push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_TOKEN: ${{ secrets.HERMES_PUSH_TOKEN }}
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+          LLM_BASE: ${{ secrets.HERMES_LLM_BASE }}
+          LLM_MODEL: ${{ vars.HERMES_LLM_MODEL }}
+          LLM_MODEL_FALLBACK: ${{ vars.HERMES_LLM_MODEL_FALLBACK }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_REF: ${{ inputs.head_ref }}
+          BASE_REF: ${{ inputs.base_ref }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          PYTHONUTF8: '1'
+          PYTHONIOENCODING: utf-8
+        run: python3 .github/hermes/resolver.py

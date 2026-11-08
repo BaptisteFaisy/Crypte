@@ -16,6 +16,19 @@
   app GitHub **All repositories** + activation du produit **Merge Queue** dans
   le dashboard Mergify.
 - **stale-base-guard** : check informatif de retard de branche.
+- **Résolveur de conflits** (`.github/workflows/hermes-conflict-resolver.yml`
+  + `.github/hermes/resolver.py`, `resolve.py`, `dispatch.py`, `common.py`) :
+  sur VRAI conflit, le gate le dispatche (backoff, anti-doublon, frein de
+  file) ; il rebase, résout (IA fichier/hunk + repli déterministe), valide
+  par `cargo` (fmt, clippy `-D warnings`, build, test), pousse en
+  `--force-with-lease` et rapporte sur la PR. `Cargo.lock` et les binaires
+  (`docs/bestiaire.png`, `assets/**`) : jamais soumis à l'IA, côté base +
+  signalés. Sans clés LLM : 100 % déterministe + escalade humaine, jamais
+  silencieux. Secrets requis : `AGNES_API_KEY` (ou `HERMES_LLM_BASE`),
+  `HERMES_PUSH_TOKEN` (PAT contenus, optionnel mais recommandé — sinon
+  ré-armement par dispatch) ; vars : `HERMES_LLM_MODEL`,
+  `HERMES_LLM_MODEL_FALLBACK`. Actif après merge (code lu sur `main`) et
+  hors dry-run ; merger APRÈS la PR CI (le ré-armement vise `ci.yml`).
 - **Balayeur file-mergify** (`.github/workflows/file-mergify.yml` +
   `.github/mergify/sweep.py`) : remet les PR prêtes éjectées de la file
   (`@mergifyio queue`, 2 fois max par tête puis escalade), marche à suivre

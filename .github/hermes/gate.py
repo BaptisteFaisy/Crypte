@@ -5,62 +5,62 @@
 Règles :
 - retard sans conflit  → mise à jour serveur (PUT /pulls/N/update-branch,
   méthode UPDATE_METHOD, merge de la base par défaut) ; ré-évaluée dans ce run.
-- vrai conflit         → check rouge + label `hermes/conflit` (escalade humaine).
+- vrai conflit         → check rouge + label `hermes/conflit` + DISPATCH du
+  résolveur (`dispatch.py` → workflow `hermes-conflict-resolver.yml` : rebase
+  + résolution IA + validation cargo + push) ; escalade humaine si irrésoluble.
 - frais + checks requis verts → merge (MERGE_METHOD, squash par défaut),
   une PR à la fois.
 
 Méthodes alignées sur .mergify.yml : jamais de rebase, qui refuse les PR
 ayant fusionné main en elles (constaté 2026-11-08, PR #73).
+
+En dry-run (HERMES_LITE_DRY_RUN=1), le gate évalue et étiquette mais ne
+dispatche PAS le résolveur (un dispatch pousse sur la branche : écriture).
 """
 
-API = 'https://api.github.com'
 CHECK_NAME = 'hermes-lite/verdict'
 LABEL_OK = 'hermes/approuvee'
 LABEL_CONFLIT = 'hermes/conflit'
 
 import json
 import os
+import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from common import api, ensure_label, set_label  # noqa: E402
+from dispatch import dispatch_resolver  # noqa: E402
 
 # Méthodes GitHub (env du workflow hermes-lite.yml, alignées sur .mergify.yml).
 MERGE_METHOD = os.environ.get('MERGE_METHOD') or 'squash'
 UPDATE_METHOD = os.environ.get('UPDATE_METHOD') or 'merge'
 
 
-def api(method, url, body=None, token=None):
-    import json as _json
-    import urllib.request as _ur
-    import urllib.error as _ue
-    data = _json.dumps(body).encode() if body is not None else None
-    req = _ur.Request(API + url, data=data, method=method)
-    req.add_header('Authorization', 'Bearer ' + token)
-    req.add_header('Accept', 'application/vnd.github+json')
-    try:
-        with _ur.urlopen(req, timeout=30) as r:
-            raw = r.read()
-            return r.status, (_json.loads(raw) if raw else None)
-    except _ue.HTTPError as e:
-        payload = e.read()
-        try:
-            return e.code, _json.loads(payload)
-        except Exception:
-            return e.code, payload.decode('utf-8', errors='replace')
+def handle_conflict(pr, repo, token, base_ref, sha, dry, detail):
+    """Vrai conflit : check rouge + label + dispatch du résolveur (sauf dry).
 
-
-def ensure_label(repo, token, name, color, desc):
-    api('POST', '/repos/%s/labels' % repo, token=token,
-        body={'name': name, 'color': color, 'description': desc})
-
-
-def set_label(pr, repo, token, name, add):
+    Le dispatch pousse sur la branche : en dry-run, on l'annonce sans le faire.
+    Jamais d'état terminal : backoff et re-dispatch gérés côté `dispatch.py`.
+    """
     num = pr['number']
-    has = name in [l['name'] for l in pr.get('labels') or []]
-    if add and not has:
-        api('POST', '/repos/%s/issues/%d/labels' % (repo, num),
-            token=token, body={'labels': [name]})
-    elif not add and has:
-        api('DELETE', '/repos/%s/issues/%d/labels/%s' % (repo, num, name),
-            token=token)
+    dispatched = False if dry else dispatch_resolver(repo, token, pr)
+    if dispatched:
+        summary = ('Résolveur Hermes dispatché : rebase + résolution auto + '
+                   'validation cargo + push. ' + detail)
+    elif dry:
+        summary = ('Dry-run : le résolveur serait dispatché ici. ' + detail
+                   + ' Rebase manuel puis push en attendant.')
+    else:
+        summary = ('Résolveur non dispatché (backoff, file saturée ou déjà en '
+                   'cours — voir logs ; retenté au cycle suivant). ' + detail)
+    create_check(repo, token, sha, False,
+                 'Conflits avec %s — résolution auto' % base_ref, summary)
+    set_label(pr, repo, token, LABEL_CONFLIT, True)
+    set_label(pr, repo, token, LABEL_OK, False)
+    print('[gate] #%d : conflit → dispatch %s'
+          % (num, 'OUI' if dispatched else 'non'), flush=True)
+    return 'conflict'
 
 
 def refresh_branch(repo, token, pr):
@@ -132,13 +132,9 @@ def settle_after_refresh(repo, token, num, required, attempts=10, pause=6, dry=F
         conflicts = (pr.get('mergeable') is False
                      and (pr.get('mergeable_state') or '') == 'dirty')
         if conflicts:
-            create_check(repo, token, sha, False,
-                         'Conflits avec %s — intervention humaine' % base_ref,
-                         'La mise à jour automatique a révélé un conflit. Fusionner '
-                         'main, résoudre puis push, ou label `hermes/intervention-humaine`.')
-            set_label(pr, repo, token, LABEL_CONFLIT, True)
-            set_label(pr, repo, token, LABEL_OK, False)
-            return 'conflict'
+            return handle_conflict(
+                pr, repo, token, base_ref, sha, dry,
+                'La mise à jour serveur a révélé un conflit réel.')
         set_label(pr, repo, token, LABEL_OK, True)
         create_check(repo, token, sha, True, 'PR à jour — merge par le gate',
                      'Fraîche au moment du merge (settle après mise à jour serveur).')
@@ -187,14 +183,9 @@ def handle_pr(pr, repo, token, required, dry=False):
     conflicts = (mergeable is False and mergeable_state == 'dirty')
 
     if conflicts:
-        create_check(repo, token, sha, False,
-                     'Conflits avec %s — intervention humaine' % base_ref,
-                     'Le gate ne résout pas les conflits (pas d IA ici). '
-                     'Rebase manuel puis push, ou utilise le label '
-                     '`hermes/intervention-humaine` pour suspendre.')
-        set_label(pr, repo, token, LABEL_CONFLIT, True)
-        set_label(pr, repo, token, LABEL_OK, False)
-        return 'conflict'
+        return handle_conflict(
+            pr, repo, token, base_ref, sha, dry,
+            'En dernier recours : fusionner main, résoudre puis push.')
     set_label(pr, repo, token, LABEL_CONFLIT, False)
 
     if not fresh:
@@ -209,12 +200,9 @@ def handle_pr(pr, repo, token, required, dry=False):
             return settle_after_refresh(repo, token, num, required, dry=dry)
         if r == 'conflict':
             # La mise à jour serveur a été refusée : conflit réel après tout.
-            create_check(repo, token, sha, False,
-                         'Conflits avec %s — intervention humaine' % base_ref,
-                         'La mise à jour automatique a été refusée. Fusionner '
-                         'main, résoudre puis push, ou label `hermes/intervention-humaine`.')
-            set_label(pr, repo, token, LABEL_CONFLIT, True)
-            set_label(pr, repo, token, LABEL_OK, False)
+            return handle_conflict(
+                pr, repo, token, base_ref, sha, dry,
+                'La mise à jour serveur a été refusée (conflit réel).')
         return r
 
     set_label(pr, repo, token, LABEL_OK, True)

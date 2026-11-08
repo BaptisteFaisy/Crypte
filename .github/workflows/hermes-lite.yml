@@ -18,6 +18,7 @@ permissions:
   contents: write
   pull-requests: write
   checks: write
+  actions: write # dispatch du résolveur (hermes-conflict-resolver.yml)
 
 concurrency:
   group: hermes-lite-${{ github.repository }}
