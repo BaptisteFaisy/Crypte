@@ -1,8 +1,8 @@
 //! Permissions des outils : mode global + règles fines par outil.
 //!
-//! `yolo` = exécute sans demander, `auto` (défaut) = demande confirmation
+//! `yolo` (défaut) = exécute sans demander, `auto` = demande confirmation
 //! à chaque modification. Persisté dans
-//! `$HOME/.config/kiro-horror-tui/permissions` (un mot, `auto` si absent,
+//! `$HOME/.config/kiro-horror-tui/permissions` (un mot, `yolo` si absent,
 //! illisible ou inconnu) ; relu au démarrage.
 //!
 //! Règles fines (T5) : `allow` (exécute), `ask` (confirme), `deny` (refuse
@@ -23,11 +23,11 @@ const STATE_PATH: &str = ".config/kiro-horror-tui/permissions";
 /// Fichier des règles fines, relatif à `$HOME` (même dossier que le mode).
 const RULES_PATH: &str = ".config/kiro-horror-tui/permissions-rules";
 
-/// Mode de permissions (`Auto` par défaut : demande à chaque modification).
+/// Mode de permissions (`Yolo` par défaut : exécute sans demander).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Mode {
-    #[default]
     Auto,
+    #[default]
     Yolo,
 }
 
@@ -175,12 +175,12 @@ pub fn rules_path() -> Option<PathBuf> {
         .map(|home| Path::new(&home).join(RULES_PATH))
 }
 
-/// Charge le mode persisté (`Auto` si absent, illisible ou inconnu).
+/// Charge le mode persisté (`Yolo` si absent, illisible ou inconnu).
 pub fn load() -> Mode {
     path().map(|p| load_from(&p)).unwrap_or_default()
 }
 
-/// Charge depuis `path` (`Auto` si absent, illisible ou inconnu).
+/// Charge depuis `path` (`Yolo` si absent, illisible ou inconnu).
 pub fn load_from(path: &Path) -> Mode {
     std::fs::read_to_string(path)
         .ok()
@@ -245,7 +245,7 @@ mod tests {
         assert_eq!(Mode::parse("  AUTO\n"), Some(Mode::Auto));
         assert_eq!(Mode::parse("turbo"), None);
         assert_eq!(Mode::parse(""), None);
-        assert_eq!(Mode::default(), Mode::Auto);
+        assert_eq!(Mode::default(), Mode::Yolo);
         assert_eq!(Mode::Yolo.label(), "yolo");
         assert_eq!(Mode::Auto.label(), "auto");
         assert_eq!(Rule::parse("ALLOW"), Some(Rule::Allow));
@@ -256,14 +256,14 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_fichier_et_inconnu_vaut_auto() {
+    fn roundtrip_fichier_et_inconnu_vaut_yolo() {
         let dir = tmp_dir("roundtrip");
         let path = dir.join("sous").join("permissions");
-        save_to(&path, Mode::Yolo).unwrap();
-        assert_eq!(load_from(&path), Mode::Yolo);
-        assert_eq!(load_from(&dir.join("absent")), Mode::Auto);
-        std::fs::write(&path, "turbo\n").unwrap();
+        save_to(&path, Mode::Auto).unwrap();
         assert_eq!(load_from(&path), Mode::Auto);
+        assert_eq!(load_from(&dir.join("absent")), Mode::Yolo);
+        std::fs::write(&path, "turbo\n").unwrap();
+        assert_eq!(load_from(&path), Mode::Yolo);
         std::fs::remove_dir_all(&dir).ok();
     }
 
