@@ -1,6 +1,7 @@
 //! Constructeurs de [`App`] (config env/TOML, déconnecté, hors ligne)
 //! + pin agents.md dans le chat initial.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -99,8 +100,20 @@ impl App {
         lazy: bool,
         hint_connect: bool,
     ) -> Self {
+        let mut app = Self::blank(provider, agents_md, agents_file, lazy);
+        app.finish_boot(hint_connect);
+        app
+    }
+
+    /// État brut (canal + champs, sans pin ni annonce).
+    fn blank(
+        provider: Option<Arc<Provider>>,
+        agents_md: Option<String>,
+        agents_file: Option<String>,
+        lazy: bool,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(INCOMING_CAP);
-        let mut app = Self {
+        let app = Self {
             phantom: Phantom::new(rand::random()),
             fx: Fx::new(),
             bank: ImageBank::headless(),
@@ -135,8 +148,13 @@ impl App {
             thinking: None,
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),
+            t5: crate::permissions::T5State::load(),
             tools_on: true,
             tool_run: None,
+            spec_runs: HashMap::new(),
+            spec_waiting: None,
+            mcp: crate::kiro::mcp_pool::McpState::new(),
+            hooks: crate::kiro::hook_run::HookState::new(),
             chats_path: None,
             events: EventLog::disabled(),
             vps: crate::vps::VpsRuntime::load(),
@@ -144,13 +162,18 @@ impl App {
             rx,
             pool: SpawnPool::new(),
         };
-        app.pin_current();
-        app.announce_agents_md();
-        if hint_connect {
-            app.push_system(String::from(NOT_CONNECTED));
-        }
-        app.refresh_ctx_cache();
         app
+    }
+
+    /// Fin de construction : pin + annonce + hint + cache contexte.
+    fn finish_boot(&mut self, hint_connect: bool) {
+        self.pin_current();
+        self.announce_agents_md();
+        self.hooks_fire_session_start();
+        if hint_connect {
+            self.push_system(String::from(NOT_CONNECTED));
+        }
+        self.refresh_ctx_cache();
     }
 
     /// Lit agents.md + steering Kiro au premier envoi (une seule tentative),
@@ -160,7 +183,11 @@ impl App {
             return;
         }
         self.agents_tried = true;
-        let merged = agents::load_merged(self.agents_file.as_deref());
+        let merged = agents::load_merged_in(
+            self.agents_file.as_deref(),
+            &self.t5.kiro_project,
+            self.t5.kiro_global.as_deref(),
+        );
         if merged.text.is_none() {
             return;
         }
@@ -287,12 +314,7 @@ mod tests {
 
     #[test]
     fn lazy_charge_epingle_et_annonce_une_seule_fois() {
-        // Neutralise le steering Kiro réel (déterministe, voir KH_KIRO_*).
-        let env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
-        let empty = std::env::temp_dir().join(format!("kh-lazy-{}-empty", std::process::id()));
-        std::fs::create_dir_all(&empty).unwrap();
-        env.set("KH_KIRO_PROJECT", &empty);
-        env.set("KH_KIRO_GLOBAL", &empty);
+        // Hermétique sans env : projet = cwd (sans .kiro), global = None.
         let path = tmp_file("unique", "contexte v1");
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         app.ensure_agents_loaded();
@@ -307,7 +329,6 @@ mod tests {
         app.add_chat();
         assert!(app.sessions.current().pinned_system);
         std::fs::remove_file(&path).ok();
-        std::fs::remove_dir_all(&empty).ok();
     }
 
     #[test]

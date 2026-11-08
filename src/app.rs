@@ -12,6 +12,7 @@ mod ui;
 
 pub use self::ui::Screen;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -32,6 +33,10 @@ use crate::gfx::ImageBank;
 use crate::ghostty;
 
 use crate::hub::Hub;
+use crate::kiro::hook_exec::HookOutcome;
+use crate::kiro::hook_run::HookState;
+use crate::kiro::mcp_pool::McpState;
+use crate::kiro::spec_run::{SpecGen, SpecRun};
 use crate::permissions::Mode;
 use crate::phantom::Phantom;
 use crate::pool::SpawnPool;
@@ -47,7 +52,10 @@ use crate::web::WebAnswer;
 /// (`propriétaire`, id, `livraison`), compaction (`idx`, voir
 /// [`crate::agents::compacted_history`]), recherche web (`idx`, [`WebAnswer`]),
 /// outils (`idx`, livraisons d'exécution, voir [`crate::tools::flow`]),
-/// critique de Kiro (voir [`crate::phantom`]).
+/// génération spec (`chat`, état chaîné, voir [`crate::kiro::spec_run`]),
+/// MCP (`/mcp refresh` terminé, statut à afficher), hook (commande
+/// terminée, voir [`crate::kiro::hook_run`]), critique de Kiro (voir
+/// [`crate::phantom`]).
 pub(crate) enum Incoming {
     Chat(usize, Result<Completion>),
     Agent(usize, usize, usize, Result<Completion>),
@@ -56,6 +64,9 @@ pub(crate) enum Incoming {
     ToolDone(usize, Vec<Delivery>),
     Critique(Result<Completion>),
     Vps(crate::vps::VpsOutcome),
+    SpecNew(usize, SpecGen, Result<Completion>),
+    McpRefresh(String),
+    HookDone(HookOutcome),
 }
 
 /// État global de l'application.
@@ -119,10 +130,20 @@ pub struct App {
     pub(crate) permissions: Mode,
     /// Fichier de persistance du mode (`None` si `HOME` manquant).
     pub(crate) permissions_path: Option<PathBuf>,
+    /// État T5 : règles fines + chemins Kiro résolus à la construction.
+    pub(crate) t5: crate::permissions::T5State,
     /// Envois outillés (`/tools on`, défaut) ; boucle agent dans `tool_run`.
     pub(crate) tools_on: bool,
     /// Boucle agent en cours (`None` = aucun envoi outillé actif).
     pub(crate) tool_run: Option<ToolRun>,
+    /// Runs `/spec run` par agent porteur (retiré à sa tombée).
+    pub(crate) spec_runs: HashMap<usize, SpecRun>,
+    /// Run en attente de `y/n` (mode `auto`, un seul à la fois).
+    pub(crate) spec_waiting: Option<SpecRun>,
+    /// Parc MCP (connexions paresseuses, `/mcp`, arrêt à la sortie).
+    pub(crate) mcp: McpState,
+    /// Moteur hooks Kiro (file `agent`, récents, gardes, `/hooks`).
+    pub(crate) hooks: HookState,
     /// Fichier de persistance des chats (`None` = off : tests, smoke, demo).
     pub(crate) chats_path: Option<PathBuf>,
     /// Journal d'événements temps réel (`--events-log`, désactivé sinon).
@@ -181,6 +202,7 @@ impl App {
                 dirty = true;
             }
         }
+        self.mcp.shutdown().await;
         self.save_now();
         Ok(())
     }
@@ -228,6 +250,9 @@ impl App {
                 Incoming::ToolDone(id, deliveries) => self.drain_tool_done(id, deliveries),
                 Incoming::Critique(reply) => self.drain_critique(reply),
                 Incoming::Vps(outcome) => self.drain_vps(outcome),
+                Incoming::SpecNew(chat, gen, reply) => self.drain_spec_new(chat, gen, reply),
+                Incoming::McpRefresh(text) => self.drain_mcp_refresh(text),
+                Incoming::HookDone(out) => self.drain_hook_done(out),
             }
         }
         routed

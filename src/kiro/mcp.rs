@@ -1,8 +1,8 @@
 //! Config MCP (`settings/mcp.json`, projet + global).
 //!
 //! Serveurs stdio (`command`) ou distants (`url`) ; `disabled` et
-//! `autoApprove` piloteront (T4) le client MCP branché sur `tools::flow`.
-//! `cwd`/`headers` ignorés en T1 (relus par le client T4).
+//! `autoApprove` pilotent le client MCP (T4) branché sur `tools::flow`.
+//! `cwd` (dossier du fils stdio) et `headers` (HTTP distant) relus par T4.
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -24,6 +24,12 @@ pub struct Server {
     pub disabled: bool,
     #[serde(default)]
     pub auto_approve: Vec<String>,
+    /// Dossier de travail du fils stdio (`None` = hérité).
+    #[serde(default)]
+    pub cwd: Option<String>,
+    /// En-têtes HTTP du transport distant (invalides = ignorés).
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
 }
 
 /// `{"mcpServers": {nom: serveur}}`.
@@ -103,5 +109,24 @@ mod tests {
         assert_eq!(live[0].1.url.as_deref(), Some("https://mcp.local/github"));
         assert!(load(&dir.join("absent.json")).is_none());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn cwd_et_headers_relus_par_t4() {
+        let config: Config = serde_json::from_str(
+            r#"{"mcpServers":{"r":{"url":"https://mcp.local","cwd":"/tmp/x",
+               "headers":{"Authorization":"Bearer z"}}}}"#,
+        )
+        .unwrap();
+        let server = &config.mcp_servers["r"];
+        assert_eq!(server.cwd.as_deref(), Some("/tmp/x"));
+        assert_eq!(
+            server.headers.get("Authorization").map(String::as_str),
+            Some("Bearer z")
+        );
+        let plain: Config =
+            serde_json::from_str(r#"{"mcpServers":{"p":{"command":"srv"}}}"#).unwrap();
+        assert_eq!(plain.mcp_servers["p"].cwd, None);
+        assert!(plain.mcp_servers["p"].headers.is_empty());
     }
 }

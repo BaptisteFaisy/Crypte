@@ -84,8 +84,8 @@ fn steering_text(files: &[Steering]) -> String {
     bits.join(" · ")
 }
 
-/// `auth (req, design, tasks 2/5, next: …)`.
-fn spec_text(spec: &Spec) -> String {
+/// `auth (req, design, tasks 2/5, next: …)` (réutilisé par `/spec`).
+pub(crate) fn spec_text(spec: &Spec) -> String {
     let mut bits = Vec::new();
     if spec.requirements.is_some() {
         bits.push(String::from("req"));
