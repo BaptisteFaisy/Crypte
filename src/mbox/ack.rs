@@ -120,6 +120,11 @@ pub fn valider_ack(
     epoch: u64,
 ) -> Result<Ack, String> {
     auth.verifier_jeton(jeton)?;
+    let secret = super::signature::secret_du_jeton(jeton);
+    let etat = super::signature::etat_signature(ordre, secret);
+    if etat == super::signature::EtatSignature::Invalide {
+        return Err(format!("bcast: signature {}", etat.texte()));
+    }
     let verdict = Verdict::parse(verdict_texte)
         .filter(|v| v.est_ack_utilisateur())
         .ok_or_else(|| "bcast: verdict lu|applique|refuse".to_string())?;

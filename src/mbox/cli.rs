@@ -48,6 +48,7 @@ const AIDE: &str = "bcast 2.0 — broadcast user + bus inter-agents
   bcast hb <nom> <état...> | bcast hb list | bcast ordre new|list|revoque|ack|pull | bcast doctor
   bcast metriques [--agent ID] | bcast fantome rejouer|diff|etat|purge | bcast --fantome <cmd...>
   bcast jeton new [--ttl H] <nom> | bcast jeton revoque <nom> | bcast jeton list | bcast jeton purge
+  bcast piste [--ordre ID] [--agent ID] | bcast vague plan|run|lister|etat
 Inbox : P0 popup+son, P1 popup, P2 log seul. Throttle : dedup 30 min, 6 msg/h.
 Sorties : 0 ok (throttled:/same-state inclus), 1 exécution, 2 usage, 3 déjà-en-cours.
 Écritures sensibles (--force, ordre new/revoque/ack) : --token \"nom:secret\" (voir jeton new).";
@@ -75,6 +76,8 @@ pub fn exec(args: &[String], dir: &Path) -> i32 {
         "doctor" => cmd_doctor(&dir, reste),
         "jeton" => cmd_jeton(&dir, reste),
         "metriques" => super::metriques::cmd_metriques(&dir, reste),
+        "piste" => super::piste::cmd_piste(&dir, reste),
+        "vague" => super::vague::cmd_vague(&dir, reste),
         "fantome" => super::fantome::cmd_fantome(&dir, reste),
         "--fantome" => super::fantome::exec_fantome(&dir, reste),
         "version" => {

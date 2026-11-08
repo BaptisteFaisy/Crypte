@@ -162,7 +162,8 @@ pub(crate) fn cmd_metriques(dir: &BcastDir, args: &[String]) -> Sortie {
         println!("agent {san} {sous}={valeur}");
     }
     let (ok, ko, sans) = verifie_integrite(dir);
-    println!("integrite ordres: {ok} ok {ko} ko {sans} sans hash");
+    let (s_ok, s_ko, s_sans) = super::signature::compte_journal(dir);
+    println!("integrite ordres: {ok} ok {ko} ko {sans} sans hash, signatures: {s_ok} ok {s_ko} ko {s_sans} sans");
     Sortie::Ok
 }
 

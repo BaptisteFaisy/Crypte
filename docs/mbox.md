@@ -41,6 +41,7 @@ bcast 2.0 — broadcast user + bus inter-agents
   bcast hb <nom> <état...> | bcast hb list | bcast ordre new|list|revoque|ack|pull | bcast doctor
   bcast metriques [--agent ID] | bcast fantome rejouer|diff|etat|purge | bcast --fantome <cmd...>
   bcast jeton new [--ttl H] <nom> | bcast jeton revoque <nom> | bcast jeton list | bcast jeton purge
+  bcast piste [--ordre ID] [--agent ID] | bcast vague plan|run|lister|etat
 Inbox : P0 popup+son, P1 popup, P2 log seul. Throttle : dedup 30 min, 6 msg/h.
 Sorties : 0 ok (throttled:/same-state inclus), 1 exécution, 2 usage, 3 déjà-en-cours.
 Écritures sensibles (--force, ordre new/revoque/ack) : --token "nom:secret" (voir jeton new).
@@ -56,6 +57,7 @@ OK format des 200 dernières lignes
 OK bus 4 topics
 OK ordres 0 ligne(s)
 OK metriques send=1 dup=0 rate=0 same=0 bus=0 bus_dup=0 ordres=0 revoques=0 acks=0 hb=0
+OK piste 0 spans 0 ordres traces
 OK écriture verrouillée
 ```
 
@@ -108,10 +110,13 @@ avec TTL (heures, défaut 24, `0` = permanent) et `revoque`.
 ./target/debug/kiro-horror-tui --mbox ordre pull @moi               # mes ordres actifs
 ./target/debug/kiro-horror-tui --mbox ordre ack O-20261108-001 applique --from moi --token "doc-agent:<secret>"
 ./target/debug/kiro-horror-tui --mbox ordre revoque O-20261108-001 "doublon" --token "doc-agent:<secret>"
+./target/debug/kiro-horror-tui --mbox ordre deleguer O-20261108-001 --to @moi --resume "reprends la relecture" --token "doc-agent:<secret>"
+# → delegue=O-20261108-002 (nouvel ordre lié par supersede=O-20261108-001, voir § 1.10)
 ```
 
-`new`, `revoque` et `ack` sont des écritures sensibles : elles exigent
-`--token "nom:secret"` (voir § 1.7). `pull` lit sans solder.
+`new`, `revoque`, `ack` et `deleguer` sont des écritures sensibles :
+elles exigent `--token "nom:secret"` (voir § 1.7). `pull` lit sans
+solder. `new` scelle un `sig=` HMAC (vérifié à l'`ack`, voir § 2.4).
 
 ### 1.7 Jetons : `jeton`
 
@@ -139,13 +144,14 @@ et par agent (sortie réelle) :
 $ ./target/debug/kiro-horror-tui --mbox metriques
 send_ok=1
 agent doc-test-9cefc5d6 send_ok=1
-integrite ordres: 0 ok 0 ko 0 sans hash
+integrite ordres: 0 ok 0 ko 0 sans hash, signatures: 0 ok 0 ko 0 sans
 ```
 
 `metriques --agent ID` restreint la section `agent ...` à un
 agent ; les compteurs globaux et la ligne `integrite` s'affichent
 toujours. La ligne `integrite` vérifie les `hash=` scellés des
-ordres (voir § 2.4).
+ordres et compte les `sig=` (`ok` = présente et bien formée,
+`ko` = mal formée, `sans` = ordre shell nu — voir § 2.4).
 
 ### 1.9 Bac à sable : `--fantome` et `fantome`
 
@@ -168,7 +174,80 @@ fantome diff bus/divers.log: prod=1 miroir=0
 `fantome rejouer|diff|etat|purge` gère le miroir. Refus typés avant
 exécution : `jeton`, `rotate`, commandes imbriquées, inconnues.
 
-### 1.10 Codes de sortie
+### 1.10 Délégation : `ordre deleguer`
+
+Transférer un ordre à un autre agent, à portée minimale : seul un
+résumé explicite voyage, plus les **métadonnées** de pièces
+explicites (`--piece`, répétable, ≤ 8, relatifs sans `..`, ≤ 64 Kio
+— chemin, taille et SHA-1, jamais le contenu). Sortie réelle :
+
+```sh
+$ ./target/debug/kiro-horror-tui --mbox ordre deleguer O-20261108-001 --to @moi --resume "reprends la relecture" --token "doc-agent:<secret>"
+delegue=O-20261108-002
+$ ./target/debug/kiro-horror-tui --mbox ordre pull @moi
+O-20261108-002 [2026-11-08 16:58] -> @moi : Délégation de O-20261108-001 par doc-deleg : reprends la relecture supersede=O-20261108-001 hash=ac229c30a19367518627399416bc1bc3af576f2c
+```
+
+Le transfert est un ordre normal (`src=delegation:<agent>`, TTL 24 h)
+lié à sa source par `supersede=<id>` ; le destinataire accuse via
+`ordre ack <nouvel-id> lu|applique|refuse`. La source doit être active
+(ni révoquée ni expirée). Le transfert n'est pas scellé (`sig=`
+absent) : le scellement lierait l'ACK au secret du délégant, que le
+destinataire n'a pas (voir § 2.4).
+
+### 1.11 Piste d'audit : `piste`
+
+Spans 100 % locaux (`piste.log`, jamais exportés) :
+`run_id|epoque|agent|action|ordre_id|verdict`, corrélés par `ordre_id`
+(sortie réelle) :
+
+```sh
+$ ./target/debug/kiro-horror-tui --mbox piste --ordre O-20261108-001
+240df9b78348|1794153513|doc-deleg-f698b653|ordre_cree|O-20261108-001|ok
+$ ./target/debug/kiro-horror-tui --mbox piste --agent doc-deleg
+240df9b78348|1794153513|doc-deleg-f698b653|ordre_cree|O-20261108-001|ok
+```
+
+Actions tracées : `ordre_cree`, `ordre_ack`, `ordre_revoque`
+(`envoi`, `delegation`, `jeton_emis` réservés). Jamais de secret
+dans les spans : agent assaini, pas de texte d'ordre, jeton réduit
+à son nom. `doctor` affiche le résumé (`OK piste N spans M ordres
+traces`, voir § 1.2).
+
+### 1.12 Vagues : `vague`
+
+Orchestrer une file de commandes mbox (`ID|APRES|COMMANDE`, `#` et
+lignes vides ignorés) avec dépendances et parallélisme (sortie réelle) :
+
+```sh
+$ cat /tmp/mbox-doc-test/vague-doc.txt
+V-1||bus -t divers --from vague-t -- coucou doc
+V-2|V-1|hb sonde-doc ok
+$ ./target/debug/kiro-horror-tui --mbox vague plan --fichier /tmp/mbox-doc-test/vague-doc.txt
+vague: 2 taches
+1. V-1 [apres: -] :: bus -t divers --from vague-t -- coucou doc
+2. V-2 [apres: V-1] :: hb sonde-doc ok
+$ ./target/debug/kiro-horror-tui --mbox vague run --fichier /tmp/mbox-doc-test/vague-doc.txt
+sent
+ok
+vague: ok=2 ko=0
+$ ./target/debug/kiro-horror-tui --mbox vague lister
+V-1 [ok] :: bus -t divers --from vague-t -- coucou doc
+V-2 [ok] :: hb sonde-doc ok
+$ ./target/debug/kiro-horror-tui --mbox vague etat
+vague: attente=0 cours=0 ok=2 echec=0 bloque=0 expiree=0 total=2
+```
+
+`plan` ordonne sans exécuter, `run` exécute (`--paralleles N`,
+1..32, défaut 4 ; `--delai S`, 1..3600, défaut 60 ; code 1 si une
+tâche échoue), `lister`/`etat` relisent la file persistée. Liste
+blanche : `send bus ordre(new|ack) hb metriques` — `jeton`,
+`rotate` et `vague` imbriquée refusés. Dépendance KO → `bloque`,
+timeout → `expiree`. File persistée `vague/file.log` (0600, elle
+peut porter des `--token`), synthèse APPEND `vague/vague-AAAA-MM-JJ.md`
+toujours caviardée (`--token ***`).
+
+### 1.13 Codes de sortie
 
 `0` ok (`throttled:`/`same-state` inclus), `1` erreur d'exécution,
 `2` erreur d'usage (`bcast: …` sur stderr), `3` déjà-en-cours
@@ -178,7 +257,7 @@ exécution : `jeton`, `rotate`, commandes imbriquées, inconnues.
 
 ## 2. Guide développeur (architecture/jetons/interop/limites)
 
-### 2.1 Architecture : 18 modules sous `src/mbox/`
+### 2.1 Architecture : 23 modules sous `src/mbox/`
 
 `mod.rs` = socle partagé : chemins (`BcastDir` : `defaut/depuis/init/
 boite/bus/ordres/acks/vue_ordres/hb/etat/tailles`), horodatage
@@ -206,6 +285,11 @@ boite/bus/ordres/acks/vue_ordres/hb/etat/tailles`), horodatage
 | `metriques.rs` | compteurs durables + `integrite ordres` |
 | `fantome.rs` | miroir `.fantome/` + diff, garde typée |
 | `outils.rs` | découpage d'options, `--from`, porte `--token` |
+| `delegation.rs` | `ordre deleguer` : transfert à portée minimale |
+| `piste.rs` | spans d'audit locaux + CLI `piste` |
+| `signature.rs` | HMAC-SHA1 : scellement `sig=` + vérification |
+| `vague.rs` | CLI `vague` : file, liste blanche, caviardage |
+| `vague_exec.rs` | exécution vagues : topo, threads, synthèse |
 
 `cli.rs:55-91` (`exec`) répartit vers les commandes ; `main.rs:232`
 branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
@@ -246,7 +330,16 @@ branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
 
 - `hash=` scellé à la création de l'ordre (`journal.rs` via
   `empreinte`) ; `metriques` affiche `integrite ordres: N ok M ko K
-  sans hash`. `sig=` reste déclarative (non vérifiée).
+  sans hash, signatures: …`.
+- `sig=` vérifiée (HMAC-SHA1 maison sur `id|dest|texte normalisé`,
+  `signature.rs`, zéro dépendance) : scellée par `ordre new` avec le
+  secret du jeton présenté, contrôlée par `ordre ack` avec le secret
+  du jeton présenté (comparaison constante, calcul toujours exécuté).
+  `sig=` absente (ordres shell) → ACK accepté ; présente et invalide
+  → refus (code 1). Limite connue : la clef étant le secret présenté
+  à l'ACK, un ordre scellé par X n'est ackable que par un détenteur du
+  même secret (l'autorité ne ré-expose jamais les secrets) — les
+  transferts `deleguer` restent donc non scellés (voir § 1.10).
 - Compteurs `.state/metriques` (lignes `cle=valeur`, verrou frère
   fail-open) : `send_ok/dup/rate/same-state/bus/…` + `par_agent.<id
   sanitisé>.<clé>`.
@@ -256,9 +349,10 @@ branche `--mbox` via `outils::lance_mbox`. `digest.rs`, `docteur.rs`,
 - Fichier source : **500 lignes max ET 30 fonctions max** (tests
   inclus, `grep -cE 'fn [a-zA-Z_][a-zA-Z0-9_]* *\('`) ; fonction
   **< 50 lignes**. Au-delà : découper en modules, jamais laisser
-  grossir. État au 2026-11-08 : 18 modules + `tests/mbox_interop.rs`,
-  tous sous les plafonds (ex. `autorite.rs` 486 L/27 fn,
-  `cli.rs` 489 L/18 fn, `sonde.rs` 489 L/25 fn).
+  grossir. État au 2026-11-08 : 23 modules + `tests/mbox_interop.rs`,
+  tous sous les plafonds (ex. `cli.rs` 492 L/18 fn, `sonde.rs`
+  489 L/25 fn, `autorite.rs` 486 L/27 fn, `delegation.rs` 476 L/20 fn,
+  `tests/mbox_interop.rs` 482 L/22 fn).
 - **Zéro duplication** : une seule implémentation par logique (époque
   unique dans `format`, verrou unique dans `verrou`, découpage unique
   dans `outils`).

@@ -43,13 +43,14 @@ use super::{epoque, maintenant, BcastDir, Sortie};
 /// Crée un ordre (miroir de `ordre_new`) : validation, identifiant sous
 /// UN seul verrou avec l'ajout, puis passe d'expiration hors verrou
 /// (comme le shell qui reverrouille après). Rend l'identifiant.
-/// Sans jeton : création côté utilisateur, comme le shell.
+/// `secret` scelle `sig=` (jeton CLI) ; `None` = ordre nu, comme le shell.
 pub fn creer_ordre(
     dirs: &BcastDir,
     dest: &str,
     ttl_texte: &str,
     src: &str,
     texte: &str,
+    secret: Option<&str>,
 ) -> Result<String, String> {
     let (dest_p, ttl_h, src_p, texte_p) = valider_nouvel_ordre(dest, ttl_texte, src, texte)?;
     let (corps, mut ext) = Extensions::extraire(&texte_p);
@@ -67,6 +68,7 @@ pub fn creer_ordre(
             .take(8)
             .collect();
         let id = prochain_id(&contenu, &jour);
+        let texte_p = super::signature::texte_scelle(secret, &id, &dest_p, &texte_p);
         let ligne = format!(
             "{}|{}|{}|{}|{}|actif|{}|{}",
             id,
@@ -200,8 +202,10 @@ pub fn creer(
     ttl_h: u64,
     src: &str,
     texte: &str,
+    secret: Option<&str>,
 ) -> Result<String, Sortie> {
-    creer_ordre(dirs, dest, &ttl_h.to_string(), src, texte).map_err(|_| Sortie::ErreurExecution)
+    creer_ordre(dirs, dest, &ttl_h.to_string(), src, texte, secret)
+        .map_err(|_| Sortie::ErreurExecution)
 }
 
 /// Révoque un ordre actif : revérifie le jeton au niveau journal (même
@@ -366,9 +370,9 @@ mod tests {
             std::env::temp_dir().join(format!("crypte-mbox-journal-test-{}", std::process::id()));
         let dirs = BcastDir::depuis(dir);
         dirs.init().expect("init");
-        let id = creer_ordre(&dirs, "ALL", "24", "test", "Relire le plan").expect("cree");
+        let id = creer_ordre(&dirs, "ALL", "24", "test", "Relire le plan", None).expect("cree");
         assert!(id.starts_with("O-"), "identifiant v2 : {id}");
-        let id2 = creer_ordre(&dirs, "ALL", "24", "test", "Second").expect("cree2");
+        let id2 = creer_ordre(&dirs, "ALL", "24", "test", "Second", None).expect("cree2");
         assert_ne!(id, id2);
         let auth = AuthTest(true);
         revoquer_journal(&dirs, &auth, "jeton", &id, "fini").expect("revoque");

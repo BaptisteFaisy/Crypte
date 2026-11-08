@@ -15,7 +15,7 @@
 //!   calqué sur `ordre_new`/`ordre_revoque`/`ordre_ack`/`ordre_list` shell ;
 //!   `revoquer`/`ack` prennent le jeton brut en dernier paramètre et le
 //!   revérifient au niveau journal) :
-//!   `creer(&BcastDir, &str, u64, &str, &str) -> Result<String, Sortie>`,
+//!   `creer(&BcastDir, &str, u64, &str, &str, Option<&str>) -> Result<String, Sortie>`,
 //!   `revoquer(&BcastDir, &str, &str, &str) -> Result<(), Sortie>`,
 //!   `ack(&BcastDir, &str, &str, &str, &str, &str) -> Result<(), Sortie>`,
 //!   `lister(&BcastDir, bool) -> String`, `tirer(&BcastDir, &str) -> String`.
@@ -33,6 +33,7 @@ use super::format::{
 };
 use super::journal::{ack, creer, lister, revoquer, tirer};
 use super::outils::{decoupage, expediteur, opt, porte_jeton, usg};
+use super::piste::{emet_jeton, Action};
 use super::verrou::{avec_verrou, chemin_verrou};
 
 /// Attente du verrou de rotation, secondes (`flock -w 30`, bcast:148).
@@ -195,7 +196,8 @@ pub(crate) fn cmd_ordre(dir: &BcastDir, args: &[String]) -> Sortie {
         Some("revoque") => ordre_revoque(dir, &args[1..]),
         Some("ack") => ordre_accuse(dir, &args[1..]),
         Some("pull") => ordre_tire(dir, &args[1..]),
-        _ => usg("ordre : new|list|revoque|ack|pull"),
+        Some("deleguer") => super::delegation::cmd_deleguer(dir, &args[1..]),
+        _ => usg("ordre : new|list|revoque|ack|pull|deleguer"),
     }
 }
 
@@ -219,15 +221,19 @@ fn ordre_nouveau(dir: &BcastDir, args: &[String]) -> Sortie {
         return Sortie::ErreurExecution;
     }
     let _ = dir.init();
+    let jeton = opt(&opts, "token").unwrap_or("");
+    let secret = jeton.rsplit_once(':').map(|(_, s)| s);
     match creer(
         dir,
         opt(&opts, "to").unwrap_or("ALL"),
         ttl_h,
         opt(&opts, "src").unwrap_or("user-direct"),
         &texte,
+        secret,
     ) {
         Ok(id) => {
             super::metriques::incremente(dir, "ordre_new");
+            emet_jeton(dir, jeton, Action::OrdreCree, &id, "ok");
             println!("ordre={id}");
             Sortie::Ok
         }
@@ -235,8 +241,13 @@ fn ordre_nouveau(dir: &BcastDir, args: &[String]) -> Sortie {
     }
 }
 
-/// Extrait `--token`/`--from` mêlés aux positionnels (`revoque`, `ack`).
-fn extrait_option(args: &[String], nom: &str) -> Result<(Option<String>, Vec<String>), Sortie> {
+/// Extrait `--token`/`--from` mêlés aux positionnels (`revoque`, `ack`,
+/// `deleguer` : `decoupage` s'arrête au premier positionnel, inutilisable
+/// quand l'identifiant vient en premier).
+pub(crate) fn extrait_option(
+    args: &[String],
+    nom: &str,
+) -> Result<(Option<String>, Vec<String>), Sortie> {
     let (mut valeur, mut reste) = (None, Vec::new());
     let mut i = 0;
     while i < args.len() {
@@ -266,9 +277,11 @@ fn ordre_revoque(dir: &BcastDir, args: &[String]) -> Sortie {
     if !porte_jeton(&format!("{id} {motif}"), token.as_deref()) {
         return Sortie::ErreurExecution;
     }
-    match revoquer(dir, id, &motif, token.as_deref().unwrap_or("")) {
+    let jeton = token.as_deref().unwrap_or("");
+    match revoquer(dir, id, &motif, jeton) {
         Ok(()) => {
             super::metriques::incremente(dir, "ordre_revoque");
+            emet_jeton(dir, jeton, Action::OrdreRevoque, id, "revoque");
             println!("revoque={id}");
             Sortie::Ok
         }
@@ -301,17 +314,12 @@ fn ordre_accuse(dir: &BcastDir, args: &[String]) -> Sortie {
     ) {
         return Sortie::ErreurExecution;
     }
-    match ack(
-        dir,
-        &args[0],
-        &exp,
-        &args[1],
-        &motif,
-        token.as_deref().unwrap_or(""),
-    ) {
+    let jeton = token.as_deref().unwrap_or("");
+    match ack(dir, &args[0], &exp, &args[1], &motif, jeton) {
         Ok(()) => {
             super::metriques::incremente(dir, "ack_ok");
             super::metriques::incremente_agent(dir, &exp, "ack_ok");
+            emet_jeton(dir, jeton, Action::OrdreAck, &args[0], &args[1]);
             println!("ack={} {}", args[0], args[1]); // Verdict tapé (bcast:261).
             Sortie::Ok
         }
