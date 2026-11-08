@@ -243,6 +243,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_env::EnvScope;
 
     /// Fichier temporaire unique par test (contenu écrit, à nettoyer).
     fn tmp_file(name: &str, content: &str) -> std::path::PathBuf {
@@ -264,6 +265,7 @@ mod tests {
 
     #[test]
     fn lazy_ne_lit_rien_avant_le_premier_envoi() {
+        let _env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let path = tmp_file("avant", "contexte v1");
         let app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         assert!(app.agents_md.is_none());
@@ -277,12 +279,11 @@ mod tests {
     #[test]
     fn lazy_charge_epingle_et_annonce_une_seule_fois() {
         // Neutralise le steering Kiro réel (déterministe, voir KH_KIRO_*).
-        let saved_project = std::env::var("KH_KIRO_PROJECT").ok();
-        let saved_global = std::env::var("KH_KIRO_GLOBAL").ok();
+        let env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let empty = std::env::temp_dir().join(format!("kh-lazy-{}-empty", std::process::id()));
         std::fs::create_dir_all(&empty).unwrap();
-        std::env::set_var("KH_KIRO_PROJECT", &empty);
-        std::env::set_var("KH_KIRO_GLOBAL", &empty);
+        env.set("KH_KIRO_PROJECT", &empty);
+        env.set("KH_KIRO_GLOBAL", &empty);
         let path = tmp_file("unique", "contexte v1");
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         app.ensure_agents_loaded();
@@ -297,19 +298,12 @@ mod tests {
         app.add_chat();
         assert!(app.sessions.current().pinned_system);
         std::fs::remove_file(&path).ok();
-        match saved_project {
-            Some(v) => std::env::set_var("KH_KIRO_PROJECT", v),
-            None => std::env::remove_var("KH_KIRO_PROJECT"),
-        }
-        match saved_global {
-            Some(v) => std::env::set_var("KH_KIRO_GLOBAL", v),
-            None => std::env::remove_var("KH_KIRO_GLOBAL"),
-        }
         std::fs::remove_dir_all(&empty).ok();
     }
 
     #[test]
     fn lazy_epingle_les_chats_vides_existants() {
+        let _env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let path = tmp_file("multi", "contexte");
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         app.add_chat();
@@ -322,6 +316,7 @@ mod tests {
 
     #[test]
     fn lazy_absent_sans_bruit_ni_reessai() {
+        let _env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let path = std::env::temp_dir().join(format!("kh-lazy-{}-absent", std::process::id()));
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         app.ensure_agents_loaded();

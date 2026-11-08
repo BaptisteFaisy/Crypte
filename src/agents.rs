@@ -154,6 +154,7 @@ pub fn compacted_history(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_env::EnvScope;
 
     /// Entrée d'historique courte (tests).
     fn msg(role: &str, text: &str) -> (String, String) {
@@ -167,26 +168,17 @@ mod tests {
 
     #[test]
     fn merged_joint_agents_et_steering_always() {
+        let env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let dir = tmp_dir("merged");
         std::fs::create_dir_all(dir.join(".kiro/steering")).unwrap();
         std::fs::write(dir.join(".kiro/steering/a.md"), "règle A").unwrap();
         let agents_path = dir.join("AGENTS.md");
         std::fs::write(&agents_path, "agents").unwrap();
-        let saved_project = std::env::var("KH_KIRO_PROJECT").ok();
-        let saved_global = std::env::var("KH_KIRO_GLOBAL").ok();
         let empty = dir.join("empty");
         std::fs::create_dir_all(&empty).unwrap();
-        std::env::set_var("KH_KIRO_PROJECT", &dir);
-        std::env::set_var("KH_KIRO_GLOBAL", &empty);
+        env.set("KH_KIRO_PROJECT", &dir);
+        env.set("KH_KIRO_GLOBAL", &empty);
         let merged = load_merged(Some(agents_path.to_str().unwrap()));
-        match saved_project {
-            Some(v) => std::env::set_var("KH_KIRO_PROJECT", v),
-            None => std::env::remove_var("KH_KIRO_PROJECT"),
-        }
-        match saved_global {
-            Some(v) => std::env::set_var("KH_KIRO_GLOBAL", v),
-            None => std::env::remove_var("KH_KIRO_GLOBAL"),
-        }
         assert!(merged.agents);
         assert_eq!(merged.steering, 1);
         let text = merged.text.as_ref().unwrap();
