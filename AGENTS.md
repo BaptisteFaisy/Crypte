@@ -79,7 +79,10 @@ ignorés).
 dans `spec_cmds/tests.rs`), `spec_prompts.rs` (prompts purs),
 `spec_run.rs` (`SpecGen`/`SpecRun`, purs), `mcp_client.rs`
 (protocole), `mcp_conn.rs` (stdio/HTTP), `mcp_pool.rs` (parc),
-`mcp_cmds.rs` (`/mcp`) ; steering `always` fusionné au pin
+`mcp_cmds.rs` (`/mcp`), `hook_match.rs` (regex `matcher`),
+`hook_run.rs` (moteur : sélection + tirs + file `agent`),
+`hook_exec.rs` (`sh -c` async + `HookOutcome`), `hook_cmds.rs`
+(`/hooks`) ; steering `always` fusionné au pin
 agents.md, voir `agents::load_merged`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
@@ -113,8 +116,12 @@ contexte), tâche cochée sur disque à chaque tombée, `y/n` entre
 tâches en `auto` (voir `spec_waiting`), direct en `yolo`. T4 :
 client MCP tools (`enabled` connectés au premier besoin,
 `mcp_<serveur>_<outil>`, `autoApprove` sans confirmation, `/mcp` +
-`/mcp refresh`). Reste : hooks (T3), permissions fines,
-agents/skills, checkpoints, mémoire (T5).
+`/mcp refresh`). T3 : moteur hooks (trigger + `matcher` regex +
+`.kiroignore` fichiers ; `command` = `sh -c` async 30 s via
+`Incoming::HookDone`, `agent` = prompt préfixé au prochain envoi ;
+tirs : envoi, outils, fichiers spec, tâches, agents, boot ;
+garde anti-récursion profondeur 1, `/hooks` = statut + récents).
+Reste : permissions fines, agents/skills, checkpoints, mémoire (T5).
 `/web` cherche (Tavily → Brave → DuckDuckGo → Wikipedia FR+EN) +
 fetch top-3 parallèle, synthèse LLM avec sources `[n]`
 (`Incoming::Web`, tag `[web:backend]`, brut si déconnecté,
