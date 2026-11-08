@@ -38,7 +38,10 @@ mod tests {
             0
         );
         let out = tail_impl(&bcast, Some(5), None, false).unwrap();
-        assert!(out.messages.iter().any(|m| m.text.contains("bonjour-cli")));
+        let crate::mbox_dto::MboxTailOut::List(messages) = out else {
+            panic!("tail inbox sans all rend une liste");
+        };
+        assert!(messages.iter().any(|m| m.corps.contains("bonjour-cli")));
         let args = SendArgs {
             message: String::from("bonjour-cmd"),
             priority: None,
