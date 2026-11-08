@@ -100,6 +100,11 @@ impl Sessions {
             tick,
             sending: sess.sending,
             question_pending: sess.pending.is_some(),
+            agents: crate::agent_view::AgentCtx {
+                list: &sess.agents,
+                cursor: sess.agent_cursor,
+                expanded: &sess.expanded_agents,
+            },
         };
         sess.chat.draw(frame, area, view);
     }

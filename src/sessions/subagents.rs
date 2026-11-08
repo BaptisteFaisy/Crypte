@@ -34,6 +34,21 @@ pub enum AskError {
     Busy,
 }
 
+/// Tâche de workflow `/spec` portée par l'agent (`None` = lancé seul).
+#[derive(Debug, Clone)]
+pub struct SpecTag {
+    pub name: String,
+    pub index: usize,
+    pub total: usize,
+}
+
+impl SpecTag {
+    /// Étiquette `2/5` (tâche courante sur total, 1-based).
+    pub fn task_label(&self) -> String {
+        format!("{}/{}", self.index + 1, self.total)
+    }
+}
+
 /// Un sous-agent : requête annexe dont la réponse arrive en async.
 /// `history` garde l'échange user/assistant (`/ask` : suite de
 /// conversation) ; le système agents.md n'y est pas stocké
@@ -53,6 +68,10 @@ pub struct SubAgent {
     pub auto_hops: u8,
     /// Workspace disque (`None` si pas créé : HOME absent ou échec).
     pub workspace: Option<PathBuf>,
+    /// Workflow `/spec` porteur (`None` = lancé seul via `/agent`).
+    pub spec: Option<SpecTag>,
+    /// Filtre d'outils custom (vide = tout, posé au spawn `/agent`).
+    pub tool_filter: crate::tools::agent::Filter,
 }
 
 impl SubAgent {
@@ -68,6 +87,8 @@ impl SubAgent {
             inbox: VecDeque::new(),
             auto_hops: 0,
             workspace: None,
+            spec: None,
+            tool_filter: crate::tools::agent::Filter::default(),
         }
     }
 
@@ -81,6 +102,35 @@ impl SubAgent {
     pub fn push_assistant(&mut self, text: String) {
         self.history.push((String::from("assistant"), text));
         trim_agent_history(&mut self.history);
+    }
+
+    /// Échange complet, prêt à afficher (`/agents #id`, déplié inline)
+    /// : en-tête `#id statut — prompt` (+ ligne `spec …` si workflow)
+    /// puis les tours `you:` / `agent:` (texte assistant rendu comme au
+    /// chat, rôles `system` ignorés).
+    pub fn transcript(&self) -> String {
+        let mut out = format!("#{} {} — {}", self.id, self.status.label(), self.prompt);
+        if let Some(spec) = &self.spec {
+            out.push_str(&format!(
+                "\nspec {} · task {}",
+                spec.name,
+                spec.task_label()
+            ));
+        }
+        for (role, text) in &self.history {
+            match role.as_str() {
+                "user" => {
+                    out.push_str("\nyou: ");
+                    out.push_str(text);
+                }
+                "assistant" => {
+                    out.push_str("\nagent: ");
+                    out.push_str(&crate::question::render_display(text).0);
+                }
+                _ => {}
+            }
+        }
+        out
     }
 }
 
@@ -138,5 +188,20 @@ mod tests {
         }
         assert_eq!(a.history.len(), AGENT_HISTORY_MAX);
         assert_eq!(a.history[0].1, "u10");
+    }
+
+    #[test]
+    fn transcript_montre_tours_et_ignore_system() {
+        let mut a = SubAgent::new(1, "fais ça", user("fais ça"));
+        a.history
+            .insert(0, (String::from("system"), String::from("contexte")));
+        a.push_assistant(String::from("voilà"));
+        a.push_user(String::from("et ça ?"));
+        let t = a.transcript();
+        assert!(t.starts_with("#1 running — fais ça"), "{t}");
+        assert!(t.contains("\nyou: fais ça\n"), "{t}");
+        assert!(t.contains("\nagent: voilà\n"), "{t}");
+        assert!(t.contains("\nyou: et ça ?"), "{t}");
+        assert!(!t.contains("contexte"), "{t}");
     }
 }

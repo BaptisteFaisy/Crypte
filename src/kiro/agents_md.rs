@@ -6,10 +6,10 @@
 //! `name` explicite sinon tige (`team/planner.md` → `team/planner`) ;
 //! `.json` prime sur `.md` à tige égale ; le projet écrase le global.
 //! `system` reste un alias legacy de `prompt`. Champs du harnais
-//! (`resources`, `permissions`, ...) lus et ignorés. `tools` et
-//! `mcpServers` sont lus et affichés (`/agents`) mais non exécutés :
-//! les sous-agents n'ont pas (encore) d'outils — `model` seul prime
-//! au spawn (passé tel quel au provider).
+//! (`resources`, `permissions`, ...) lus et ignorés. `tools`,
+//! `excludedTools` et `mcpServers` (noms seuls : les configs serveurs
+//! propres à l'agent ne sont pas connectées) filtrent les outils du
+//! spawn (voir [`crate::tools::agent::filter_tools`]).
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -63,7 +63,7 @@ fn collect(dir: &Path, root: &Path, out: &mut Vec<(String, String, std::path::Pa
         return;
     };
     let mut entries: Vec<_> = entries.flatten().collect();
-    entries.sort_by(|a, b| a.path().cmp(&b.path()));
+    entries.sort_by_key(|a| a.path());
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
@@ -170,11 +170,13 @@ pub struct Spawn {
     pub messages: Vec<(String, String)>,
     pub prompt: String,
     pub model: Option<String>,
+    pub filter: crate::tools::agent::Filter,
 }
 
 /// Messages d'un spawn `/agent` : système custom (si le premier mot est un
 /// nom connu) + agents.md pinné + prompt (nom dépouillé) ; modèle = celui
 /// de l'agent si déclaré, sinon le modèle courant (résolu par l'appelant).
+/// Le filtre d'outils vient aussi du custom (vide = tout, inconnu = tout).
 pub fn spawn_messages(app: &App, agents_md: Option<&str>, prompt: &str) -> Spawn {
     let (found, prompt) = resolve(&of_app(app), prompt);
     let mut messages = Vec::with_capacity(3);
@@ -185,10 +187,24 @@ pub fn spawn_messages(app: &App, agents_md: Option<&str>, prompt: &str) -> Spawn
         messages.push((String::from("system"), content.to_string()));
     }
     messages.push((String::from("user"), prompt.clone()));
+    let filter = found.as_ref().map(filter_of).unwrap_or_default();
+    let model = found.and_then(|agent| agent.model);
     Spawn {
         messages,
         prompt,
-        model: found.and_then(|agent| agent.model),
+        model,
+        filter,
+    }
+}
+
+/// Filtre d'outils d'un custom (serveurs MCP triés, configs ignorées).
+fn filter_of(agent: &CustomAgent) -> crate::tools::agent::Filter {
+    let mut mcp_servers: Vec<String> = agent.mcp_servers.keys().cloned().collect();
+    mcp_servers.sort();
+    crate::tools::agent::Filter {
+        tools: agent.tools.clone(),
+        excluded: agent.excluded_tools.clone(),
+        mcp_servers,
     }
 }
 
@@ -333,7 +349,6 @@ mod tests {
             tools: vec![String::from("read")],
             excluded_tools: vec![String::from("web")],
             mcp_servers: mcp,
-            ..Default::default()
         };
         assert_eq!(
             line_of(&agent),
@@ -364,6 +379,34 @@ mod tests {
         assert_eq!(spawn.messages.len(), 2);
         let spawn = spawn_messages(&app, None, "nobody here");
         assert!(spawn.model.is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn spawn_rend_le_filtre_outils_declare() {
+        let dir = tmp_dir("spawn-filtre");
+        std::fs::create_dir_all(dir.join(".kiro/agents")).unwrap();
+        std::fs::write(
+            dir.join(".kiro/agents/pro.json"),
+            r#"{"prompt": "Do it.", "tools": ["shell_run"],
+                "excludedTools": ["browser_open"],
+                "mcpServers": {"gh": {"command": "mcp-gh"}}}"#,
+        )
+        .unwrap();
+        let cfg = crate::provider::ProviderConfig {
+            base_url: String::from("http://localhost:9/"),
+            api_key: String::from("factice"),
+            model: String::from("factice"),
+        };
+        let mut app = crate::app::App::from_config(cfg).unwrap();
+        app.t5.kiro_project = dir.clone();
+        app.t5.kiro_global = Some(dir.join("empty"));
+        let spawn = spawn_messages(&app, None, "pro write code");
+        assert_eq!(spawn.filter.tools, vec!["shell_run"]);
+        assert_eq!(spawn.filter.excluded, vec!["browser_open"]);
+        assert_eq!(spawn.filter.mcp_servers, vec!["gh"]);
+        let spawn = spawn_messages(&app, None, "nobody here");
+        assert!(spawn.filter.tools.is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

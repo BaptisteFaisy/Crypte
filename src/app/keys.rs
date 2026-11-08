@@ -51,11 +51,14 @@ impl App {
             KeyCode::Char('v' | 'V') if ctrl => self.cmd(|s| s.paste_clip()),
             KeyCode::Char(c) if !ctrl => self.cmd(|s| s.type_char(c)),
             KeyCode::Backspace => self.cmd(|s| s.backspace()),
-            KeyCode::Enter => self.cmd(|s| s.send()),
+            KeyCode::Enter => self.cmd(|s| s.enter()),
             KeyCode::PageUp => self.cmd(|s| s.scroll_chat(-SCROLL_PAGE)),
             KeyCode::PageDown => self.cmd(|s| s.scroll_chat(SCROLL_PAGE)),
             KeyCode::Up if shift => self.cmd(|s| s.scroll_chat(-1)),
             KeyCode::Down if shift => self.cmd(|s| s.scroll_chat(1)),
+            KeyCode::Up => self.cmd(|s| s.step_agent(-1)),
+            KeyCode::Down => self.cmd(|s| s.step_agent(1)),
+            KeyCode::Esc => self.cmd(|s| s.clear_agent_view()),
             KeyCode::End => self.cmd(|s| s.scroll_bottom()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.open_shop()),
@@ -87,6 +90,40 @@ impl App {
         let idx = self.sessions.index();
         if let Some(sess) = self.sessions.get(idx) {
             sess.chat.scroll.to_bottom();
+        }
+    }
+
+    /// Entrée : déplie l'agent pointé (saisie vide + agents), sinon envoi.
+    fn enter(&mut self) {
+        let idx = self.sessions.index();
+        let empty = self
+            .sessions
+            .get(idx)
+            .map(|s| s.chat.input.is_empty())
+            .unwrap_or(true);
+        if empty {
+            if let Some(sess) = self.sessions.get_mut(idx) {
+                if sess.toggle_cursor_or_first() {
+                    return;
+                }
+            }
+        }
+        self.send();
+    }
+
+    /// ↑↓ : déplace le curseur agent (ignoré sans chat / sans agent).
+    fn step_agent(&mut self, dir: i8) {
+        let idx = self.sessions.index();
+        if let Some(sess) = self.sessions.get_mut(idx) {
+            sess.step_agent_cursor(dir);
+        }
+    }
+
+    /// Échap : curseur effacé + échanges repliés (ignoré sans chat).
+    fn clear_agent_view(&mut self) {
+        let idx = self.sessions.index();
+        if let Some(sess) = self.sessions.get_mut(idx) {
+            sess.clear_agent_view();
         }
     }
 
@@ -174,6 +211,39 @@ mod tests {
         assert!(!sess.sending);
         assert_eq!(sess.ledger.total(), 2);
         assert_eq!(sess.history.last().unwrap().1, "à temps");
+    }
+
+    #[test]
+    fn fleches_naviguent_entree_deplie_echap_replie() {
+        let mut app = test_app();
+        let key = |c| KeyEvent::new(c, KeyModifiers::empty());
+        // Sans agent : sans effet.
+        assert!(app.on_key(key(KeyCode::Down)));
+        assert!(app.on_key(key(KeyCode::Enter)));
+        assert!(app.sessions.get(0).unwrap().agent_cursor.is_none());
+        let history = vec![(String::from("user"), String::from("u"))];
+        app.sessions.add_agent(0, "un", history.clone()).unwrap();
+        app.sessions.add_agent(0, "deux", history).unwrap();
+        let cursor = |app: &App| app.sessions.get(0).unwrap().agent_cursor;
+        assert!(app.on_key(key(KeyCode::Down)));
+        assert_eq!(cursor(&app), Some(1));
+        assert!(app.on_key(key(KeyCode::Down)));
+        assert_eq!(cursor(&app), Some(2));
+        assert!(app.on_key(key(KeyCode::Down)));
+        assert_eq!(cursor(&app), Some(1), "cyclique");
+        assert!(app.on_key(key(KeyCode::Up)));
+        assert_eq!(cursor(&app), Some(2));
+        assert!(app.on_key(key(KeyCode::Enter)));
+        assert_eq!(app.sessions.get(0).unwrap().expanded_agents, vec![2]);
+        assert!(app.on_key(key(KeyCode::Enter)));
+        assert!(app.sessions.get(0).unwrap().expanded_agents.is_empty());
+        assert!(app.on_key(key(KeyCode::Esc)));
+        assert!(cursor(&app).is_none());
+        // Saisie non vide : Entrée envoie (commande), pas de déplié.
+        app.sessions.get_mut(0).unwrap().chat.input_insert("/usage");
+        assert!(app.on_key(key(KeyCode::Enter)));
+        assert!(app.sessions.get(0).unwrap().expanded_agents.is_empty());
+        assert!(app.sessions.get(0).unwrap().chat.input.is_empty());
     }
 
     #[test]

@@ -1,11 +1,12 @@
 //! Outils agent : le modèle pilote le navigateur, le bureau et le shell.
 //!
-//! Boucle bornée ([`flow`], 8 tours max), exécution locale ([`exec`]),
+//! Boucle ([`flow`], jusqu'à la réponse finale), exécution locale ([`exec`]),
 //! navigateur invisible ([`browser`]), bureau réel ([`desktop`]), journal
 //! JSONL ([`log`]), types filaires ([`wire`]). Les lectures passent sans
 //! demander ; les modifications demandent confirmation en mode `auto`
 //! (voir `/permissions`), jamais en `yolo`. Interrupteur : `/tools on|off`.
 
+pub mod agent;
 pub mod browser;
 pub mod desktop;
 pub mod exec;
@@ -19,8 +20,6 @@ pub use wire::{ToolCall, ToolDef, WireMsg};
 
 use crate::permissions::Mode;
 
-/// Tours LLM max par envoi (comme les 8 relais du bus : pas d'infini).
-pub const MAX_ROUNDS: u8 = 8;
 /// Sortie max renvoyée au modèle (caractères, tronquée sans couper l'UTF-8).
 pub const MAX_OUTPUT: usize = 6000;
 

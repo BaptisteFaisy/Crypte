@@ -36,6 +36,7 @@ fn defiler_affiche_les_vieux_messages_puis_revient() {
         tick: 0,
         sending: false,
         question_pending: false,
+        agents: crate::agent_view::AgentCtx::empty(),
     };
     let dump = |chat: &mut ChatState| {
         let mut term = Terminal::new(TestBackend::new(40, 14)).unwrap();
@@ -139,6 +140,7 @@ fn curseur_saisie_fixe_ne_clignote_pas() {
             tick,
             sending: false,
             question_pending: true,
+            agents: crate::agent_view::AgentCtx::empty(),
         };
         let mut term = Terminal::new(TestBackend::new(40, 14)).unwrap();
         term.draw(|f| chat.draw(f, f.area(), view)).unwrap();

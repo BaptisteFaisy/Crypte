@@ -115,7 +115,7 @@ impl App {
         lazy: bool,
     ) -> Self {
         let (tx, rx) = mpsc::channel(INCOMING_CAP);
-        let app = Self {
+        Self {
             phantom: Phantom::new(rand::random()),
             fx: Fx::new(),
             bank: ImageBank::headless(),
@@ -163,11 +163,11 @@ impl App {
             chats_path: None,
             events: EventLog::disabled(),
             vps: crate::vps::VpsRuntime::load(),
+            cloud: crate::kiro::cloud::CloudJobs::new(),
             tx,
             rx,
             pool: SpawnPool::new(),
-        };
-        app
+        }
     }
 
     /// Fin de construction : pin + annonce + hint + cache contexte.

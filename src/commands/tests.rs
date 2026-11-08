@@ -95,13 +95,17 @@ fn parse_bestiary_sans_argument() {
 }
 
 #[test]
-fn parse_mcp_refresh_optionnel() {
-    assert_eq!(parse("/mcp"), Some(Command::Mcp(None)));
+fn parse_mcp_args_bruts() {
+    assert_eq!(parse("/mcp"), Some(Command::Mcp(vec![])));
     assert_eq!(
-        parse("/mcp refresh"),
-        Some(Command::Mcp(Some(String::from("refresh"))))
+        parse("/mcp read gh file://a"),
+        Some(Command::Mcp(vec![
+            String::from("read"),
+            String::from("gh"),
+            String::from("file://a"),
+        ]))
     );
-    assert!(crate::texts::help_text().contains("/mcp [refresh]"));
+    assert!(crate::texts::help_text().contains("/mcp [refresh|resources|prompts]"));
 }
 
 #[test]
@@ -150,9 +154,48 @@ fn parse_thinking_model_agent_agents_compact() {
         parse("/agent   "),
         Some(Command::Unknown(String::from("/agent")))
     );
-    assert_eq!(parse("/agents"), Some(Command::Agents { all: false }));
-    assert_eq!(parse("/agents all"), Some(Command::Agents { all: true }));
-    assert_eq!(parse("/agents x"), Some(Command::Agents { all: false }));
+    assert_eq!(
+        parse("/agents"),
+        Some(Command::Agents {
+            all: false,
+            voir: None
+        })
+    );
+    assert_eq!(
+        parse("/agents all"),
+        Some(Command::Agents {
+            all: true,
+            voir: None
+        })
+    );
+    assert_eq!(
+        parse("/agents x"),
+        Some(Command::Agents {
+            all: false,
+            voir: None
+        })
+    );
+    assert_eq!(
+        parse("/agents #3"),
+        Some(Command::Agents {
+            all: false,
+            voir: Some(3)
+        })
+    );
+    assert_eq!(
+        parse("/agents 3"),
+        Some(Command::Agents {
+            all: false,
+            voir: Some(3)
+        })
+    );
+    assert_eq!(
+        parse("/agents #0"),
+        Some(Command::Agents {
+            all: false,
+            voir: None
+        })
+    );
     assert_eq!(parse("/compact"), Some(Command::Compact));
     assert_eq!(parse("/connect"), Some(Command::Connect(None)));
     assert_eq!(
@@ -353,4 +396,49 @@ fn parse_spec_malforme_aide() {
     assert_eq!(parse("/spec new auth"), Some(Command::Hint(SPEC_USAGE)));
     assert_eq!(parse("/spec auth run x"), Some(Command::Hint(SPEC_USAGE)));
     assert_eq!(parse("/spec auth x"), Some(Command::Hint(SPEC_USAGE)));
+}
+
+#[test]
+fn parse_cloud_args_bruts() {
+    assert_eq!(parse("/cloud"), Some(Command::Cloud(vec![])));
+    assert_eq!(
+        parse("/cloud run --repo o/r hello"),
+        Some(Command::Cloud(vec![
+            String::from("run"),
+            String::from("--repo"),
+            String::from("o/r"),
+            String::from("hello"),
+        ]))
+    );
+    assert!(crate::texts::help_text().contains("/cloud"));
+}
+
+#[test]
+fn parse_powers_nu() {
+    assert_eq!(parse("/powers"), Some(Command::Powers));
+    assert!(crate::texts::help_text().contains("/powers"));
+}
+
+#[test]
+fn parse_workflow_args_bruts() {
+    assert_eq!(parse("/workflow"), Some(Command::Workflow(vec![])));
+    assert_eq!(
+        parse("/workflow run w task=hi"),
+        Some(Command::Workflow(vec![
+            String::from("run"),
+            String::from("w"),
+            String::from("task=hi"),
+        ]))
+    );
+    assert!(crate::texts::help_text().contains("/workflow"));
+}
+
+#[test]
+fn parse_steer_nom_optionnel() {
+    assert_eq!(parse("/steer"), Some(Command::Steer(None)));
+    assert_eq!(
+        parse("/steer rust"),
+        Some(Command::Steer(Some(String::from("rust"))))
+    );
+    assert!(crate::texts::help_text().contains("/steer"));
 }

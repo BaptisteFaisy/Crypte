@@ -408,8 +408,9 @@ Per-tool rules refine the mode: `/permissions <tool> <allow|ask|deny>`
 ## Tools (browser, desktop, shell)
 
 The model can use your machine: `/tools` shows the state, `/tools off`
-disables it for the session (default on). Each send may loop up to
-8 LLM turns: reply → tool calls → results → reply, until the final answer.
+disables it for the session (default on). Each send loops with no turn
+limit: reply → tool calls → results → reply, until the final answer
+(Ctrl+C cancels a runaway loop).
 
 - **Browser** (8 tools): invisible Chromium on a virtual display (`:99`,
   never your screen) in its own `crypte-<pid>` session — open, snapshot
@@ -435,8 +436,12 @@ to run commands or exfiltrate is reported, not obeyed.
 Crypte reads the same `.kiro/` files as Kiro (project `./.kiro/` plus
 global `~/.kiro/`), so a project moves back and forth between both:
 
-- **Steering** (`.kiro/steering/*.md`, 4 inclusion modes) : `always`
-  files join the pinned AGENTS.md context at first send.
+- **Steering** (`.kiro/steering/*.md`, project + global, YAML
+  frontmatter) : `always` files join the pinned context at first
+  send, `fileMatch` files join when their paths are in context,
+  `manual` files arm on demand (`/steer <name>`, transient like
+  `/skill`), `auto` files join when their description matches the
+  request (keyword heuristic, announced).
 - **Specs** (`.kiro/specs/<name>/`) : `/spec new <name> <idea>` drafts
   requirements, design and tasks in 3 chained LLM calls (progress shown,
   existing specs never overwritten); `/spec <name>` shows status (docs,
@@ -448,36 +453,74 @@ global `~/.kiro/`), so a project moves back and forth between both:
   + regex `matcher` + `.kiroignore` (file triggers); `command`
   runs async `sh -c` (30 s timeout, truncated output, announced
   on completion), `agent` queues a prompt prefixed to the next
-  user send; triggers wired: send, tools, spec files, spec tasks,
-  agents, boot (single-fire, no re-trigger); `/hooks` shows
-  loaded hooks by trigger + recent firings.
+  user send (injected into the next agent turn for sub-agent tool
+  hooks); triggers wired: send, tools (chats and sub-agents),
+  spec files, spec tasks, agents, boot (single-fire, no
+  re-trigger); `/hooks` shows loaded hooks by trigger + recent
+  firings.
 - **MCP** (`.kiro/settings/mcp.json`, stdio + remote) : live client
-  (tools only, no resources/prompts) — servers connect on first
-  tool-using send, tools show as `mcp_<server>_<tool>`, `autoApprove`
-  skips confirmation ; `/mcp` shows servers + tools, `/mcp refresh`
-  reconnects.
+  (tools, resources, prompts) — servers connect lazily, tools show
+  as `mcp_<server>_<tool>`, `autoApprove` skips confirmation ;
+  `/mcp` shows servers + tools, `/mcp refresh` reconnects,
+  `/mcp resources|prompts` lists, `/mcp read <server> <uri>`
+  displays content, `/mcp prompt <server> <name> [k=v]` arms the
+  rendered messages in the draft (transient).
 - **Custom agents** (`.kiro/agents/`, official Kiro format: `.json`
   or `.md`, same fields `name`/`description`/`prompt`/`model`/
   `tools`/`excludedTools`/`mcpServers`, md body = system prompt,
   `team/<name>` subfolders, project wins over global, json wins
   over md) : `/agents` lists them (model/tools/mcp shown when
   declared), `/agent <name> <text>` spawns with the custom prompt
-  and its model when declared. `tools`/`mcpServers` are read and
-  shown but not executed yet (sub-agents have no tools).
+  and its model when declared. `tools`/`excludedTools` filter the
+  sub-agent's tools, `mcpServers` restricts its MCP servers (names
+  only — per-agent server configs are not connected). Sub-agents
+  run tools on their own (bounded: 20 rounds, 60 calls max, `Ask`/
+  `Deny` become refusals since nobody can confirm); in `auto` mode
+  they only get reads unless a rule allows more, in `yolo`
+  everything. Tool hooks fire as for chats (`PreToolUse`/
+  `PostToolUse`, commands async with completion shown on the owner
+  chat, `agent` prompts injected into the next agent turn, only for
+  executed tools — never for refusals), counted in the delivery
+  summary (`hooks: N commands, M prompts`).
 - **Skills** (`.kiro/skills/*/SKILL.md`, Claude-compatible frontmatter
   `name`/`description`, body = instructions) : `/skills` lists them,
   `/skill <name> [text]` prefixes the skill to the current draft
   (transient, announced). Skills cover reusable prompts (no separate
   system).
+- **Powers** (`~/.kiro/powers/installed/*/`, Agent Plugins format,
+  global only) : `/powers` lists them (keywords, skills, bundled
+  servers, legacy markers) ; at send time, powers whose keywords
+  match the request inject their skills (announced, ephemeral) and
+  their `mcp.json` servers join the pool for the session (lazy
+  connect, config wins on name clashes, survives `/mcp refresh`,
+  relative `cwd` resolved from the power dir). Cloud-synced powers
+  are out of reach (no public API).
 - **Memory** (`.kiro/MEMORY.md` project + `~/.kiro/MEMORY.md`
   global) : pinned after steering at first send
   (agents.md → steering → memory) ; `/remember <text>` appends to
   the project file (created if missing, checkpointed).
 - **Ignore** (`.kiroignore`) : loaded, enforced on file hooks
   (last matching pattern wins, `!` re-includes, `dir/` = subtree).
+- **Cloud sessions** (`kiro-cli` 2.17+ headless) : `/cloud run
+  [--repo o/r] <task>` starts a Kiro agent in a managed sandbox
+  (progress streams as `[cloud#n]`, final note = session id +
+  resume command + web link) ; `/cloud list|attach|delete|stop`
+  manage sessions ; the sandbox clones the remote, so unpushed
+  work is warned about. See [docs/CLOUD.md](docs/CLOUD.md).
+- **Workflows** (`.kiro/workflows/*.workflow.json`, official format) :
+  `/workflow list|show|validate` reads recipes (project wins over
+  global, JSON only), `run <name> [k=v ...]` executes flat step
+  lists via chained sub-agents (`{{inputs}}`, step outputs and
+  producer-resolved artifacts expanded; `repeat`/`parallel`/`watch`
+  and conditions are refused with a reason).
 
-`/kiro` shows what was loaded (steering, specs, hooks, servers);
-`/hooks` shows hooks by trigger, queued agent prompts and recent firings.
+`/kiro` shows what was loaded (steering, specs, hooks, servers,
+ignore) ; `/hooks` shows hooks by trigger, queued agent prompts
+and recent firings. Everything Crypte writes under `.kiro/`
+(specs, memory, task check-offs) is snapshot-protected — see
+`/checkpoints` and `/rewind`. This repo dogfoods it all : its own
+`.kiro/` carries steering, a spec, hooks, MCP settings, custom
+agents and skills, readable by Kiro and Crypte alike.
 
 ## Checkpoints
 

@@ -106,16 +106,22 @@ ignorés).
 `spec_cmds.rs` (`/spec` : handlers `new`/statut/`run` + drain, tests
 dans `spec_cmds/tests.rs`), `spec_prompts.rs` (prompts purs),
 `spec_run.rs` (`SpecGen`/`SpecRun`, purs), `mcp_client.rs`
-(protocole), `mcp_conn.rs` (stdio/HTTP), `mcp_pool.rs` (parc),
-`mcp_cmds.rs` (`/mcp`), `hook_match.rs` (regex `matcher`),
+(protocole), `mcp_conn.rs` (stdio/HTTP + requête brute),
+`mcp_pool.rs` (parc, tests dans `mcp_pool/tests.rs`),
+`mcp_lists.rs` (resources/prompts : protocole + stub partagé),
+`mcp_cmds.rs` (`/mcp` : listes, `read`, `prompt` armé),
+`hook_match.rs` (regex `matcher`),
 `hook_run.rs` (moteur : sélection + tirs + file `agent`),
 `hook_exec.rs` (`sh -c` async + `HookOutcome`), `hook_cmds.rs`
 (`/hooks`), `frontmatter.rs` (partagé), `agents_md.rs` (customs)
 + `agents_parse.rs` (parse `.json`/`.md` schéma Kiro),
 `skills.rs` + `skills_cmds.rs` (`/skills`, `/skill`),
 `checkpoint.rs` + `checkpoint_cmds.rs` (`/checkpoints`, `/rewind`),
-`memory.rs` + `memory_cmds.rs` (`/remember`) ; steering `always` +
-mémoire fusionnés au pin agents.md, voir `agents::load_merged_in`).
+`memory.rs` + `memory_cmds.rs` (`/remember`), `cloud.rs` (sessions
+cloud : détection CLI, `argv` headless, parsers, git) +
+`cloud_cmds.rs` (`/cloud`, tests dans `cloud_cmds/tests.rs`) ;
+steering `always` + mémoire fusionnés au pin agents.md, voir
+`agents::load_merged_in`).
 `ghostty/` : thème, shader et lanceur `ghostty/crypte`.
 
 Flux : `send` (user → provider, tâche async, outillé si `/tools on` ;
@@ -125,8 +131,8 @@ seul, jamais l'historique) →
 (`Incoming::usage`, `None` pour `ToolDone`) + ledger + historique + affichage.
 Ctrl+C stoppe le vol du chat courant (`stop_chat` : époque bumpée, réponse
 tardive ignorée au `drain`, boucle outil annulée ; sans effet si rien en vol).
-Boucle outils : réponse avec `tool_calls` (budget 8 tours, voir
-`tools::MAX_ROUNDS`) → file séquentielle → porte `tool_gate`
+Boucle outils : réponse avec `tool_calls` (sans limite de tours,
+jusqu'au texte final ; Ctrl+C annule) → file séquentielle → porte `tool_gate`
 (`permissions_cmds.rs` : règle fine `allow`/`ask`/`deny` par outil,
 exact + préfixe `*`, défaut = mode `yolo`/`auto` via
 `tools::needs_confirm` ; `deny` refuse sans y/n et prévient le modèle)

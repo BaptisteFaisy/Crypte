@@ -2,7 +2,7 @@
 //! `/agents` `/ask` `/tell` `/msg` `/link` `/links` `/unlink` `/compact`
 //! `/connect` `/permissions` `/web` `/tools` `/kiro` `/spec` `/mcp` `/hooks`
 //! `/skills` `/skill` `/checkpoints` `/rewind` `/remember` `/critic`
-//! `/settings` `/help`).
+//! `/settings` `/cloud` `/steer` `/help`).
 //!
 //! `parse` matche le premier mot (cibles + texte consomment le reste).
 
@@ -29,6 +29,7 @@ pub enum Command {
     },
     Agents {
         all: bool,
+        voir: Option<usize>,
     },
     Ask {
         agent: usize,
@@ -64,6 +65,8 @@ pub enum Command {
         args: Vec<String>,
     },
     Skills,
+    Powers,
+    Steer(Option<String>),
     Skill {
         name: String,
         text: Option<String>,
@@ -83,8 +86,10 @@ pub enum Command {
     SpecRun {
         name: String,
     },
-    Mcp(Option<String>),
+    Mcp(Vec<String>),
     Hooks,
+    Cloud(Vec<String>),
+    Workflow(Vec<String>),
     Unknown(String),
 }
 
@@ -129,9 +134,7 @@ pub fn parse(input: &str) -> Option<Command> {
         "/help" => Some(Command::Help),
         "/thinking" => Some(Command::Thinking(opt_arg(&mut parts))),
         "/model" => Some(Command::Model(opt_arg(&mut parts))),
-        "/agents" => Some(Command::Agents {
-            all: opt_arg(&mut parts).as_deref() == Some("all"),
-        }),
+        "/agents" => parse_agents(&mut parts),
         "/compact" => Some(Command::Compact),
         "/connect" => Some(Command::Connect(opt_arg(&mut parts))),
         "/settings" | "/setting" | "/params" => {
@@ -140,11 +143,15 @@ pub fn parse(input: &str) -> Option<Command> {
         "/permissions" => Some(Command::Permissions(all_args(&mut parts))),
         "/tools" => Some(Command::Tools(opt_arg(&mut parts))),
         "/kiro" => Some(Command::Kiro),
-        "/mcp" => Some(Command::Mcp(opt_arg(&mut parts))),
+        "/mcp" => Some(Command::Mcp(all_args(&mut parts))),
         "/hooks" => Some(Command::Hooks),
+        "/cloud" => Some(Command::Cloud(all_args(&mut parts))),
+        "/workflow" => Some(Command::Workflow(all_args(&mut parts))),
         "/critic" => Some(Command::Critic(opt_arg(&mut parts))),
         "/links" => Some(Command::Links),
         "/skills" => Some(Command::Skills),
+        "/powers" => Some(Command::Powers),
+        "/steer" => Some(Command::Steer(opt_arg(&mut parts))),
         "/checkpoints" => Some(Command::Checkpoints),
         "/agent" => parse_agent(trimmed, word),
         "/ask" => parse_ask(trimmed, word),
@@ -172,6 +179,33 @@ fn opt_arg(parts: &mut std::str::SplitWhitespace<'_>) -> Option<String> {
 /// Tous les mots suivants (`/permissions` : mode, règle, `list`, `reset`).
 fn all_args(parts: &mut std::str::SplitWhitespace<'_>) -> Vec<String> {
     parts.map(str::to_string).collect()
+}
+
+/// `/agents [all|#<id>]` (`#` optionnel) : `all` = tous les chats,
+/// `#<id>` = échange complet de l'agent, sinon liste du chat courant
+/// (argument inconnu ignoré, comme avant).
+fn parse_agents(parts: &mut std::str::SplitWhitespace<'_>) -> Option<Command> {
+    let none = Command::Agents {
+        all: false,
+        voir: None,
+    };
+    match opt_arg(parts).as_deref() {
+        None => Some(none),
+        Some("all") => Some(Command::Agents {
+            all: true,
+            voir: None,
+        }),
+        Some(token) => {
+            let num = token.strip_prefix('#').unwrap_or(token);
+            match num.parse::<usize>().ok() {
+                Some(id) if id >= 1 => Some(Command::Agents {
+                    all: false,
+                    voir: Some(id),
+                }),
+                _ => Some(none),
+            }
+        }
+    }
 }
 
 /// `/agent [@<n>] <texte...>` : `@<n>` (chiffres) route la réponse vers

@@ -32,6 +32,9 @@ pub struct StdioConn {
 
 impl StdioConn {
     /// Lance le serveur (`command` + `args` + `env`, `cwd` si fourni).
+    // `ExecutableFileBusy` = Rust 1.83 (toolchain 1.98, MSRV 1.74 du
+    // manifeste dépassée partout : `is_some_and` déjà utilisé).
+    #[allow(clippy::incompatible_msrv)]
     pub async fn spawn(name: &str, server: &Server) -> Result<Self> {
         let command = server.command.as_deref().unwrap_or("");
         let mut cmd = tokio::process::Command::new(command);
@@ -44,9 +47,19 @@ impl StdioConn {
         if let Some(cwd) = server.cwd.as_deref().filter(|cwd| !cwd.trim().is_empty()) {
             cmd.current_dir(cwd);
         }
-        let mut child = cmd
-            .spawn()
-            .with_context(|| format!("spawning MCP server '{name}' ({command})"))?;
+        // `ETXTBSY` : binaire en cours d'écriture (install à l'instant,
+        // observé en tests) — transitoire, rejeu borné avant d'échouer.
+        let mut child = cmd.spawn();
+        for _ in 0..3 {
+            if matches!(&child, Err(err) if err.kind() == std::io::ErrorKind::ExecutableFileBusy) {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                child = cmd.spawn();
+            } else {
+                break;
+            }
+        }
+        let mut child =
+            child.with_context(|| format!("spawning MCP server '{name}' ({command})"))?;
         let stdin = child.stdin.take().context("MCP stdio stdin unavailable")?;
         let stdout = child
             .stdout
@@ -88,6 +101,14 @@ impl StdioConn {
         call_tool(&mut self.proto, tool, args)
             .await
             .with_context(|| format!("MCP tool '{tool}' on '{name}'"))
+    }
+
+    /// Requête brute (resources/prompts, voir `mcp_lists`).
+    pub async fn request(&mut self, name: &str, method: &str, params: Value) -> Result<Value> {
+        self.proto
+            .request(method, params)
+            .await
+            .with_context(|| format!("MCP {method} on '{name}'"))
     }
 
     /// Arrêt propre : stdin fermé (EOF), `wait` borné, `kill` au-delà.
@@ -186,6 +207,11 @@ impl HttpConn {
         let result = self.post(name, "tools/call", params).await?;
         Ok(render_result(&result))
     }
+
+    /// Requête brute distante (resources/prompts, voir `mcp_lists`).
+    pub async fn request(&mut self, name: &str, method: &str, params: Value) -> Result<Value> {
+        self.post(name, method, params).await
+    }
 }
 
 /// En-têtes configurés valides (invalides = ignorés silencieusement).
@@ -223,7 +249,7 @@ fn extract_sse(raw: &str) -> Result<Value> {
 
 /// Client MCP connecté (stdio ou distant), handshake fait.
 pub enum Client {
-    Stdio(StdioConn),
+    Stdio(Box<StdioConn>),
     Http(HttpConn),
 }
 
@@ -236,7 +262,7 @@ impl Client {
             .as_deref()
             .is_some_and(|cmd| !cmd.trim().is_empty())
         {
-            Ok(Self::Stdio(StdioConn::spawn(name, server).await?))
+            Ok(Self::Stdio(Box::new(StdioConn::spawn(name, server).await?)))
         } else if server
             .url
             .as_deref()
@@ -261,6 +287,14 @@ impl Client {
         match self {
             Self::Stdio(conn) => conn.call(name, tool, args).await,
             Self::Http(conn) => conn.call(name, tool, args).await,
+        }
+    }
+
+    /// Requête brute (transport réel, resources/prompts).
+    pub async fn request(&mut self, name: &str, method: &str, params: Value) -> Result<Value> {
+        match self {
+            Self::Stdio(conn) => conn.request(name, method, params).await,
+            Self::Http(conn) => conn.request(name, method, params).await,
         }
     }
 

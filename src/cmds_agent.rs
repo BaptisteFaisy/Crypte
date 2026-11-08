@@ -24,7 +24,7 @@ impl App {
         self.ensure_agents_loaded();
         let spawn =
             crate::kiro::agents_md::spawn_messages(self, self.agents_md.as_deref(), &prompt);
-        let (mut messages, prompt) = (spawn.messages, spawn.prompt);
+        let (mut messages, prompt, filter) = (spawn.messages, spawn.prompt, spawn.filter);
         // Consigne des questions IA devant le prompt (l'estimation suit, honnête).
         let at = messages.len().saturating_sub(1);
         messages.insert(
@@ -49,21 +49,44 @@ impl App {
         };
         self.sessions
             .attach_workspace(agent_id, crate::workspace::base().as_deref());
+        if let Some((_, agent)) = self.sessions.find_agent_mut(agent_id) {
+            agent.tool_filter = filter.clone();
+        }
         self.events
             .emit(&Event::agent_spawned(agent_id, id, deliver, &prompt));
         self.hooks_fire_agent_spawn(id, &prompt);
-        if deliver == id {
-            self.push_system(format!("agent#{agent_id} started"));
+        let line = if deliver == id {
+            crate::agent_view::spawn_line(agent_id, None, &prompt)
         } else {
-            self.push_system(format!("agent#{agent_id} started → Chat {}", deliver + 1));
-        }
+            crate::agent_view::spawn_line(agent_id, Some(deliver + 1), &prompt)
+        };
+        self.push_system(line);
         let model = custom_model.unwrap_or_else(|| self.effective_model());
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
+        let rules = self.t5.rules.clone();
+        let mode = self.permissions;
+        let mcp = self.mcp.clone();
+        let tooled = self.tools_on;
+        let hook_sink = crate::tools::agent::HookSink {
+            paths: crate::kiro::hook_agent::HookPaths {
+                project: self.t5.kiro_project.clone(),
+                global: self.t5.kiro_global.clone(),
+            },
+            tx: self.tx.clone(),
+        };
         self.pool.spawn(async move {
-            let reply = provider
-                .complete_full(&messages, &model, effort.as_deref())
-                .await;
+            let ctx = crate::tools::agent::Ctx {
+                provider: &provider,
+                model: &model,
+                effort: effort.as_deref(),
+                rules: &rules,
+                mode,
+                mcp: &mcp,
+                chat: id,
+            };
+            let reply =
+                crate::tools::agent::agent_reply(ctx, messages, &filter, tooled, &hook_sink).await;
             let _ = tx.send(Incoming::Agent(id, agent_id, deliver, reply)).await;
         });
     }

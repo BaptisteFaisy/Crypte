@@ -36,6 +36,10 @@ pub struct ChatSession {
     pub auto_hops: u8,
     /// Question de l'IA en attente (`None` = aucune, pastille jaune sinon).
     pub pending: Option<PendingQuestion>,
+    /// Widget agent pointé (↑↓, `None` = aucun).
+    pub agent_cursor: Option<usize>,
+    /// Ids agents à l'échange déplié (Entrée).
+    pub expanded_agents: Vec<usize>,
 }
 
 impl ChatSession {
@@ -56,6 +60,8 @@ impl ChatSession {
             inbox: VecDeque::new(),
             auto_hops: 0,
             pending: None,
+            agent_cursor: None,
+            expanded_agents: Vec::new(),
         }
     }
 
@@ -67,11 +73,63 @@ impl ChatSession {
     }
 
     /// Vide la conversation (`/clear`) : affichage + historique provider,
-    /// question en attente effacée ; pinné, modèle, tokens et agents gardés.
+    /// question en attente effacée ; pinné, modèle, tokens et agents gardés
+    /// (vue agents réinitialisée : les ancres ont disparu).
     pub fn clear(&mut self) {
         self.chat.clear();
         self.history.truncate(usize::from(self.pinned_system));
         self.pending = None;
+        self.clear_agent_view();
+    }
+
+    /// Déplace le curseur agent (`dir` ±1, cyclique) ; `None` si vide.
+    pub fn step_agent_cursor(&mut self, dir: i8) {
+        let ids: Vec<usize> = self.agents.iter().map(|a| a.id).collect();
+        if ids.is_empty() {
+            self.agent_cursor = None;
+            return;
+        }
+        let pos = self
+            .agent_cursor
+            .and_then(|id| ids.iter().position(|i| *i == id));
+        let next = match pos {
+            Some(p) => (p as isize + dir as isize).rem_euclid(ids.len() as isize) as usize,
+            None if dir >= 0 => 0,
+            None => ids.len() - 1,
+        };
+        self.agent_cursor = Some(ids[next]);
+    }
+
+    /// Bascule l'échange déplié de l'agent (`false` si id inconnu).
+    pub fn toggle_agent(&mut self, id: usize) -> bool {
+        if !self.agents.iter().any(|a| a.id == id) {
+            return false;
+        }
+        if let Some(p) = self.expanded_agents.iter().position(|i| *i == id) {
+            self.expanded_agents.remove(p);
+        } else {
+            self.expanded_agents.push(id);
+        }
+        true
+    }
+
+    /// Bascule le curseur (ou le premier agent) ; `false` si vide.
+    pub fn toggle_cursor_or_first(&mut self) -> bool {
+        if self.agents.is_empty() {
+            return false;
+        }
+        let id = self
+            .agent_cursor
+            .filter(|id| self.agents.iter().any(|a| &a.id == id))
+            .unwrap_or(self.agents[0].id);
+        self.agent_cursor = Some(id);
+        self.toggle_agent(id)
+    }
+
+    /// Curseur effacé + échanges repliés (Échap, `/clear`).
+    pub fn clear_agent_view(&mut self) {
+        self.agent_cursor = None;
+        self.expanded_agents.clear();
     }
 
     /// Ajoute un tour provider, borné LRU (`HISTORY_MAX`, tête pinnée gardée).

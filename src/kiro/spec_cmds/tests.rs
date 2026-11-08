@@ -28,28 +28,28 @@ fn last_text(app: &App, idx: usize) -> String {
         .unwrap_or_default()
 }
 
-/// Projet `.kiro/` temporaire + `KH_KIRO_PROJECT` pointé dessus. SEUL
-/// site de tests qui touche l'env (ne pas imiter : chemins injectés
-/// partout ailleurs) : sûr car la fixture ne contient NI steering NI
-/// MCP (lecteurs parallèles = vide, comme le défaut hermétique).
-fn with_project(name: &str) -> std::path::PathBuf {
+/// Projet `.kiro/` temporaire + `KH_KIRO_PROJECT` pointé dessus, sous
+/// verrou [`EnvScope`](crate::test_env::EnvScope) (sans lui, un test
+/// parallèle qui pose/retire la variable fait lire un mauvais dossier :
+/// `unknown spec` intermittent, constaté sur runner 80 cœurs).
+fn with_project(name: &str) -> (std::path::PathBuf, crate::test_env::EnvScope) {
     let dir = std::env::temp_dir().join(format!("kh-spec-cmds-{}-{name}", std::process::id()));
     std::fs::create_dir_all(dir.join(".kiro/specs")).unwrap();
-    std::env::set_var("KH_KIRO_PROJECT", &dir);
-    dir
+    let scope = crate::test_env::EnvScope::new(&["KH_KIRO_PROJECT"]);
+    scope.set("KH_KIRO_PROJECT", &dir);
+    (dir, scope)
 }
 
 /// Bout en bout : gardes, statut, génération, run auto/yolo, échec.
 #[tokio::test]
 async fn spec_bout_en_bout() {
-    let dir = with_project("e2e");
+    let (dir, _env) = with_project("e2e");
     h_new_gardes(&dir);
     h_show(&dir);
     h_run_gardes(&dir);
     h_drain_gen(&dir);
     h_auto_n(&dir);
     h_yolo_failed(&dir);
-    std::env::remove_var("KH_KIRO_PROJECT");
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -177,12 +177,20 @@ fn h_auto_n(dir: &Path) {
     app.spec_agent_done(42);
     app.spec_agent_failed(42);
     assert_eq!(last_text(&app, 0), before);
-    // `y` : tâche suivante lancée via un sous-agent.
+    // `y` : tâche suivante lancée via un sous-agent (parent + enfant niché).
     app.spec_waiting = Some(SpecRun::new("auto", 0, 1, 2));
     app.spec_resolve(true);
     assert_eq!(app.spec_runs.len(), 1);
-    assert!(last_text(&app, 0).contains("task 2/2"));
-    assert!(last_text(&app, 0).contains("agent#1"));
+    let msgs = app.sessions.get(0).unwrap().chat.messages();
+    let n = msgs.len();
+    assert!(msgs[n - 2].text.contains("task 2/2"), "parent spec");
+    assert!(msgs[n - 1].text.contains("agent#1"), "enfant niché");
+    let (_, agent) = app.sessions.find_agent_mut(1).unwrap();
+    assert_eq!(
+        agent.spec.as_ref().map(|s| s.name.as_str()),
+        Some("auto"),
+        "tag workflow posé"
+    );
 }
 
 /// Tâche finie en `yolo` : enchaînée direct ; échec agent = stop.
@@ -197,8 +205,17 @@ fn h_yolo_failed(dir: &Path) {
     app.spec_agent_done(1);
     assert!(app.spec_waiting.is_none());
     assert_eq!(app.spec_runs.len(), 1);
-    assert!(last_text(&app, 0).contains("task 2/2"));
-    assert!(last_text(&app, 0).contains("agent#"));
+    let msgs = app.sessions.get(0).unwrap().chat.messages();
+    let n = msgs.len();
+    assert!(msgs[n - 2].text.contains("task 2/2"), "parent spec");
+    assert!(msgs[n - 1].text.contains("agent#"), "enfant niché");
+    let run_agent = app.spec_runs.values().next().unwrap().agent.unwrap();
+    let (_, agent) = app.sessions.find_agent_mut(run_agent).unwrap();
+    assert_eq!(
+        agent.spec.as_ref().map(|s| s.name.as_str()),
+        Some("yolo"),
+        "tag workflow posé"
+    );
     // Dernière tâche finie : run terminé, message `complete`.
     let id = *app.spec_runs.keys().next().unwrap();
     app.spec_agent_done(id);

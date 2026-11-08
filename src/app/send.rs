@@ -52,6 +52,8 @@ impl App {
             .and_then(|q| crate::question::resolve_answer(q, &text))
             .unwrap_or(text);
         let judged = text.clone();
+        let auto = self.auto_steer_blocks(&text);
+        let (powers, matched) = self.power_blocks(&text);
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
@@ -64,11 +66,32 @@ impl App {
         sess.chat.scroll.to_bottom();
         self.events.emit(&crate::events::Event::user_msg(id, &text));
         sess.push_history("user", text);
-        let history = send_window(&sess.history, sess.pinned_system);
+        let mut history = send_window(&sess.history, sess.pinned_system);
         sess.sending = true;
         sess.auto_hops = 0;
         sess.sending_since = Some(Instant::now());
         let epoch = sess.epoch;
+        if !auto.is_empty() {
+            crate::kiro::steering::prefix_auto(&mut history, &auto);
+            let names = auto
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            self.push_system(format!("steering auto: {names}"));
+        }
+        if !powers.is_empty() {
+            let tagged: Vec<(String, String)> = powers
+                .iter()
+                .map(|(power, skill, body)| (format!("{power}/{skill}"), body.clone()))
+                .collect();
+            crate::kiro::steering::prefix_tagged(&mut history, "power", &tagged);
+            let mut names: Vec<&str> = powers.iter().map(|(power, _, _)| power.as_str()).collect();
+            names.sort_unstable();
+            names.dedup();
+            self.push_system(format!("powers: {}", names.join(", ")));
+        }
+        self.activate_power_mcp(&matched);
         if self.tools_on {
             let wire = crate::tools::flow::tooled_wire(history);
             let mcp = self.mcp.clone();
@@ -90,6 +113,37 @@ impl App {
         // Kiro juge le prompt en parallèle (même modèle, bulle), après
         // l'appel du chat : le permis du pool va d'abord à la réponse.
         self.critique(id, &judged);
+    }
+
+    /// Skills des powers matchant la demande (`power/skill`, corps) +
+    /// powers matchés (pour l'activation MCP, même sans skills).
+    fn power_blocks(
+        &self,
+        prompt: &str,
+    ) -> (
+        Vec<(String, String, String)>,
+        Vec<crate::kiro::powers::Power>,
+    ) {
+        let powers = crate::kiro::powers::load_all(self.t5.kiro_global.as_deref());
+        let matched: Vec<crate::kiro::powers::Power> = powers
+            .into_iter()
+            .filter(|power| crate::kiro::powers::matches(power, prompt))
+            .collect();
+        let blocks = crate::kiro::powers::activation_blocks(&matched, prompt);
+        (blocks, matched)
+    }
+
+    /// Blocs steering `auto` matchant la demande (rechargés à chaque
+    /// envoi, éphémères : jamais pinnés, jamais l'historique stocké).
+    fn auto_steer_blocks(&self, prompt: &str) -> Vec<(String, String)> {
+        let files = crate::kiro::steering::load_all_in(
+            &self.t5.kiro_project,
+            self.t5.kiro_global.as_deref(),
+        );
+        crate::kiro::steering::auto_for(&files, prompt)
+            .into_iter()
+            .map(|file| (file.name.clone(), file.body.clone()))
+            .collect()
     }
 
     /// Ctrl+C : stoppe le vol du chat courant (la réponse tardive sera
@@ -158,7 +212,7 @@ mod tests {
         assert!(shown.contains("the crypt asks you"), "rendered: {shown:?}");
         assert!(!shown.contains("```"), "block replaced: {shown:?}");
         assert_eq!(app.sessions.current().history.last().unwrap().1, raw);
-        app.sessions.current_mut().chat.input.push_str("2");
+        app.sessions.current_mut().chat.input.push('2');
         app.send();
         let sess = app.sessions.current();
         assert!(sess.pending.is_none(), "answering clears");
@@ -169,5 +223,97 @@ mod tests {
         );
         assert!(sess.sending, "send goes out normally");
         std::fs::remove_dir_all(&vide).ok();
+    }
+
+    /// Dossier `.kiro/steering` : un fichier `auto` (règles Rust).
+    fn steer_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("kh-send-steer-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".kiro/steering")).unwrap();
+        std::fs::write(
+            dir.join(".kiro/steering/r.md"),
+            "---\ninclusion: auto\ndescription: Règles du borrow-checker Rust.\n---\nCorps.",
+        )
+        .unwrap();
+        dir
+    }
+
+    /// Blocs `auto` : matchés par la demande, vides sinon.
+    #[test]
+    fn auto_steer_blocks_matche_ou_vide() {
+        let dir = steer_dir("blocs");
+        let mut app = test_app();
+        app.t5.kiro_project = dir.clone();
+        app.t5.kiro_global = None;
+        let matched = app.auto_steer_blocks("explique le borrow checker");
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].0, "r");
+        assert!(app.auto_steer_blocks("bonjour").is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Envoi : le mot-clé power annonce `powers: db`.
+    #[tokio::test]
+    async fn send_annonce_powers_matche() {
+        let mut app = test_app();
+        let dir = std::env::temp_dir().join(format!("kh-send-powers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let power = dir.join("powers/installed/db");
+        std::fs::create_dir_all(power.join("skills/indexes")).unwrap();
+        std::fs::write(
+            power.join("plugin.json"),
+            r#"{"name": "db", "keywords": ["postgres"]}"#,
+        )
+        .unwrap();
+        std::fs::write(power.join("skills/indexes/SKILL.md"), "Corps.").unwrap();
+        let empty = dir.join("proj");
+        std::fs::create_dir_all(&empty).unwrap();
+        app.t5.kiro_project = empty;
+        app.t5.kiro_global = Some(dir.clone());
+        app.mcp = crate::kiro::mcp_pool::McpState::for_config(crate::kiro::mcp::Config::default());
+        app.sessions
+            .current_mut()
+            .chat
+            .input
+            .push_str("tune postgres indexes");
+        app.send();
+        let texts: Vec<String> = app
+            .sessions
+            .current()
+            .chat
+            .messages()
+            .iter()
+            .map(|msg| msg.text.clone())
+            .collect();
+        assert!(texts.iter().any(|t| t.contains("powers: db")), "{texts:?}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Envoi : la demande qui matche annonce `steering auto: r`.
+    #[tokio::test]
+    async fn send_annonce_steering_auto_matche() {
+        let mut app = test_app();
+        let dir = steer_dir("annonce");
+        app.t5.kiro_project = dir.clone();
+        app.t5.kiro_global = None;
+        app.mcp = crate::kiro::mcp_pool::McpState::for_config(crate::kiro::mcp::Config::default());
+        app.sessions
+            .current_mut()
+            .chat
+            .input
+            .push_str("explique le borrow checker");
+        app.send();
+        let texts: Vec<String> = app
+            .sessions
+            .current()
+            .chat
+            .messages()
+            .iter()
+            .map(|msg| msg.text.clone())
+            .collect();
+        assert!(
+            texts.iter().any(|t| t.contains("steering auto: r")),
+            "{texts:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

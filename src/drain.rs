@@ -28,8 +28,9 @@ impl Incoming {
         let billed = match self {
             Incoming::ToolDone(..)
             | Incoming::Vps(..)
-            | Incoming::McpRefresh(..)
-            | Incoming::HookDone(..) => return None,
+            | Incoming::McpText(..)
+            | Incoming::HookDone(..)
+            | Incoming::Cloud(..) => return None,
             Incoming::Chat(_, _, r)
             | Incoming::Compact(_, r)
             | Incoming::Agent(_, _, _, r)
@@ -74,7 +75,7 @@ impl App {
                     sess.ledger
                         .record(done.prompt_tokens, done.completion_tokens, elapsed);
                 }
-                if !done.tool_calls.is_empty() && self.tool_budget_left() {
+                if !done.tool_calls.is_empty() {
                     self.drain_tool_calls(id, done);
                     return;
                 }
@@ -82,10 +83,6 @@ impl App {
                 let Some(sess) = self.sessions.get_mut(id) else {
                     return;
                 };
-                if !done.tool_calls.is_empty() {
-                    sess.chat
-                        .push(Role::System, String::from("(tool limit reached)"));
-                }
                 sess.push_history("assistant", done.text.clone());
                 let shown = sess.track_question(&done.text);
                 sess.chat.push(Role::Assistant, shown);
@@ -136,6 +133,7 @@ impl App {
                 }
                 self.pump_agent_inbox(agent_id);
                 self.spec_agent_failed(agent_id);
+                self.workflow_agent_failed(agent_id);
                 return;
             }
         };
@@ -171,6 +169,7 @@ impl App {
         self.pump_agent_inbox(agent_id);
         self.fire_agent_links(agent_id, &done.text);
         self.spec_agent_done(agent_id);
+        self.workflow_agent_done(agent_id, &done.text);
     }
 
     /// Marque un agent échoué sur son chat propriétaire (réponse en erreur).
@@ -240,13 +239,15 @@ impl App {
     /// Appel agent (échange déjà à jour) : tâche async sous permis,
     /// réponse livrée à `deliver`. Le contexte système agents.md est
     /// re-préfixé ici (une seule copie, en vol) : il n'est jamais
-    /// stocké dans l'agent (voir `cmd_agent`). Sans provider : rien.
+    /// stocké dans l'agent (voir `cmd_agent`). `filter` = outils du
+    /// custom (`None` = tout). Sans provider : rien.
     pub(crate) fn launch_agent(
         &mut self,
         owner: usize,
         agent_id: usize,
         deliver: usize,
         mut history: Vec<(String, String)>,
+        filter: Option<crate::tools::agent::Filter>,
     ) {
         let Some(provider) = self.provider.clone() else {
             return;
@@ -264,10 +265,30 @@ impl App {
         let model = self.effective_model();
         let effort = self.thinking.clone();
         let tx = self.tx.clone();
+        let rules = self.t5.rules.clone();
+        let mode = self.permissions;
+        let mcp = self.mcp.clone();
+        let tooled = self.tools_on;
+        let filter = filter.unwrap_or_default();
+        let hook_sink = crate::tools::agent::HookSink {
+            paths: crate::kiro::hook_agent::HookPaths {
+                project: self.t5.kiro_project.clone(),
+                global: self.t5.kiro_global.clone(),
+            },
+            tx: self.tx.clone(),
+        };
         self.pool.spawn(async move {
-            let reply = provider
-                .complete_full(&history, &model, effort.as_deref())
-                .await;
+            let ctx = crate::tools::agent::Ctx {
+                provider: &provider,
+                model: &model,
+                effort: effort.as_deref(),
+                rules: &rules,
+                mode,
+                mcp: &mcp,
+                chat: owner,
+            };
+            let reply =
+                crate::tools::agent::agent_reply(ctx, history, &filter, tooled, &hook_sink).await;
             let _ = tx
                 .send(Incoming::Agent(owner, agent_id, deliver, reply))
                 .await;
@@ -324,10 +345,15 @@ impl App {
             agent.push_user(entry.text);
             agent.status = AgentStatus::Running;
             agent.auto_hops = entry.hops;
-            (owner, entry.deliver, agent.history.clone())
+            (
+                owner,
+                entry.deliver,
+                agent.history.clone(),
+                agent.tool_filter.clone(),
+            )
         };
-        let (owner, deliver, history) = ready;
-        self.launch_agent(owner, agent_id, deliver, history);
+        let (owner, deliver, history, filter) = ready;
+        self.launch_agent(owner, agent_id, deliver, history, Some(filter));
     }
 
     /// Liens auto depuis le chat `id` : retransmet `text` à chaque cible
@@ -402,7 +428,8 @@ impl App {
         agent.status = AgentStatus::Running;
         agent.auto_hops = hops;
         let history = agent.history.clone();
-        self.launch_agent(owner, agent_id, owner, history);
+        let filter = agent.tool_filter.clone();
+        self.launch_agent(owner, agent_id, owner, history, Some(filter));
     }
 
     /// Note « chaîne coupée » dans le chat source (ou propriétaire).
@@ -459,35 +486,7 @@ impl App {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::events::EventLog;
-
-    /// `drain_chat` OK append une ligne `assistant_msg` au journal.
-    #[test]
-    fn drain_chat_ok_emits_assistant_msg() {
-        let path =
-            std::env::temp_dir().join(format!("crypte-drain-test-{}.jsonl", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let mut app = App::offline().unwrap();
-        app.events = EventLog::new(Some(path.clone()));
-        let done = Completion {
-            text: String::from("boo"),
-            tool_calls: Vec::new(),
-            prompt_tokens: 3,
-            completion_tokens: 5,
-        };
-        app.drain_chat(0, 0, Ok(done));
-        let content = std::fs::read_to_string(&path).unwrap();
-        let line = content.lines().next().unwrap();
-        let v: serde_json::Value = serde_json::from_str(line).unwrap();
-        assert_eq!(v["type"], "assistant_msg");
-        assert_eq!(v["chat"], 1);
-        assert_eq!(v["text"], "boo");
-        assert_eq!(v["completion_tokens"], 5);
-        let _ = std::fs::remove_file(&path);
-    }
-}
+mod tests;
 
 /// Étiquette de réponse agent : `[agent#id]` (+ ` de Chat k` si livré
 /// sur un autre chat que son propriétaire).

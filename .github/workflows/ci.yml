@@ -1,0 +1,86 @@
+name: CI Rust
+
+# Vraie CI Rust (demande user 2026-11-08) : formatage, lints, build, tests.
+# Quatre jobs indépendants (parallélisme maximal sur les runners
+# horror_cli-worker du r630), chacun borné à 5 min (règle user 2026-10-24).
+# `--locked` partout : le build CI utilise exactement Cargo.lock.
+
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-rust-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: [self-hosted, horror_cli-worker]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (superficiel)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Toolchain Rust (stable + fmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Formatage
+        run: cargo fmt --check
+
+  clippy:
+    name: clippy
+    runs-on: [self-hosted, horror_cli-worker]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (superficiel)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Toolchain Rust (stable + fmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Lints (zéro warning)
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+  build:
+    name: build
+    runs-on: [self-hosted, horror_cli-worker]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (superficiel)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Toolchain Rust (stable + fmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Compilation
+        run: cargo build --locked
+
+  test:
+    name: test
+    runs-on: [self-hosted, horror_cli-worker]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (superficiel)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Toolchain Rust (stable + fmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Tests
+        run: cargo test --locked
