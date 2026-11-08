@@ -1,4 +1,4 @@
-//! Fermeture des chats (clic ×, Ctrl+W).
+//! Fermeture des chats (clic [×], Ctrl+W).
 //!
 //! `Sessions::close` retire un chat en gardant l'invariant (jamais vide,
 //! index valide) ; refusé si dernier, inconnu, ou si une réponse indexée

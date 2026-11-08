@@ -2,9 +2,9 @@
 //!
 //! `Sessions::draw_sidebar` rend une ligne par chat (point `●` vert au
 //! repos / bleu en réflexion + nom + `…` si envoi en cours +
-//! ` A{n}` si sous-agents actifs + croix `×` sang pour fermer), le chat
+//! ` A{n}` si sous-agents actifs + bouton `[×]` sang pour fermer), le chat
 //! courant mis en relief, puis le bouton [+] (clic = nouveau chat,
-//! clic × = fermer, voir `mouse`).
+//! clic [×] = fermer, voir `mouse`).
 
 use std::borrow::Cow;
 
@@ -29,14 +29,14 @@ pub struct SidebarHits {
     pub chats: Option<Rect>,
     /// Bouton [+] (clic = nouveau chat).
     pub plus: Option<Rect>,
-    /// Croix × de chaque chat (clic = fermer, `None` si masquée).
+    /// Bouton [×] de chaque chat (clic = fermer, `None` si masqué).
     pub closes: Vec<Option<Rect>>,
 }
 
 impl Sessions {
     /// Sidebar « cercueils » : une ligne par chat (point `●` vert au
-    /// repos / bleu en réflexion + nom + `…` si envoi + ` A{n}` + croix
-    /// `×`), le chat courant marqué d'une barre citrouille, puis le
+    /// repos / bleu en réflexion + nom + `…` si envoi + ` A{n}` + bouton
+    /// `[×]`), le chat courant marqué d'une barre citrouille, puis le
     /// bouton [+] (clic = nouveau chat). Rend ses zones cliquables
     /// (`None` si rognées ou si la sidebar est trop étroite).
     pub fn draw_sidebar(&self, frame: &mut Frame, area: Rect) -> SidebarHits {
@@ -93,14 +93,14 @@ fn chat_rows_rect(area: Rect, chats: usize) -> Option<Rect> {
     }
 }
 
-/// Case de la croix × : dernière colonne intérieure de la ligne `idx`
-/// (`None` si la croix est masquée — ligne rognée ou trop étroite).
+/// Bouton `[×]` : 3 cases finissant 1 colonne avant la bordure droite
+/// (marge anti-bord), ligne `idx` (`None` si masqué — rogné ou étroit).
 fn close_rect(area: Rect, idx: usize, inner_h: usize, fits: bool) -> Option<Rect> {
     if fits && idx < inner_h {
         Some(Rect::new(
-            area.x + area.width - 2,
+            area.x + area.width - 2 - CLOSE_BTN_W as u16,
             area.y + 1 + idx as u16,
-            1,
+            CLOSE_BTN_W as u16,
             1,
         ))
     } else {
@@ -160,13 +160,15 @@ fn fit_name(name: &str, name_w: usize) -> (String, String) {
     (name[..end].to_string(), " ".repeat(name_w - count))
 }
 
-/// Croix de fermeture : ` ×` sang en fin de ligne (clic = fermer).
-const CLOSE_TXT: &str = " ×";
-/// Colonnes réservées à la croix (espace + `×`, 1 colonne chacun).
-const CLOSE_W: usize = 2;
+/// Bouton de fermeture : `[×]` sang gras + 1 espace de marge au bord.
+const CLOSE_TXT: &str = "[×] ";
+/// Largeur du bouton cliquable `[×]` (3 cases, marge exclue).
+const CLOSE_BTN_W: usize = 3;
+/// Colonnes réservées à la fermeture (bouton + marge anti-bord).
+const CLOSE_W: usize = 4;
 
 /// Une ligne de sidebar : `▍` + point `●` (vert au repos, bleu en
-/// réflexion) + nom tronqué + `…` si envoi + ` A{n}` + ` ×`.
+/// réflexion) + nom tronqué + `…` si envoi + ` A{n}` + `[×]` + marge.
 /// Le chat courant : barre citrouille, nom os gras, fond braise.
 /// (Les compteurs tokens vivent dans `/usage`, pas ici.)
 /// Rend aussi si la croix tient (`false` : omise, pas de clic).
@@ -202,7 +204,8 @@ fn sidebar_line(
         Span::styled(suffix, Style::new().fg(theme::CANDLE)),
     ];
     if fits {
-        spans.push(Span::styled(CLOSE_TXT, Style::new().fg(theme::BLOOD)));
+        let close = Style::new().fg(theme::BLOOD).add_modifier(Modifier::BOLD);
+        spans.push(Span::styled(CLOSE_TXT, close));
     }
     let line = Line::from(spans);
     let line = if current {
@@ -279,7 +282,7 @@ mod tests {
         .unwrap();
         let buf = term.backend().buffer();
         let row: String = (1u16..17).map(|x| buf[(x, 1)].symbol()).collect();
-        assert!(row.ends_with('×'), "croix manquante : {row:?}");
+        assert!(row.ends_with("[×] "), "bouton manquant : {row:?}");
         assert!(!row.contains("123"), "compteur tokens affiché : {row:?}");
     }
 
@@ -288,12 +291,12 @@ mod tests {
         let (line, fits) = sidebar_line(false, "Chat 1", false, 0, 16);
         assert!(fits);
         let last = line.spans.last().unwrap();
-        assert_eq!(last.content.as_ref(), " ×");
+        assert_eq!(last.content.as_ref(), "[×] ");
         assert_eq!(last.style.fg, Some(theme::BLOOD));
-        // Trop étroit : croix omise, pas de clic.
-        let (tight, fits) = sidebar_line(false, "Chat 1", false, 0, 5);
+        // Trop étroit : bouton omis, pas de clic.
+        let (tight, fits) = sidebar_line(false, "Chat 1", false, 0, 7);
         assert!(!fits);
-        assert!(tight.spans.iter().all(|s| s.content.as_ref() != " ×"));
+        assert!(tight.spans.iter().all(|s| s.content.as_ref() != "[×] "));
     }
 
     #[test]
@@ -307,14 +310,18 @@ mod tests {
             hits = Some(s.draw_sidebar(f, f.area()));
         })
         .unwrap();
-        // Dernière colonne intérieure (x=16), lignes 1 et 2.
+        // Bouton [×] (x=13..=15) + marge (x=16), lignes 1 et 2.
         assert_eq!(
             hits.as_ref().unwrap().closes,
-            vec![Some(Rect::new(16, 1, 1, 1)), Some(Rect::new(16, 2, 1, 1))]
+            vec![Some(Rect::new(13, 1, 3, 1)), Some(Rect::new(13, 2, 3, 1))]
         );
         let buf = term.backend().buffer();
-        assert_eq!(buf[(16, 1)].symbol(), "×");
-        assert_eq!(buf[(16, 2)].symbol(), "×");
+        for y in [1, 2] {
+            assert_eq!(buf[(13, y)].symbol(), "[");
+            assert_eq!(buf[(14, y)].symbol(), "×");
+            assert_eq!(buf[(15, y)].symbol(), "]");
+            assert_eq!(buf[(16, y)].symbol(), " ", "marge au bord absente");
+        }
         // Étroit : croix masquées, aucun rect.
         let mut term = Terminal::new(TestBackend::new(7, 10)).unwrap();
         term.draw(|f| {

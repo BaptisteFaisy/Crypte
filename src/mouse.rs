@@ -1,5 +1,5 @@
 //! Souris : molette = défilement de l'historique, clic gauche = bouton [+]
-//! (nouveau chat), croix × (fermer le chat), lignes de la sidebar
+//! (nouveau chat), bouton [×] (fermer le chat), lignes de la sidebar
 //! (choisir le chat), onglets de l'en-tête (changer d'écran).
 //!
 //! La capture souris est activée par `main` (désactivée en sortie) ;
@@ -14,7 +14,7 @@ use crate::chat::SCROLL_STEP;
 
 impl App {
     /// Molette : défiler le chat ; clic gauche : [+] = nouveau chat,
-    /// × = fermer le chat, ligne = choisir le chat, onglet = changer
+    /// [×] = fermer le chat, ligne = choisir le chat, onglet = changer
     /// d'écran (le reste est ignoré).
     pub(crate) fn on_mouse(&mut self, mev: MouseEvent) {
         match mev.kind {
@@ -197,7 +197,7 @@ mod tests {
             Some(Rect::new(16, 3, 1, 1)),
             None, // croix masquée : le clic choisit, comme avant
         ];
-        app.on_mouse(click(16, 3)); // × du chat 2 → fermé
+        app.on_mouse(click(16, 3)); // [×] du chat 2 → fermé
         assert_eq!(app.sessions.count(), 2);
         app.on_mouse(click(5, 3)); // corps de ligne → choisir
         assert_eq!(app.sessions.index(), 1);
@@ -223,10 +223,15 @@ mod tests {
         app.add_chat();
         let mut term = Terminal::new(TestBackend::new(100, 30)).unwrap();
         term.draw(|f| app.draw(f)).unwrap();
-        // La case mémorisée porte bien la croix dessinée.
-        let cross = app.close_btns[1].expect("× du chat 2 mémorisée");
-        assert_eq!(term.backend().buffer()[(cross.x, cross.y)].symbol(), "×");
-        app.on_mouse(click(cross.x, cross.y));
+        // La zone mémorisée porte bien le bouton [×] dessiné.
+        let cross = app.close_btns[1].expect("[×] du chat 2 mémorisé");
+        let buf = term.backend().buffer();
+        assert_eq!(cross.width, 3);
+        assert_eq!(buf[(cross.x, cross.y)].symbol(), "[");
+        assert_eq!(buf[(cross.x + 1, cross.y)].symbol(), "×");
+        assert_eq!(buf[(cross.x + 2, cross.y)].symbol(), "]");
+        assert_eq!(buf[(cross.x + 3, cross.y)].symbol(), " ", "marge au bord");
+        app.on_mouse(click(cross.x + 1, cross.y));
         assert_eq!(app.sessions.count(), 1);
         assert_eq!(app.sessions.current().name, "Chat 1");
     }
