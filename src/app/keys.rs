@@ -56,9 +56,15 @@ impl App {
             KeyCode::PageDown => self.cmd(|s| s.scroll_chat(SCROLL_PAGE)),
             KeyCode::Up if shift => self.cmd(|s| s.scroll_chat(-1)),
             KeyCode::Down if shift => self.cmd(|s| s.scroll_chat(1)),
-            KeyCode::Up => self.cmd(|s| s.step_agent(-1)),
-            KeyCode::Down => self.cmd(|s| s.step_agent(1)),
-            KeyCode::Esc => self.cmd(|s| s.clear_agent_view()),
+            KeyCode::Up => self.cmd(|s| s.picker_or_agent(-1)),
+            KeyCode::Down => self.cmd(|s| s.picker_or_agent(1)),
+            KeyCode::Esc => {
+                if self.dismiss_picker() {
+                    true
+                } else {
+                    self.cmd(|s| s.clear_agent_view())
+                }
+            }
             KeyCode::End => self.cmd(|s| s.scroll_bottom()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.open_shop()),
@@ -93,7 +99,9 @@ impl App {
         }
     }
 
-    /// Entrée : déplie l'agent pointé (saisie vide + agents), sinon envoi.
+    /// Entrée : question en attente + saisie vide → répond le choix
+    /// surligné ; sinon déplie l'agent pointé (saisie vide + agents),
+    /// sinon envoi.
     fn enter(&mut self) {
         let idx = self.sessions.index();
         let empty = self
@@ -102,6 +110,10 @@ impl App {
             .map(|s| s.chat.input.is_empty())
             .unwrap_or(true);
         if empty {
+            if self.fill_picker_selection() {
+                self.send();
+                return;
+            }
             if let Some(sess) = self.sessions.get_mut(idx) {
                 if sess.toggle_cursor_or_first() {
                     return;
@@ -112,7 +124,7 @@ impl App {
     }
 
     /// ↑↓ : déplace le curseur agent (ignoré sans chat / sans agent).
-    fn step_agent(&mut self, dir: i8) {
+    pub(crate) fn step_agent(&mut self, dir: i8) {
         let idx = self.sessions.index();
         if let Some(sess) = self.sessions.get_mut(idx) {
             sess.step_agent_cursor(dir);

@@ -93,6 +93,12 @@ impl App {
             }
             Screen::Haunt => self.draw_haunt(frame, body),
         }
+        if self.screen == Screen::Chat {
+            let idx = self.sessions.index();
+            if let Some(q) = self.sessions.get(idx).and_then(|s| s.pending.as_ref()) {
+                super::picker::draw_question_picker(frame, body, q);
+            }
+        }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
     }
