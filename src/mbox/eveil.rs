@@ -186,6 +186,11 @@ impl Eveil {
         }
         if self.fd >= 0 {
             unsafe { libc::close(self.fd) };
+            // -1 AVANT réassignation : `*self = ...` droppe l'ancien
+            // `self` en place, et `Drop` refermerait le fd (double
+            // close, voire fermeture du nouveau fd si le noyau a
+            // recyclé le numéro entre-temps).
+            self.fd = -1;
         }
         *self = Self::ouvrir(dir);
     }

@@ -20,6 +20,9 @@ fn binaire() -> PathBuf {
 /// Bac jetable `(broadcast, xdg)` unique par test (jamais le vrai `.scratch`).
 fn bac(tag: &str) -> (PathBuf, PathBuf) {
     let base = std::env::temp_dir().join(format!("mbox-interop-{}-{tag}", std::process::id()));
+    // Purge d'abord : un run précédent planté (panique avant `nettoie`)
+    // laisse un résidu, et un pid recyclé le retrouverait (flake).
+    let _ = std::fs::remove_dir_all(&base);
     let bcast = base.join("bcast");
     let home = base.join("xdg");
     std::fs::create_dir_all(&bcast).unwrap();
