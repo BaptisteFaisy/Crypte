@@ -1,0 +1,50 @@
+name: refresh-prs (rebase auto + diagnostic conflits)
+
+# [REFRESH-AUTO] Le chaînon manquant de l'automatisation (demande user
+# 2026-11-07) : quand `main` bouge, les PR ouvertes sont rebasées
+# automatiquement (rebase serveur, discipline rebase respectée) et les
+# vrais conflits sont étiquetés + diagnostiqués (fichiers en cause).
+# Ne merge JAMAIS : Mergify reste le seul pilote de merge
+# (« jamais deux pilotes », voir SOCLE.md).
+#
+# Logique dans .github/hermes/refresh.py (stdlib + git CLI, helpers
+# partagés avec gate.py : jamais de duplication).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Numéro de PR (vide = toutes les PR ouvertes)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write # rebase serveur (update-branch)
+  pull-requests: write # labels + commentaire de diagnostic
+  actions: write # approbation des runs garés par le push de bot
+
+concurrency:
+  group: refresh-prs-${{ github.repository }}
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ secrets.HERMES_LITE_TOKEN || github.token }}
+  INPUT_PR_NUMBER: ${{ github.event.inputs.pr_number }}
+
+jobs:
+  refresh:
+    name: refresh-prs
+    runs-on: [self-hosted, horror_cli-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          # persist-credentials (défaut) : le script réutilise
+          # l'authentification du checkout pour le clone de diagnostic.
+      - name: Rafraîchir les PR ouvertes
+        run: python3 .github/hermes/refresh.py

@@ -190,6 +190,9 @@ historique inchangé).
 - Zéro duplication : extraire et partager les helpers, une seule
   implémentation par logique (`compacted_history`, `without_pinned`,
   `usage_line` vivent dans `agents.rs`).
+- PR : ne jamais rebase parce que `main` a bougé — `refresh-prs` le fait
+  (rebase serveur à chaque push sur `main`) ; vrai conflit → label
+  `hermes/conflit` + commentaire auto, à résoudre à la main.
 - `.kiro/` : mêmes fichiers que Kiro (workspace + global) ; tests via
   chemins injectés UNIQUEMENT (jamais `set_var` : un seul site
   historique, `spec_bout_en_bout`, fixture sans steering ni MCP) ;
