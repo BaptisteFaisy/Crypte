@@ -1,0 +1,71 @@
+name: File Mergify (balayeur)
+
+# Remet les PR ejectees dans la file, tout seul.
+#
+# Pourquoi : quand Mergify sort une PR de sa file sur un echec, il ne la
+# reprend jamais de lui-meme, meme CI verte (PR #78 : neuf heures immobile
+# sur « conditions under evaluation »), alors qu'un `@mergifyio queue`
+# suffit. La logique vit dans `.github/mergify/sweep.py` (stdlib seule) :
+# toute PR prete (checks verts, fusionnable) hors file y est remise, 2 fois
+# max par tete puis escalade humaine. Les vrais conflits (`dirty`) recoivent
+# la marche a suivre (merge, jamais rebase : la file squash ne rebase pas).
+#
+# Declencheurs :
+#   - cron 10 min : filet (depot public + runners self-hosted = gratuit) ;
+#   - push sur main : balaye apres chaque atterrissage ;
+#   - fin de check : reagit aux verdicts CI (comme hermes-lite) ;
+#   - commentaire : reagit aux ejections Mergify en quelques secondes
+#     (filtre en-job sur mergify[bot] : nos propres commentaires ne
+#     reveillent rien) ;
+#   - manuel, avec numero de PR optionnel.
+# Pas de `pull_request synchronize` : il arrive avant les checks (lecon isee).
+#
+# Secret `AUTOMERGE_PAT` : signe les commandes Mergify (un ordre poste par
+# un bot est ignore) et les commentaires. Sans lui : diagnostic + marche a
+# suivre seulement. Lectures avec le jeton de l'installation (quota propre).
+# Pas de push, pas de rebase : `contents: read` suffit.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  push:
+    branches: [main]
+  check_run:
+    types: [completed]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Numero de PR (vide = toutes les PR ouvertes)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: read
+
+# Un seul balayage a la fois, sans annulation (lecon isee).
+concurrency:
+  group: file-mergify
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Balayer la file
+    runs-on: [self-hosted, horror_cli-worker]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (superficiel, branche par defaut)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Balayer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SWEEP_PAT: ${{ secrets.AUTOMERGE_PAT }}
+        run: |
+          export INPUT_PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          python3 .github/mergify/sweep.py

@@ -16,6 +16,12 @@
   app GitHub **All repositories** + activation du produit **Merge Queue** dans
   le dashboard Mergify.
 - **stale-base-guard** : check informatif de retard de branche.
+- **Balayeur file-mergify** (`.github/workflows/file-mergify.yml` +
+  `.github/mergify/sweep.py`) : remet les PR prêtes éjectées de la file
+  (`@mergifyio queue`, 2 fois max par tête puis escalade), marche à suivre
+  sur les vrais conflits. Secret `AUTOMERGE_PAT` (contenus + PR) requis
+  pour commander Mergify, sinon diagnostic seul. Labels
+  `mergify/conflit` / `mergify/intervention`, `hold` = sortie de secours.
 - **ci-budget** (`.github/workflows/ci-budget.yml` +
   `.github/ci-budget/check_timeouts.py`) : garde-fou du budget CI de
   **5 minutes** (règle user 2026-10-24). Chaque job doit déclarer
