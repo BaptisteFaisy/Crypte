@@ -333,9 +333,17 @@ def prs_for_event(repo, token, event_name, event):
         user = (event.get('comment') or {}).get('user') or {}
         if user.get('login') != 'mergify[bot]':
             return None
-        if 'pull_request' not in (event.get('issue') or {}):
-            return []
-        return [event['issue']['number']]
+        issue = event.get('issue') or {}
+        if 'pull_request' not in issue:
+            return [p['number'] for p in list_open_prs(repo, token)]
+        pr = get_pr(repo, token, issue['number'])
+        if pr is None or pr.get('state') != 'open':
+            # Avis de fusion : main vient de bouger, tout reevaluer. En
+            # rafale, GitHub annule les runs en attente (seul le dernier
+            # survit) : sans ce balayage complet, la fusion ne reveille
+            # personne et les PR resteantes attendent le cron.
+            return [p['number'] for p in list_open_prs(repo, token)]
+        return [issue['number']]
     if event_name == 'check_run':
         sha = (event.get('check_run') or {}).get('head_sha')
         return [p['number'] for p in list_open_prs(repo, token)
