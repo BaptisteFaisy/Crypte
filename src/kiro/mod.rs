@@ -38,10 +38,14 @@ pub fn project_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
-/// Dossier Kiro global (`KH_KIRO_GLOBAL` prime, sinon `~/.kiro`).
+/// Dossier Kiro global (`KH_KIRO_GLOBAL` prime, sinon `~/.kiro` ; en
+/// test, `None` par défaut — jamais le home réel, hermétisme).
 pub fn global_dir() -> Option<PathBuf> {
     if let Some(dir) = read_env("KH_KIRO_GLOBAL") {
         return Some(PathBuf::from(dir));
+    }
+    if cfg!(test) {
+        return None;
     }
     home_dir().map(|home| home.join(".kiro"))
 }

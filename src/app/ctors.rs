@@ -286,12 +286,7 @@ mod tests {
 
     #[test]
     fn lazy_charge_epingle_et_annonce_une_seule_fois() {
-        // Neutralise le steering Kiro réel (déterministe, voir KH_KIRO_*).
-        let env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
-        let empty = std::env::temp_dir().join(format!("kh-lazy-{}-empty", std::process::id()));
-        std::fs::create_dir_all(&empty).unwrap();
-        env.set("KH_KIRO_PROJECT", &empty);
-        env.set("KH_KIRO_GLOBAL", &empty);
+        // Hermétique sans env : projet = cwd (sans .kiro), global = None.
         let path = tmp_file("unique", "contexte v1");
         let mut app = App::disconnected_with_agents_file(Some(path.to_string_lossy().into_owned()));
         app.ensure_agents_loaded();
@@ -306,7 +301,6 @@ mod tests {
         app.add_chat();
         assert!(app.sessions.current().pinned_system);
         std::fs::remove_file(&path).ok();
-        std::fs::remove_dir_all(&empty).ok();
     }
 
     #[test]

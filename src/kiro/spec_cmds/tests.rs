@@ -27,10 +27,10 @@ fn last_text(app: &App, idx: usize) -> String {
         .unwrap_or_default()
 }
 
-/// Projet `.kiro/` temporaire + `KH_KIRO_PROJECT` pointé dessus. UN
-/// SEUL test touche cette variable (`spec_bout_en_bout`, séquentiel) :
-/// pas de course ; les lecteurs parallèles (`steering::load_all` via
-/// `ensure_agents_loaded`) y trouvent zéro steering, comme sans elle.
+/// Projet `.kiro/` temporaire + `KH_KIRO_PROJECT` pointé dessus. SEUL
+/// site de tests qui touche l'env (ne pas imiter : chemins injectés
+/// partout ailleurs) : sûr car la fixture ne contient NI steering NI
+/// MCP (lecteurs parallèles = vide, comme le défaut hermétique).
 fn with_project(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("kh-spec-cmds-{}-{name}", std::process::id()));
     std::fs::create_dir_all(dir.join(".kiro/specs")).unwrap();

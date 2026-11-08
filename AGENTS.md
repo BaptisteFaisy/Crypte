@@ -137,8 +137,10 @@ historique inchangé).
   implémentation par logique (`compacted_history`, `without_pinned`,
   `usage_line` vivent dans `agents.rs`).
 - `.kiro/` : mêmes fichiers que Kiro (workspace + global) ; tests via
-  chemins injectés + `KH_KIRO_PROJECT` / `KH_KIRO_GLOBAL`, jamais le
-  `~/.kiro` réel (déterminisme).
+  chemins injectés UNIQUEMENT (jamais `set_var` : un seul site
+  historique, `spec_bout_en_bout`, fixture sans steering ni MCP) ;
+  `KH_KIRO_*` = overrides manuels du binaire ; en test, global=None
+  par défaut (jamais `~/.kiro` réel).
 - Couleurs : uniquement via `theme.rs` (jamais de `Color::Rgb` ailleurs,
   sauf les fonds RGBA de `gfx.rs` et `bestiary.rs`, documentés = `theme::VOID`).
 - Pixel art : grilles `assets/pixel/*.txt` 32×32, lettres de palette
