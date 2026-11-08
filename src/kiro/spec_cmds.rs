@@ -288,7 +288,8 @@ impl App {
             chat,
         );
         self.spec_runs.insert(agent_id, run);
-        self.launch_agent(chat, agent_id, chat, vec![(String::from("user"), prompt)]);
+        let ask = vec![(String::from("user"), prompt)];
+        self.launch_agent(chat, agent_id, chat, ask, None);
     }
 
     /// Tâche finie (réponse agent) : coche sur disque, affiche,
