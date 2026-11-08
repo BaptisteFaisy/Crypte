@@ -163,7 +163,7 @@ impl App {
         }
     }
 
-    /// Ferme le chat `idx` (clic ×, Ctrl+W) : liens bus re-pointés,
+    /// Ferme le chat `idx` (clic [×], Ctrl+W) : liens bus re-pointés,
     /// événement émis, refus motivé sinon (dernier, réponse en vol).
     pub(crate) fn close_chat(&mut self, idx: usize) {
         let name = self.sessions.get(idx).map(|c| c.name.clone());

@@ -89,8 +89,8 @@ pub struct App {
     /// Bloc des lignes de chats de la sidebar (mémorisé au rendu, une
     /// ligne par chat, `None` hors écran chat) : clic = choisir le chat.
     pub(crate) side_rows: Option<Rect>,
-    /// Croix × des chats (mémorisées au rendu, une par chat, `None` si
-    /// masquée) : clic = fermer le chat (vide hors écran chat).
+    /// Boutons [×] des chats (mémorisés au rendu, un par chat, `None` si
+    /// masqué) : clic = fermer le chat (vide hors écran chat).
     pub(crate) close_btns: Vec<Option<Rect>>,
     /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
     /// clic = aller à l'écran (chat, hub).
