@@ -75,8 +75,7 @@ mod tests {
 
     /// App + dossier `.kiro/steering` (manuel `m`, auto `a`, unique/test).
     fn fixture(tag: &str) -> (App, std::path::PathBuf) {
-        let dir =
-            std::env::temp_dir().join(format!("kh-steer-cmds-{tag}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("kh-steer-cmds-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join(".kiro/steering")).unwrap();
         std::fs::write(

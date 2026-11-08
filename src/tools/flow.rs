@@ -342,14 +342,6 @@ mod tests {
     use super::*;
     use crate::permissions::Mode;
 
-    fn call(name: &str) -> ToolCall {
-        ToolCall {
-            id: String::from("c1"),
-            name: String::from(name),
-            args: String::from("{}"),
-        }
-    }
-
     #[test]
     fn lignes_appel_resultat_etat() {
         let text: String = "x".repeat(200);

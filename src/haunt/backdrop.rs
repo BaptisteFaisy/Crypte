@@ -261,7 +261,7 @@ pub fn fog(
             let a = ((alpha * (1.0 + wave * 0.45)).clamp(0.0, 1.0) * 256.0) as i32;
             for i in 0..3 {
                 let d = i32::from(px[i]);
-                px[i] = (d + ((i32::from(c[i]) - d) * a >> 8)) as u8;
+                px[i] = (d + (((i32::from(c[i]) - d) * a) >> 8)) as u8;
             }
         }
     }
