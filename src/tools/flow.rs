@@ -119,6 +119,13 @@ impl App {
         if current != Some(id) {
             return;
         }
+        for delivery in &deliveries {
+            self.hooks_fire(
+                crate::kiro::hooks::Trigger::PostToolUse,
+                &delivery.call.name,
+                id,
+            );
+        }
         self.tool_delivered(deliveries);
     }
 
@@ -233,6 +240,7 @@ impl App {
     /// Hors pool LLM : un exécutable local (jusqu'à 90 s) ne doit pas
     /// occuper un permis réseau ; le canal borné garde la backpressure.
     fn tool_spawn_exec(&mut self, chat: usize, call: ToolCall) {
+        self.hooks_fire(crate::kiro::hooks::Trigger::PreToolUse, &call.name, chat);
         self.push_tool_line(chat, format!("[tool {}]", call_line(&call)));
         let tx = self.tx.clone();
         let mcp = self.mcp.clone();

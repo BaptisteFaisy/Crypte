@@ -148,6 +148,8 @@ impl App {
             );
             return;
         }
+        let created = dir.join(file).to_string_lossy().into_owned();
+        self.hooks_fire(crate::kiro::hooks::Trigger::PostFileCreate, &created, chat);
         if gen.advance() {
             self.push_spec_line(
                 chat,
@@ -275,6 +277,12 @@ impl App {
                 crate::provider::truncate(&spec.tasks[index].text, 40)
             ),
         );
+        self.hooks_fire_agent_spawn(chat, &prompt);
+        self.hooks_fire(
+            crate::kiro::hooks::Trigger::PreTaskExecution,
+            &spec.tasks[index].text,
+            chat,
+        );
         self.spec_runs.insert(agent_id, run);
         self.launch_agent(chat, agent_id, chat, vec![(String::from("user"), prompt)]);
     }
@@ -288,6 +296,15 @@ impl App {
         let Some(tasks) = self.spec_check_off(&run) else {
             return;
         };
+        let done_text = tasks
+            .get(run.index)
+            .map(|task| task.text.clone())
+            .unwrap_or_default();
+        self.hooks_fire(
+            crate::kiro::hooks::Trigger::PostTaskExecution,
+            &done_text,
+            run.chat,
+        );
         let (done, total) = crate::kiro::spec::progress(&tasks);
         self.push_spec_line(
             run.chat,
@@ -344,6 +361,8 @@ impl App {
             );
             return None;
         }
+        let saved = path.to_string_lossy().into_owned();
+        self.hooks_fire(crate::kiro::hooks::Trigger::PostFileSave, &saved, run.chat);
         Some(
             crate::kiro::spec::load(&dir)
                 .map(|spec| spec.tasks)
@@ -357,6 +376,12 @@ impl App {
         let Some(run) = self.spec_runs.remove(&agent_id) else {
             return;
         };
+        let failed = format!("{} {}", run.name, run.label());
+        self.hooks_fire(
+            crate::kiro::hooks::Trigger::PostTaskExecution,
+            &failed,
+            run.chat,
+        );
         self.push_spec_line(
             run.chat,
             format!(

@@ -26,7 +26,7 @@ impl Incoming {
     /// recherche web brute (aucun appel LLM).
     pub(crate) fn usage(&self) -> Option<(u64, u64)> {
         let billed = match self {
-            Incoming::ToolDone(..) | Incoming::Vps(..) | Incoming::McpRefresh(..) => return None,
+            Incoming::ToolDone(..) | Incoming::Vps(..) | Incoming::McpRefresh(..) | Incoming::HookDone(..) => return None,
             Incoming::Chat(_, r)
             | Incoming::Compact(_, r)
             | Incoming::Agent(_, _, _, r)
@@ -111,6 +111,7 @@ impl App {
         deliver: usize,
         reply: Result<Completion>,
     ) {
+        self.hooks_fire_agent_stop(owner, agent_id, deliver);
         let tag = agent_tag(owner, deliver, agent_id);
         let done = match reply {
             Ok(done) => done,

@@ -51,6 +51,7 @@ impl App {
             Some(Command::SpecShow { name }) => self.cmd_spec_show(name),
             Some(Command::SpecRun { name }) => self.cmd_spec_run(name),
             Some(Command::Mcp(arg)) => self.cmd_mcp(arg),
+            Some(Command::Hooks) => self.cmd_hooks(),
             Some(Command::Unknown(word)) => {
                 self.push_system(format!("unknown command: {word} — /help for help"));
             }
@@ -186,6 +187,7 @@ impl App {
             .attach_workspace(agent_id, crate::workspace::base().as_deref());
         self.events
             .emit(&Event::agent_spawned(agent_id, id, deliver, &prompt));
+        self.hooks_fire_agent_spawn(id, &prompt);
         if deliver == id {
             self.push_system(format!("agent#{agent_id} started"));
         } else {
