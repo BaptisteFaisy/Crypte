@@ -29,6 +29,7 @@ pub enum Screen {
     Hub,
     Settings,
     Vps,
+    Shop,
 }
 
 /// Huitièmes de bloc pour une jauge lisse.
@@ -41,7 +42,11 @@ pub(crate) const MIN_H: u16 = 17;
 /// Seuil compact : sous 80 colonnes, sidebar réduite, panneau droit masqué.
 const COMPACT_W: u16 = 80;
 /// Onglets de l'en-tête : écran, libellé, touche.
-const TABS: [(Screen, &str, &str); 2] = [(Screen::Chat, "chat", ""), (Screen::Hub, "hub", "F7")];
+const TABS: [(Screen, &str, &str); 3] = [
+    (Screen::Chat, "chat", ""),
+    (Screen::Hub, "hub", "F7"),
+    (Screen::Shop, "shop", "F6"),
+];
 /// Coiffes powerline arrondies (sprites internes de Ghostty).
 const CAP_L: &str = "\u{e0b6}";
 const CAP_R: &str = "\u{e0b4}";
@@ -54,6 +59,7 @@ impl App {
         self.side_rows = None;
         self.close_btns.clear();
         self.tab_hits.clear();
+        self.shop_rows.clear();
         self.bank.begin_frame();
         self.fx.paint_background(area, frame.buffer_mut());
         if area.width < MIN_W || area.height < MIN_H {
@@ -74,6 +80,11 @@ impl App {
             Screen::Hub => self.draw_hub(frame, body),
             Screen::Settings => self.settings.draw(frame, body),
             Screen::Vps => self.draw_vps(frame, body),
+            Screen::Shop => {
+                let earned = self.sessions.grand_total();
+                let rows = self.shop.draw(frame, body, earned);
+                self.shop_rows = rows;
+            }
         }
         self.draw_status(frame, foot);
         self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
@@ -404,21 +415,22 @@ mod tests {
     }
 
     #[test]
-    fn header_fits_two_tabs_and_gauge_at_80_columns() {
+    fn header_fits_three_tabs_and_gauge_at_80_columns() {
         let mut app = App::offline().unwrap();
         for w in [70, 80, 120] {
             let mut term = Terminal::new(TestBackend::new(w, 24)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();
             let buf = term.backend().buffer();
             let head: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
-            for word in ["chat", "hub", "fear"] {
+            for word in ["chat", "hub", "shop", "fear"] {
                 assert!(head.contains(word), "{w} cols: {word} missing in {head:?}");
             }
             assert!(!head.contains("grimoire"), "{w} cols: {head:?}");
             assert!(!head.contains("almanac"), "{w} cols: {head:?}");
             assert!(!head.contains("bestiary"), "{w} cols: {head:?}");
-            // 2 onglets : la touche (F7) tient dès 80 colonnes.
+            // 3 onglets : les touches (F6, F7) tiennent dès 80 colonnes.
             if w >= 80 {
+                assert!(head.contains("F6"), "{w} cols: {head:?}");
                 assert!(head.contains("F7"), "{w} cols: {head:?}");
             }
         }
@@ -433,7 +445,7 @@ mod tests {
             .push(Role::Assistant, "les os craquent sous la lune");
         for (w, h) in [(70, 17), (80, 24), (120, 40), (200, 60), (60, 20)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-            for screen in [Screen::Chat, Screen::Hub, Screen::Settings] {
+            for screen in [Screen::Chat, Screen::Hub, Screen::Settings, Screen::Shop] {
                 app.screen = screen;
                 app.spook();
                 app.tick();
@@ -445,7 +457,7 @@ mod tests {
     #[test]
     fn minimum_70x17_shows_ui_not_too_small() {
         let mut app = App::offline().unwrap();
-        for screen in [Screen::Chat, Screen::Hub, Screen::Settings] {
+        for screen in [Screen::Chat, Screen::Hub, Screen::Settings, Screen::Shop] {
             app.screen = screen;
             let mut term = Terminal::new(TestBackend::new(70, 17)).unwrap();
             term.draw(|f| app.draw(f)).unwrap();

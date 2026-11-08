@@ -177,6 +177,8 @@ exempt, stays the remedy).
 | Ctrl+W | close the current chat |
 | F5 | scare: Kiro scared 2s, jump scare, lightning flash |
 | F7 | toggle chat / spirit hub (arrows to select, Enter opens the chat) |
+| F6 | shop: consumed tokens become coins (↑↓ + Enter to buy) |
+| Click tab / shop item | switch screen / buy in the shop |
 | Ctrl+Left / Ctrl+Right | widen / narrow the right column |
 | Wheel (over the chat) | scroll the history, 3 lines per notch |
 | PgUp / PgDn | scroll up / down one page (10 lines) |
@@ -188,7 +190,7 @@ marks the bottom border while you are away from the end. Sending a
 message (or `End`) snaps the view back down, and each chat keeps its
 own scroll position.
 
-On narrow terminals the header tabs drop their key hint (F7) so
+On narrow terminals the header tabs drop their key hints (F6/F7) so
 the `fear` gauge always fits.
 
 ## Ghostty
@@ -233,6 +235,15 @@ Offline demo, no key needed:
 ```sh
 ./target/debug/kiro-horror-tui --demo
 ```
+
+## Shop (F6)
+
+Every consumed token (all chats and sub-agents included) credits the
+wallet: 1 token = 1 coin, for the current session. The shop (F6 or tab
+click) sells 5 ambiance perks: lightning flash (200), soothing candle
+(fear −30, 300), Kiro's cry (scare + flash, 500), apparition rite (new
+creature, 700), holy water (fear to zero, 900). Click an item (or ↑↓ +
+Enter) to buy; `/usage` shows the balance (earned, spent).
 
 ## Almanac (`/usage`)
 
@@ -443,5 +454,6 @@ scaling), `gfx.rs` (Kitty / halfblock images), `apparition.rs`
 isometric crypt, `render.rs` scene, `live.rs` per-frame Kitty image,
 `font.rs` 3×5 pixel font, `social.rs` orbs and chatter),
 `app/esprits.rs` (hub screen + keys), `app/keys.rs` (dispatch + scroll + resize),
+`shop.rs` (F6 shop: wallet, 1 token = 1 coin, 5 ambiance perks),
 `almanac.rs` (tokens per day, `/usage` block) + `almanac/disk.rs`
 (JSON file).

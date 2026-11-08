@@ -21,6 +21,7 @@ use crate::mascot::Mascot;
 use crate::pool::{SpawnPool, INCOMING_CAP};
 use crate::provider::{Provider, ProviderConfig};
 use crate::sessions::{CloseOutcome, Sessions};
+use crate::shop::Shop;
 
 impl App {
     /// Construit l'app (lit la config provider depuis l'environnement).
@@ -105,6 +106,7 @@ impl App {
             bank: ImageBank::headless(),
             apparition: Apparition::new(),
             hub: Hub::new(),
+            shop: Shop::new(),
             tick: 0,
             busy: false,
             ctx_used: 0,
@@ -124,6 +126,7 @@ impl App {
             side_rows: None,
             close_btns: Vec::new(),
             tab_hits: Vec::new(),
+            shop_rows: Vec::new(),
             thinking: None,
             permissions: crate::permissions::load(),
             permissions_path: crate::permissions::path(),

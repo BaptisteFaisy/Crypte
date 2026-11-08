@@ -23,6 +23,7 @@ impl App {
             Screen::Hub => return self.on_hub_key(key.code),
             Screen::Settings => return self.on_settings_key(key),
             Screen::Vps => return self.on_vps_key(key.code),
+            Screen::Shop => return self.on_shop_key(key.code),
             _ => {}
         }
         match key.code {
@@ -38,6 +39,7 @@ impl App {
             KeyCode::Down if shift => self.cmd(|s| s.scroll_chat(1)),
             KeyCode::End => self.cmd(|s| s.sessions.current().chat.scroll.to_bottom()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
+            KeyCode::F(6) => self.cmd(|s| s.open_shop()),
             KeyCode::F(7) => self.cmd(|s| s.open_hub()),
             KeyCode::Left if ctrl => self.cmd(|s| s.resize_right(2)),
             KeyCode::Right if ctrl => self.cmd(|s| s.resize_right(-2)),

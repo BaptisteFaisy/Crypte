@@ -37,6 +37,7 @@ use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
 use crate::sessions::Sessions;
 use crate::settings::Settings;
+use crate::shop::Shop;
 use crate::tools::flow::Delivery;
 use crate::tools::flow::ToolRun;
 use crate::web::WebAnswer;
@@ -57,10 +58,11 @@ pub(crate) enum Incoming {
 /// État global de l'application.
 pub struct App {
     mascot: Mascot,
-    fx: Fx,
+    pub(crate) fx: Fx,
     bank: ImageBank,
     pub(crate) apparition: Apparition,
     pub(crate) hub: Hub,
+    pub(crate) shop: Shop,
     tick: u64,
     busy: bool,
     /// Jauge contexte mise en cache (tokens estimés + fenêtre modèle),
@@ -94,8 +96,11 @@ pub struct App {
     /// masqué) : clic = fermer le chat (vide hors écran chat).
     pub(crate) close_btns: Vec<Option<Rect>>,
     /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
-    /// clic = aller à l'écran (chat, hub).
+    /// clic = aller à l'écran (chat, hub, boutique).
     pub(crate) tab_hits: Vec<(Screen, Rect)>,
+    /// Lignes des articles de la boutique (mémorisées au rendu) :
+    /// clic = acheter (vide hors écran boutique).
+    pub(crate) shop_rows: Vec<Rect>,
     pub(crate) thinking: Option<String>,
     pub(crate) permissions: Mode,
     /// Fichier de persistance du mode (`None` si `HOME` manquant).
