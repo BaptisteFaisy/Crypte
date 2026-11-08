@@ -93,6 +93,17 @@ pub(crate) fn porte_jeton(texte: &str, brut: Option<&str>) -> bool {
     }
 }
 
+/// Collecte `<cmd...>` après `--mbox` : tout le reste d'argv, `--` inclus
+/// (voie `main.rs`, aucune option du binaire ne suit `--mbox`).
+pub(crate) fn prend_commande_mbox(reste: impl Iterator<Item = String>) -> Vec<String> {
+    reste.collect()
+}
+
+/// Exécute `--mbox <cmd...>` puis sort avec son code (voie `main.rs`).
+pub(crate) fn lance_mbox(cmd: &[String]) -> ! {
+    std::process::exit(super::cli::exec_defaut(cmd));
+}
+
 /// Cœur testable de la porte : dossier injectable, autorité réelle.
 fn porte_dossier(dossier: &Path, texte: &str, brut: &str) -> bool {
     let (nom, secret) = match brut.rsplit_once(':') {

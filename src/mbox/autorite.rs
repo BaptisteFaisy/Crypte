@@ -30,7 +30,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use rand::RngCore;
 
-use crate::mbox::format::{analyser_ttl, est_expire, normalise_emetteur, TTL_DEFAUT_HEURES};
+use crate::mbox::format::{
+    analyser_ttl, epoque, est_expire, normalise_emetteur, TTL_DEFAUT_HEURES,
+};
 use crate::settings::store::{write_private, Store};
 
 /// Nom du fichier des jetons dans le dossier des réglages.
@@ -130,14 +132,6 @@ pub fn dossier_defaut() -> Result<PathBuf> {
 /// Chemin du fichier des jetons dans `dir`.
 fn chemin_jetons(dir: &Path) -> PathBuf {
     dir.join(FICHIER_JETONS)
-}
-
-/// Époque courante (`date +%s`, lib-common.sh:19).
-fn epoque_courante() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 /// Secret aléatoire : 32 octets (`rand`, getrandom déjà au lock) en hex.
@@ -269,7 +263,7 @@ pub fn emettre(dir: &Path, nom: &str, ttl: Option<&str>) -> Result<Emission> {
         jetons.push(Jeton {
             nom: nom.clone(),
             secret: secret.clone(),
-            epoque: epoque_courante(),
+            epoque: epoque(),
             ttl_h,
             statut: Statut::Actif,
         });
@@ -289,7 +283,7 @@ pub fn verifier(dir: &Path, nom: &str, secret: &str) -> Result<Fiche> {
     let Some(jeton) = cible else {
         bail!("jeton inconnu ou révoqué");
     };
-    if est_expire(jeton.epoque, jeton.ttl_h, epoque_courante()) {
+    if est_expire(jeton.epoque, jeton.ttl_h, epoque()) {
         bail!("jeton expiré");
     }
     if !comparaison_constante(secret, &jeton.secret) {
@@ -328,7 +322,7 @@ pub fn purger(dir: &Path) -> Result<usize> {
     let chemin = chemin_jetons(dir);
     avec_verrou(&chemin, || {
         let mut jetons = charger(&chemin)?;
-        let maintenant = epoque_courante();
+        let maintenant = epoque();
         let mut marques = 0;
         for jeton in jetons.iter_mut() {
             if jeton.statut == Statut::Actif && est_expire(jeton.epoque, jeton.ttl_h, maintenant) {

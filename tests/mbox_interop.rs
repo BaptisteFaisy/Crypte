@@ -121,30 +121,37 @@ fn bus_et_dedup_partages() {
     nettoie(&bcast);
 }
 
-#[test]
-fn jetons_et_ordres_bout_en_bout() {
-    let (bcast, home) = bac("ordres");
-    let (code, out, _) = rust(&bcast, &home, &["jeton", "new", "agent-i"]);
+/// Émet un jeton puis un ordre : `(jeton "nom:secret", id ordre)`.
+fn emet_jeton_et_ordre(bcast: &Path, home: &Path, agent: &str, texte: &str) -> (String, String) {
+    let (code, out, _) = rust(bcast, home, &["jeton", "new", agent]);
     assert_eq!(code, 0);
+    let prefixe = format!("jeton={agent} secret=");
     let secret = out
         .trim()
-        .strip_prefix("jeton=agent-i secret=")
-        .expect("émission : {out}")
+        .strip_prefix(prefixe.as_str())
+        .expect("émission")
         .to_string();
     assert_eq!(secret.len(), 64);
-    let jeton = format!("agent-i:{secret}");
+    let jeton = format!("{agent}:{secret}");
     let (code, out, _) = rust(
-        &bcast,
-        &home,
-        &["ordre", "new", "--token", &jeton, "--", "relire le plan"],
+        bcast,
+        home,
+        &["ordre", "new", "--token", &jeton, "--", texte],
     );
     assert_eq!(code, 0);
     let id = out
         .trim()
         .strip_prefix("ordre=")
-        .expect("création : {out}")
+        .expect("création")
         .to_string();
     assert!(id.starts_with("O-"), "identifiant v2 : {id}");
+    (jeton, id)
+}
+
+#[test]
+fn jeton_ordre_ack_bout_en_bout() {
+    let (bcast, home) = bac("ordres-ack");
+    let (jeton, id) = emet_jeton_et_ordre(&bcast, &home, "agent-i", "relire le plan");
     let (code, out, _) = shell(&bcast, &["ordre", "list"]);
     assert_eq!(code, 1, "quirk shell : liste non vide sort 1");
     assert!(
@@ -169,13 +176,20 @@ fn jetons_et_ordres_bout_en_bout() {
         out.contains("applique") && out.contains("agent-i"),
         "ACK visible shell : {out}"
     );
+    nettoie(&bcast);
+}
+
+#[test]
+fn ordre_revoque_et_refus_mauvais_jeton() {
+    let (bcast, home) = bac("ordres-revoque");
+    let (jeton, id) = emet_jeton_et_ordre(&bcast, &home, "agent-j", "brouillon à révoquer");
     let (code, out, _) = rust(&bcast, &home, &["ordre", "revoque", &id, "--token", &jeton]);
     assert_eq!(code, 0);
     assert_eq!(out.trim(), format!("revoque={id}"));
     let (code, _, _) = rust(
         &bcast,
         &home,
-        &["ordre", "new", "--token", "agent-i:faux", "--", "x"],
+        &["ordre", "new", "--token", "agent-j:faux", "--", "x"],
     );
     assert_eq!(code, 1);
     nettoie(&bcast);

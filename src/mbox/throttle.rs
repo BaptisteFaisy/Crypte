@@ -26,12 +26,10 @@
 //! ignorées, reconstruites au fil de l'eau ; `flock` 10 s, fail-open sur
 //! dedup/quota/état, digest : expéditeur fautif sauté (comme le shell).
 
-use super::format::{sanitize, sha1_hex, BcastDir};
-use std::fs::{self, File, OpenOptions};
-use std::io::Error as ErreurOs;
-use std::os::unix::io::AsRawFd;
+use super::format::{epoque, sanitize, sha1_hex, BcastDir};
+use super::verrou::{chemin_verrou, verrouiller, EnCasDEchec, Garde};
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Fenêtre dedup inbox : 30 min (`throttle_inbox`).
 pub const DEDUP_INBOX_S: i64 = 1800;
@@ -108,62 +106,17 @@ impl Compteurs {
     }
 }
 
-/// Garde RAII : `flock LOCK_UN` à la destruction (le `close` libère aussi).
-struct GardeVerrou {
-    fichier: File,
-}
-
-impl Drop for GardeVerrou {
-    fn drop(&mut self) {
-        unsafe {
-            libc::flock(self.fichier.as_raw_fd(), libc::LOCK_UN);
-        }
-    }
-}
-
-/// Époque UTC en secondes (`bcast_epoch` via l'horloge système).
-fn epoque() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
 /// Avertissement non fatal sur stderr, préfixe identique au shell.
 fn avertit(cause: &str) {
     eprintln!("bcast: WARN {cause}");
 }
 
-/// Chemin du verrou dédié : `<cible>.lock` (fichier séparé, comme shell).
-fn chemin_verrou(cible: &Path) -> PathBuf {
-    PathBuf::from(format!("{}.lock", cible.display()))
-}
-
-/// Verrou exclusif avec timeout (`flock -w` : boucle + LOCK_NB).
-/// `None` = impossible (timeout ou erreur) ; l'appelant décide.
-fn verrouille(lock: &Path, delai_s: u64) -> Option<GardeVerrou> {
-    if let Some(parent) = lock.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let fichier = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .open(lock)
-        .ok()?;
-    let fd = fichier.as_raw_fd();
-    let debut = Instant::now();
-    loop {
-        let rc = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
-        if rc == 0 {
-            return Some(GardeVerrou { fichier });
-        }
-        let bloque = ErreurOs::last_os_error().raw_os_error() == Some(libc::EWOULDBLOCK);
-        if !bloque || debut.elapsed() >= Duration::from_secs(delai_s) {
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
+/// Verrou exclusif fail-open d'une cible (boucle partagée [`verrouiller`]).
+/// `None` = impossible (timeout ou erreur) ; l'appelant choisit son défaut.
+fn verrouille(cible: &Path) -> Option<Garde> {
+    verrouiller(&chemin_verrou(cible), DELAI_VERROU_S, EnCasDEchec::FailOpen)
+        .ok()
+        .flatten()
 }
 
 /// Parse une ligne dedup v2 (`<epoch> <sha1>`). Ligne v1 inverse ou
@@ -209,7 +162,7 @@ pub fn fichier_etat(dir: &BcastDir, expediteur: &str, suffixe: &str) -> PathBuf 
 /// perdu (verrou/écriture), verdict déjà décidé sinon.
 pub fn pending_incremente(dir: &BcastDir, expediteur: &str, motif: MotifCompteur) -> bool {
     let cible = fichier_etat(dir, expediteur, "pending");
-    let Some(garde) = verrouille(&chemin_verrou(&cible), DELAI_VERROU_S) else {
+    let Some(garde) = verrouille(&cible) else {
         avertit("compteur digest perdu (verrou)");
         return false;
     };
@@ -229,12 +182,12 @@ pub fn pending_incremente(dir: &BcastDir, expediteur: &str, motif: MotifCompteur
 /// Prend les compteurs + RAZ atomique sous le même verrou.
 /// `None` = verrou impossible, sauter l'expéditeur (comme le shell).
 pub fn pending_prend(chemin: &Path) -> Option<Compteurs> {
-    let garde = verrouille(&chemin_verrou(chemin), DELAI_VERROU_S)?;
+    let garde = verrouille(chemin)?;
     let compteurs = fs::read_to_string(chemin)
         .map(|t| Compteurs::depuis_ligne(&t))
         .unwrap_or_default();
     let raz = Compteurs {
-        dernier: epoque(),
+        dernier: epoque() as i64,
         ..Default::default()
     };
     let _ = fs::write(chemin, raz.vers_ligne());
@@ -247,8 +200,8 @@ pub fn pending_prend(chemin: &Path) -> Option<Compteurs> {
 pub fn dedup(dir: &BcastDir, cle: &str, fenetre_s: i64, corps: &str) -> bool {
     let cible = fichier_etat(dir, cle, "dedup");
     let condense = sha1_hex(corps.as_bytes());
-    let maintenant = epoque();
-    let Some(garde) = verrouille(&chemin_verrou(&cible), DELAI_VERROU_S) else {
+    let maintenant = epoque() as i64;
+    let Some(garde) = verrouille(&cible) else {
         avertit("dedup sans verrou (fail-open)");
         return true;
     };
@@ -280,8 +233,8 @@ pub fn dedup(dir: &BcastDir, cle: &str, fenetre_s: i64, corps: &str) -> bool {
 /// Verrou impossible = fail-open (WARN + vrai), comme le shell.
 pub fn quota(dir: &BcastDir, expediteur: &str, max: usize) -> bool {
     let cible = fichier_etat(dir, expediteur, "ratel");
-    let maintenant = epoque();
-    let Some(garde) = verrouille(&chemin_verrou(&cible), DELAI_VERROU_S) else {
+    let maintenant = epoque() as i64;
+    let Some(garde) = verrouille(&cible) else {
         avertit("quota sans verrou (fail-open)");
         return true;
     };
@@ -348,7 +301,7 @@ pub fn garde_bus(dir: &BcastDir, expediteur: &str, sujet: &str, corps: &str) -> 
 /// Vrai = changé (passe), faux = identique (compteur `same` +1).
 pub fn etat_change(dir: &BcastDir, expediteur: &str, cle: &str, valeur: &str) -> bool {
     let cible = fichier_etat(dir, expediteur, &format!("st-{}", sanitize(cle)));
-    let Some(garde) = verrouille(&chemin_verrou(&cible), DELAI_VERROU_S) else {
+    let Some(garde) = verrouille(&cible) else {
         avertit("état sans verrou (fail-open)");
         return true;
     };
@@ -455,7 +408,7 @@ mod tests {
     #[test]
     fn legacy_v1_ignore_et_reconstruit() {
         let (dir, racine) = dir_temp();
-        let vieux = epoque() - 100;
+        let vieux = epoque() as i64 - 100;
         fs::write(
             fichier_etat(&dir, "agent-h", "dedup"),
             format!("abcdef0123 {vieux}\n"),

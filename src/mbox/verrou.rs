@@ -3,10 +3,11 @@
 //! Verrou frère `"<cible>.lock"` (`locked_append`, `lib-common.sh:52-55`),
 //! `flock` via `libc` (dépendance directe) en boucle `LOCK_NB` + attente
 //! 10 s comme `flock -w 10`. L'autre moitié (`fichier.rs`) y range les
-//! lectures/écritures ; `throttle` et `autorite` gardent leurs propres
-//! boucles (sémantiques fail-open / fail-closed distinctes).
+//! lectures/écritures ; `throttle` (fail-open) et `autorite`/`fichier`
+//! (fail-closed, via [`avec_verrou`]) partagent la boucle via
+//! [`verrouiller`], un seul point d'attente.
 
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -68,6 +69,60 @@ pub fn rendre_verrou(fichier: &File) {
     }
 }
 
+/// Politique quand le verrou est impossible (délai dépassé ou erreur).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnCasDEchec {
+    /// Rend `None` : l'appelant choisit son défaut (`throttle`).
+    FailOpen,
+    /// Propage l'erreur : l'appelant échoue (écritures, autorité).
+    FailClosed,
+}
+
+/// Garde RAII : rend le verrou à la destruction (`close` libère aussi).
+pub struct Garde {
+    fichier: File,
+}
+
+impl Drop for Garde {
+    fn drop(&mut self) {
+        rendre_verrou(&self.fichier);
+    }
+}
+
+/// Ouvre `verrou` (créé au besoin, dossier parent aussi) et prend le
+/// verrou exclusif avec attente bornée (`flock -w N`, boucle unique
+/// [`prendre_verrou`]). `FailOpen` rend `Ok(None)` quand le verrou est
+/// impossible ; `FailClosed` propage l'erreur.
+pub fn verrouiller(
+    verrou: &Path,
+    attente_secs: u64,
+    echec: EnCasDEchec,
+) -> io::Result<Option<Garde>> {
+    if let Some(dossier) = verrou.parent() {
+        let _ = fs::create_dir_all(dossier);
+    }
+    let fichier = match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(verrou)
+    {
+        Ok(fichier) => fichier,
+        Err(err) => match echec {
+            EnCasDEchec::FailOpen => return Ok(None),
+            EnCasDEchec::FailClosed => return Err(err),
+        },
+    };
+    match prendre_verrou(&fichier, attente_secs) {
+        Ok(()) => Ok(Some(Garde { fichier })),
+        Err(err) => match echec {
+            EnCasDEchec::FailOpen => Ok(None),
+            EnCasDEchec::FailClosed => Err(err),
+        },
+    }
+}
+
 /// Exécute `travail` sous verrou exclusif du fichier `verrou`.
 ///
 /// Crée le fichier verrou s'il manque (comme `exec 8>"$lock"` du shell),
@@ -77,15 +132,11 @@ pub fn avec_verrou<T>(
     attente_secs: u64,
     travail: impl FnOnce() -> io::Result<T>,
 ) -> io::Result<T> {
-    let garde = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(verrou)?;
-    prendre_verrou(&garde, attente_secs)?;
+    // Inatteignable en `FailClosed` (jamais `Ok(None)`), exigé par le type.
+    let garde = verrouiller(verrou, attente_secs, EnCasDEchec::FailClosed)?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "verrou occupé (délai dépassé)"))?;
     let resultat = travail();
-    rendre_verrou(&garde);
+    drop(garde);
     resultat
 }
 
@@ -132,5 +183,26 @@ mod tests {
         rendre_verrou(&garde);
         prendre_verrou(&garde, 0).expect("reprise immédiate");
         rendre_verrou(&garde);
+    }
+
+    #[test]
+    fn verrouiller_fail_open_et_fail_closed() {
+        let dir = dossier_test();
+        let verrou = chemin_verrou(&dir.join("cible.log"));
+        assert!(verrouiller(&verrou, 1, EnCasDEchec::FailOpen)
+            .unwrap()
+            .is_some());
+        assert!(verrouiller(&verrou, 1, EnCasDEchec::FailClosed)
+            .unwrap()
+            .is_some());
+        // Parent incréable (fichier à la place du dossier) : FailOpen
+        // rend None, FailClosed rend une erreur.
+        let obstacle = dir.join("fichier");
+        fs::write(&obstacle, "bloc").expect("obstacle");
+        let bloque = obstacle.join("cible.log.lock");
+        assert!(verrouiller(&bloque, 0, EnCasDEchec::FailOpen)
+            .unwrap()
+            .is_none());
+        assert!(verrouiller(&bloque, 0, EnCasDEchec::FailClosed).is_err());
     }
 }
