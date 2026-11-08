@@ -63,7 +63,7 @@ fn collect(dir: &Path, root: &Path, out: &mut Vec<(String, String, std::path::Pa
         return;
     };
     let mut entries: Vec<_> = entries.flatten().collect();
-    entries.sort_by(|a, b| a.path().cmp(&b.path()));
+    entries.sort_by_key(|a| a.path());
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
@@ -333,7 +333,6 @@ mod tests {
             tools: vec![String::from("read")],
             excluded_tools: vec![String::from("web")],
             mcp_servers: mcp,
-            ..Default::default()
         };
         assert_eq!(
             line_of(&agent),

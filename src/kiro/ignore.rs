@@ -69,11 +69,7 @@ mod tests {
     fn charge_motifs_ignore_commentaires_et_vides() {
         let dir = std::env::temp_dir().join(format!("kh-kiro-ignore-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            &dir.join(".kiroignore"),
-            "# deps\ntarget/\n\n!target/keep\n",
-        )
-        .unwrap();
+        std::fs::write(dir.join(".kiroignore"), "# deps\ntarget/\n\n!target/keep\n").unwrap();
         let ignore = load(&dir);
         assert_eq!(ignore.len(), 2);
         assert!(!ignore.is_empty());
@@ -85,7 +81,7 @@ mod tests {
     fn is_ignored_dernier_motif_gagne_negation_reinclut() {
         let dir = std::env::temp_dir().join(format!("kh-kiro-ignore-{}-hit", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(&dir.join(".kiroignore"), "target/\n*.log\n!keep.log\n").unwrap();
+        std::fs::write(dir.join(".kiroignore"), "target/\n*.log\n!keep.log\n").unwrap();
         let ignore = load(&dir);
         assert!(ignore.is_ignored("target/out.rs"));
         assert!(ignore.is_ignored("target/nested/deep.txt"));

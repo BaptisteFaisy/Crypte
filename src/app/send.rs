@@ -199,7 +199,7 @@ mod tests {
         assert!(shown.contains("the crypt asks you"), "rendered: {shown:?}");
         assert!(!shown.contains("```"), "block replaced: {shown:?}");
         assert_eq!(app.sessions.current().history.last().unwrap().1, raw);
-        app.sessions.current_mut().chat.input.push_str("2");
+        app.sessions.current_mut().chat.input.push('2');
         app.send();
         let sess = app.sessions.current();
         assert!(sess.pending.is_none(), "answering clears");

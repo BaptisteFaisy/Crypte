@@ -28,7 +28,7 @@ pub fn help_text() -> &'static str {
      /tools [on|off] — model tools: browser, desktop, shell (default on)\n\
      /kiro — kiro .kiro/ status (steering, specs, hooks, mcp)\n\
      /spec <name> [run] | /spec new <name> <idea> — kiro spec workflow\n\
-     /mcp [refresh] — MCP servers: status, tools (refresh reconnects)\n\
+     /mcp [refresh|resources|prompts] | read <server> <uri> | prompt <server> <name> [k=v]\n\
      /hooks — kiro hooks by trigger + recent firings\n\
      /skills — list reusable skills (name + description)\n\
      /powers — list installed powers (skills auto-inject on keywords)\n\
@@ -40,6 +40,7 @@ pub fn help_text() -> &'static str {
      /critic [on|off] — Kiro roams and judges your prompts (click to hit him)\n\
      /vps [ip|name|off|status|add|del|install] — run this TUI on a VPS\n\
      /cloud [status|run|list|attach|delete|stop] — kiro agents in a cloud sandbox\n\
+     /workflow [list|show|validate|run] — kiro .kiro/workflows recipes\n\
      /help — this help\n\
      Questions: the AI may ask you — reply with the number or in your own words\n\
      Keys: F5 scare · F6 shop · F9 haunt (game) · Ctrl+N · Ctrl+W close (+ click) · Ctrl+C stop · ↑↓ agents · Enter expand · Esc\n\

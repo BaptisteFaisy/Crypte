@@ -93,10 +93,8 @@ fn apply_frontmatter(file: &mut Steering, front: &str) {
                 "inclusion" => file.inclusion = Inclusion::parse(&value),
                 "name" if !value.is_empty() => file.name = value,
                 "description" => file.description = value,
-                _ if is_pattern_key(&key) => {
-                    if !value.is_empty() {
-                        file.patterns.push(value);
-                    }
+                _ if is_pattern_key(&key) && !value.is_empty() => {
+                    file.patterns.push(value);
                 }
                 _ => {}
             }

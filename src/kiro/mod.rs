@@ -28,6 +28,7 @@ pub mod mcp;
 pub mod mcp_client;
 pub mod mcp_cmds;
 pub mod mcp_conn;
+pub mod mcp_lists;
 pub mod mcp_pool;
 pub mod memory;
 pub mod memory_cmds;
@@ -42,6 +43,9 @@ pub mod spec_run;
 pub mod status;
 pub mod steer_cmds;
 pub mod steering;
+pub mod workflow_cmds;
+pub mod workflow_run;
+pub mod workflows;
 
 use std::path::PathBuf;
 
