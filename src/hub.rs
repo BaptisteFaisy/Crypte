@@ -1,4 +1,4 @@
-//! Hub des esprits (F7) : tous les agents (chats, fantômes blancs) et leurs
+//! Hub des esprits : tous les agents (chats, fantômes blancs) et leurs
 //! sous-agents (`/agent`, petits fantômes noirs) vivent dans une crypte.
 //!
 //! - Agent au repos : erre, croise les autres et bavarde (bulles) ; en
@@ -120,12 +120,11 @@ pub enum Signal {
     Reply { chat: usize },
 }
 
-/// Le hub : esprits, orbes, bulles, sélection.
+/// Le hub : esprits, orbes, bulles.
 pub struct Hub {
     pub spectres: Vec<Spectre>,
     pub orbs: Vec<Orb>,
     pub bubbles: Vec<Bubble>,
-    pub selected: usize,
     pub tick: u64,
     pub sprites: render::Sprites,
     pub view: live::View,
@@ -141,7 +140,6 @@ impl Hub {
             spectres: Vec::new(),
             orbs: Vec::new(),
             bubbles: Vec::new(),
-            selected: 0,
             tick: 0,
             sprites: render::Sprites::load(),
             view: live::View::new(),
@@ -180,7 +178,6 @@ impl Hub {
                 self.upsert(Key::Sub(agent.id), i, mood, home);
             }
         }
-        self.selected = self.selected.min(sessions.count().saturating_sub(1));
     }
 
     /// Crée l'esprit `key` à `at` s'il manque, sinon met son humeur à jour

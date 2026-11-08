@@ -1,6 +1,6 @@
 //! État global + boucle TUI (crossterm + tokio, tick 100 ms).
 //! Les constructeurs vivent dans `app/ctors.rs`, le rendu dans `app/ui.rs`
-//! (mise en page de la crypte), le hub des esprits dans `app/esprits.rs`.
+//! (mise en page de la crypte), le panneau hub dans `app/esprits.rs`.
 
 mod ctors;
 mod esprits;
@@ -31,7 +31,6 @@ use crate::gfx::ImageBank;
 use crate::ghostty;
 
 use crate::hub::Hub;
-use crate::mascot::{Mascot, MascotState};
 use crate::permissions::Mode;
 use crate::pool::SpawnPool;
 use crate::provider::{Completion, Provider};
@@ -57,7 +56,6 @@ pub(crate) enum Incoming {
 
 /// État global de l'application.
 pub struct App {
-    mascot: Mascot,
     pub(crate) fx: Fx,
     bank: ImageBank,
     pub(crate) apparition: Apparition,
@@ -96,7 +94,7 @@ pub struct App {
     /// masqué) : clic = fermer le chat (vide hors écran chat).
     pub(crate) close_btns: Vec<Option<Rect>>,
     /// Onglets de l'en-tête (mémorisés au rendu, écran + rectangle) :
-    /// clic = aller à l'écran (chat, hub, boutique).
+    /// clic = aller à l'écran (chat, boutique).
     pub(crate) tab_hits: Vec<(Screen, Rect)>,
     /// Lignes des articles de la boutique (mémorisées au rendu) :
     /// clic = acheter (vide hors écran boutique).
@@ -181,9 +179,8 @@ impl App {
         Ok(())
     }
 
-    /// F5 : Kiro s'effraie et une créature surgit (jump scare + éclair).
+    /// F5 : une créature surgit (jump scare + éclair) et le hub panique.
     pub(crate) fn spook(&mut self) {
-        self.mascot.spook();
         self.apparition.scare();
         self.hub.scare();
     }
@@ -222,15 +219,14 @@ impl App {
         self.sessions.current_mut().chat.push(Role::System, msg);
     }
 
-    /// Fait avancer les animations (mascotte, apparitions, effets).
+    /// Fait avancer les animations (apparitions, hub, effets).
     pub(crate) fn tick(&mut self) {
         self.tick = self.tick.wrapping_add(1);
         self.autosave_if_due(self.tick);
-        self.mascot.tick();
         self.apparition.tick();
         self.hub.sync(&self.sessions);
         self.hub.step();
-        self.fx.tick(self.mascot.state() == MascotState::Spook);
+        self.fx.tick(self.apparition.scaring());
         if self.tick % 10 == 0 {
             self.refresh_ctx_cache();
         }

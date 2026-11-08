@@ -27,7 +27,6 @@ mod ghostty;
 mod history;
 mod hub;
 mod kiro;
-mod mascot;
 mod mouse;
 mod permissions;
 mod persist;
@@ -75,8 +74,8 @@ OPTIONS:
         --muse-auth       Key from the Muse store (see MUSE)
         --agents-file <file>  System context (see AGENTS.MD)
         --sheet <png>     Write the bestiary sheet (34 drawings) as PNG
-        --preview <file>  Write the 4 screens (120x36 + 70x17, offline) as ANSI
-        --demo            Offline demo crypt, opened on the spirit hub (F7)
+        --preview <file>  Write the 3 screens (120x36 + 70x17, offline) as ANSI
+        --demo            Offline demo crypt (populated chats + agents)
         --events-log <file>  Append chats+agents events as JSONL (see docs/VPS.md)
 
 SETTINGS (/settings):
@@ -109,7 +108,7 @@ AGENTS.MD (system context, read once at first send):
 
 KEYS (terminal >= 70x17):
     Enter  send    q  quit    F5  scare
-    Ctrl+N or click [+]  new chat    F7  hub
+    Ctrl+N or click [+]  new chat
     F6 or tab click  shop (1 token consumed = 1 coin)    click item  buy
 
 ALMANAC (tokens per day, local date, shown by /usage):
@@ -305,7 +304,6 @@ async fn async_main() -> Result<()> {
     if args.demo {
         app.almanac = Almanac::demo(crate::almanac::today());
         app.populate_hub_demo();
-        app.open_hub();
     }
     let mut terminal = ratatui::init();
     let _ = execute!(io::stdout(), EnableMouseCapture);
@@ -320,7 +318,7 @@ async fn async_main() -> Result<()> {
 }
 
 /// App hors ligne garnie pour `--smoke` / `--apercu` : deux messages,
-/// Kiro effrayé, quelques ticks d'effets.
+/// effroi (F5), quelques ticks d'effets.
 fn demo_app() -> Result<App> {
     let mut app = App::offline()?;
     let chat = &mut app.sessions.current_mut().chat;
@@ -346,14 +344,14 @@ fn render(app: &mut App, screen: Screen, w: u16, h: u16) -> Result<Buffer> {
 }
 
 /// Controle headless : frames 80x24 (chat + settings) + 70x17
-/// (minimum, 4 écrans), sans reseau ni cle API. Echec = `Err`.
+/// (minimum, 3 écrans), sans reseau ni cle API. Echec = `Err`.
 fn smoke() -> Result<()> {
     let mut app = demo_app()?;
     let buf = render(&mut app, Screen::Chat, 80, 24)?;
     let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
     anyhow::ensure!(filled > 100, "check frame almost empty ({filled} cells)");
     println!("smoke OK: 80x24 frame, {filled} cells filled");
-    for screen in [Screen::Chat, Screen::Hub, Screen::Settings, Screen::Shop] {
+    for screen in [Screen::Chat, Screen::Settings, Screen::Shop] {
         let buf = render(&mut app, screen, 70, 17)?;
         let filled = buf.content.iter().filter(|c| c.symbol() != " ").count();
         anyhow::ensure!(
@@ -366,7 +364,7 @@ fn smoke() -> Result<()> {
             "header missing at 70x17 ({screen:?})"
         );
     }
-    println!("smoke OK: 70x17 frames, 4 screens");
+    println!("smoke OK: 70x17 frames, 3 screens");
     let buf = render(&mut app, Screen::Settings, 80, 24)?;
     let text: String = buf.content.iter().map(|c| c.symbol()).collect();
     anyhow::ensure!(text.contains("SETTINGS"), "settings frame has no title");
@@ -379,18 +377,16 @@ fn smoke() -> Result<()> {
     Ok(())
 }
 
-/// Écrit les 8 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
+/// Écrit les 6 frames (120x36 + 70x17, hors ligne) en ANSI dans `path` :
 /// `cat <fichier>` dans Ghostty montre l'UI sans clé ni réseau.
 fn apercu(path: &str) -> Result<()> {
     let mut app = demo_app()?;
     let mut out = String::new();
     for (screen, w, h) in [
         (Screen::Chat, 120, 36),
-        (Screen::Hub, 120, 36),
         (Screen::Settings, 120, 36),
         (Screen::Shop, 120, 36),
         (Screen::Chat, 70, 17),
-        (Screen::Hub, 70, 17),
         (Screen::Settings, 70, 17),
         (Screen::Shop, 70, 17),
     ] {
@@ -399,7 +395,7 @@ fn apercu(path: &str) -> Result<()> {
         out.push('\n');
     }
     std::fs::write(path, out).with_context(|| format!("writing {path}"))?;
-    println!("preview: {path} (120x36 + 70x17, 4 screens)");
+    println!("preview: {path} (120x36 + 70x17, 3 screens)");
     Ok(())
 }
 

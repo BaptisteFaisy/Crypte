@@ -1,8 +1,9 @@
 # kiro-horror-tui — contexte agents
 
 Chat LLM dans une crypte hantée (TUI ratatui) pensé pour Ghostty :
-multi-chats, mascotte fantôme Kiro (F5), bestiaire pixel art (panneau
-latéral + `/bestiary`, images Kitty), effets horreur, compteur tokens,
+multi-chats, hub des esprits (panneau droit, affichage seul),
+bestiaire pixel art (panneau latéral + `/bestiary`, images Kitty),
+effets horreur, compteur tokens,
 almanach tokens/jour (`/usage`), sous-agents `/agent`,
 compaction `/compact`. UI et messages **en anglais**.
 
@@ -52,14 +53,14 @@ fermeture `close.rs`),
 `sidebar.rs` (colonne cercueils + boutons [+] et [×]), `chat.rs` (historique +
 saisie + prompt custom masquable), `provider.rs` (client OpenAI-compatible, timeout 60 s),
 `tokens.rs` (estimation tiktoken + ledger), `agents.rs` (ce contexte :
-chargement, pin, compaction pure), `mascot.rs` (fantôme), `fx.rs`
+chargement, pin, compaction pure), `fx.rs`
 (overlay horreur), `app/ui.rs` (mise en page), `theme.rs` (palette
 unique), `bestiary.rs` (sprites), `gfx.rs` (images), `apparition.rs`
 (panneau droit, `/bestiary`), `ghostty.rs` (OSC + mode 2026),
-`hub.rs` + `hub/` (hub des esprits F7 : simulation en dalles, `iso.rs`
+`hub.rs` + `hub/` (hub des esprits : simulation en dalles, `iso.rs`
 crypte isométrique, `render.rs` scène, `live.rs` image Kitty par frame,
 `font.rs` police 3×5, `social.rs` orbes et bavardages), `app/esprits.rs`
-(écran + touches du hub). Sprites du hub : `assets/hub/*.txt`.
+(panneau hub). Sprites du hub : `assets/hub/*.txt`.
 `shop.rs` (boutique F6 + onglet : portefeuille 1 token = 1 pièce,
 5 bonus d'ambiance, clic ou ↑↓ + Entrée).
 `almanac.rs` (tokens par jour, bloc `/usage`) + `almanac/disk.rs`
