@@ -93,7 +93,8 @@ CONFIG (environment, wins over --config):
     BRAVE_API_KEY / TAVILY_API_KEY  Optional premium /web backends (else free)
     With no key, no --config and no --muse-auth, the TUI still starts,
     disconnected — /connect <provider> or /settings to connect from
-    inside. A provider saved by /settings is reused at startup.
+    inside. A provider connected by /connect or saved by /settings
+    is reused at startup.
 
 MUSE (--muse-auth):
     Store: ~/.config/muse/auth.json (key: /providers/meta/api_key)
@@ -218,7 +219,7 @@ fn resolve_config(args: &Args) -> Result<ProviderConfig> {
     }
 }
 
-/// Config from CLI/env/TOML, else the last provider saved by `/settings`.
+/// Config from CLI/env/TOML, else the last provider connected or saved.
 fn resolve_or_stored(args: &Args) -> Option<ProviderConfig> {
     resolve_config(args)
         .ok()
