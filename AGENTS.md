@@ -33,6 +33,8 @@ chat, [×] = fermer, lignes sidebar = choisir, onglets = écrans),
 chats + sous-agents, silencieux si désactivé),
 `cmds.rs` (handlers `/…`), `cmds_web.rs` (handler `/web`),
 `cmds_link.rs` (handlers `/link`+`/unlink`),
+`cmds_vps.rs` (handlers `/vps` + écran VPS), `vps.rs` (profils
+`~/.config/kiro-horror-tui/vps.toml`, ssh, statuts distants),
 `commands.rs` (parse), `texts.rs` (aide),
 `settings.rs` + `settings/` (`/settings` : table des fournisseurs
 `known.rs`, coffre chiffre `store.rs` (ChaCha20-Poly1305, `0600`, cle
