@@ -28,7 +28,9 @@ env:
   # IMPORTANT (runbook §3) : à renseigner PAR DÉPÔT — contexts de statut requis
   # avant merge, séparés par des virgules. Vide = merge dès que la PR est fraîche.
   HERMES_REQUIRED_CHECKS: ''
-  MERGE_METHOD: rebase
+  # Alignés sur .mergify.yml (squash + mise à jour par merge), lus par gate.py.
+  MERGE_METHOD: squash
+  UPDATE_METHOD: merge
 
 jobs:
   gate:
