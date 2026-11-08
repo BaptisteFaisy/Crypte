@@ -14,6 +14,7 @@ mod bestiary;
 mod bus;
 mod chat;
 mod cmds;
+mod cmds_agent;
 mod cmds_link;
 mod cmds_vps;
 mod cmds_web;
