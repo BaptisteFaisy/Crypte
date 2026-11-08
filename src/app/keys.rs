@@ -27,6 +27,7 @@ impl App {
         match key.code {
             KeyCode::Char('q') if !ctrl && empty => false,
             KeyCode::Char('n' | 'N') if ctrl => self.cmd(|s| s.add_chat()),
+            KeyCode::Char('w' | 'W') if ctrl => self.cmd(|s| s.close_chat(s.sessions.index())),
             KeyCode::Char(c) if !ctrl => self.cmd(|s| s.sessions.current_mut().chat.input_push(c)),
             KeyCode::Backspace => self.cmd(|s| s.sessions.current_mut().chat.input_pop()),
             KeyCode::Enter => self.cmd(|s| s.send()),

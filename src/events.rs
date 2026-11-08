@@ -29,6 +29,11 @@ pub enum Event {
         chat: usize,
         name: String,
     },
+    ChatClosed {
+        ts: u64,
+        chat: usize,
+        name: String,
+    },
     UserMsg {
         ts: u64,
         chat: usize,
@@ -110,6 +115,15 @@ impl Event {
     /// Nouveau chat (`idx` 0-based, émis en 1-based).
     pub fn chat_created(idx: usize, name: &str) -> Self {
         Self::ChatCreated {
+            ts: now(),
+            chat: idx + 1,
+            name: name.to_string(),
+        }
+    }
+
+    /// Chat fermé (`idx` 0-based, émis en 1-based).
+    pub fn chat_closed(idx: usize, name: &str) -> Self {
+        Self::ChatClosed {
             ts: now(),
             chat: idx + 1,
             name: name.to_string(),
@@ -267,6 +281,14 @@ mod tests {
             "crypte-events-test-{}-{tag}.jsonl",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn chat_closed_emits_snake_case_1based() {
+        let v = serde_json::to_value(Event::chat_closed(1, "Chat 2")).unwrap();
+        assert_eq!(v["type"], "chat_closed");
+        assert_eq!(v["chat"], 2);
+        assert_eq!(v["name"], "Chat 2");
     }
 
     #[test]
