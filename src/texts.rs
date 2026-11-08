@@ -31,6 +31,7 @@ pub fn help_text() -> &'static str {
      /mcp [refresh|resources|prompts] | read <server> <uri> | prompt <server> <name> [k=v]\n\
      /hooks — kiro hooks by trigger + recent firings\n\
      /skills — list reusable skills (name + description)\n\
+     /powers — list installed powers (skills auto-inject on keywords)\n\
      /steer [name] — list manual/auto steering, arm a manual file\n\
      /skill <name> [text] — inject a skill atop the next send\n\
      /checkpoints — list file snapshots (newest first)\n\
