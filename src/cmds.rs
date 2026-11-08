@@ -62,6 +62,7 @@ impl App {
             Some(Command::Cloud(args)) => self.cmd_cloud(args),
             Some(Command::Workflow(args)) => self.cmd_workflow(args),
             Some(Command::Skills) => self.cmd_skills(),
+            Some(Command::Powers) => self.cmd_powers(),
             Some(Command::Steer(name)) => self.cmd_steer(name),
             Some(Command::Skill { name, text }) => self.cmd_skill(name, text),
             Some(Command::Checkpoints) => self.cmd_checkpoints(),
