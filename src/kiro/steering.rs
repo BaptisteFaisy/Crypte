@@ -147,14 +147,6 @@ pub fn load_dir(dir: &Path) -> Vec<Steering> {
         .collect()
 }
 
-/// Charge global puis projet (cwd + home réels).
-pub fn load_all() -> Vec<Steering> {
-    load_all_in(
-        &crate::kiro::project_dir(),
-        crate::kiro::global_dir().as_deref(),
-    )
-}
-
 /// Charge global puis projet (chemins injectés, tests).
 pub fn load_all_in(project: &Path, global: Option<&Path>) -> Vec<Steering> {
     let mut out = Vec::new();

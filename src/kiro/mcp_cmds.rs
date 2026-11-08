@@ -36,30 +36,14 @@ mod tests {
     use crate::kiro::mcp_pool::McpState;
     use std::collections::HashMap;
 
-    /// App de test (Kiro réel neutralisé, comme `ctors`, déterministe).
+    /// App de test (hermétique sans env : global None, hooks no-op).
     fn test_app() -> App {
-        let dir = std::env::temp_dir().join(format!("kh-mcp-cmds-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let saved_project = std::env::var("KH_KIRO_PROJECT").ok();
-        let saved_global = std::env::var("KH_KIRO_GLOBAL").ok();
-        std::env::set_var("KH_KIRO_PROJECT", &dir);
-        std::env::set_var("KH_KIRO_GLOBAL", &dir);
         let cfg = crate::provider::ProviderConfig {
             base_url: String::from("http://localhost:9/"),
             api_key: String::from("factice"),
             model: String::from("factice"),
         };
-        let app = App::from_config(cfg).unwrap();
-        match saved_project {
-            Some(val) => std::env::set_var("KH_KIRO_PROJECT", val),
-            None => std::env::remove_var("KH_KIRO_PROJECT"),
-        }
-        match saved_global {
-            Some(val) => std::env::set_var("KH_KIRO_GLOBAL", val),
-            None => std::env::remove_var("KH_KIRO_GLOBAL"),
-        }
-        std::fs::remove_dir_all(&dir).ok();
-        app
+        App::from_config(cfg).unwrap()
     }
 
     /// Dernière ligne affichée du chat courant.

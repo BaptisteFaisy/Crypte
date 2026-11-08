@@ -39,8 +39,21 @@ pub struct Merged {
 /// Charge agents.md (`explicit` prime) + steering `always` (projet +
 /// global), joints par `\n\n` (steering taggés par nom).
 pub fn load_merged(explicit: Option<&str>) -> Merged {
-    let agents = load(explicit);
-    let picked = crate::kiro::steering::combined(&crate::kiro::steering::load_all(), &[]);
+    load_merged_in(
+        explicit,
+        &crate::kiro::project_dir(),
+        crate::kiro::global_dir().as_deref(),
+    )
+}
+
+/// Variante testable (chemins injectés, jamais l'env).
+pub fn load_merged_in(explicit: Option<&str>, project: &Path, global: Option<&Path>) -> Merged {
+    let agents = match explicit {
+        Some(_) => load(explicit),
+        None => load_from_dir(project),
+    };
+    let files = crate::kiro::steering::load_all_in(project, global);
+    let picked = crate::kiro::steering::combined(&files, &[]);
     let has_agents = agents.is_some();
     let mut parts = Vec::new();
     if let Some(content) = agents {
@@ -154,7 +167,6 @@ pub fn compacted_history(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_env::EnvScope;
 
     /// Entrée d'historique courte (tests).
     fn msg(role: &str, text: &str) -> (String, String) {
@@ -168,17 +180,12 @@ mod tests {
 
     #[test]
     fn merged_joint_agents_et_steering_always() {
-        let env = EnvScope::new(&["KH_KIRO_PROJECT", "KH_KIRO_GLOBAL"]);
         let dir = tmp_dir("merged");
         std::fs::create_dir_all(dir.join(".kiro/steering")).unwrap();
         std::fs::write(dir.join(".kiro/steering/a.md"), "règle A").unwrap();
         let agents_path = dir.join("AGENTS.md");
         std::fs::write(&agents_path, "agents").unwrap();
-        let empty = dir.join("empty");
-        std::fs::create_dir_all(&empty).unwrap();
-        env.set("KH_KIRO_PROJECT", &dir);
-        env.set("KH_KIRO_GLOBAL", &empty);
-        let merged = load_merged(Some(agents_path.to_str().unwrap()));
+        let merged = load_merged_in(Some(agents_path.to_str().unwrap()), &dir, None);
         assert!(merged.agents);
         assert_eq!(merged.steering, 1);
         let text = merged.text.as_ref().unwrap();
