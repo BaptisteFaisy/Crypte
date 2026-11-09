@@ -1,12 +1,9 @@
 # File de merge Mergify — socle CI self-hosted (R630).
 #
-# Le depot demarre sans gate IA ni batterie de tests : les queue_conditions
-# n'exigent donc aucun check inexistant (le socle CI est en dry-run —
-# variable de depot HERMES_LITE_DRY_RUN=1). Le seul check exige est
-# `ci-budget`, livre par le socle : aucune PR ne peut entrer dans la file
-# avec un job declare a plus de 5 minutes. Quand la CI reelle du depot
-# existera, ajouter dans queue_conditions :
-#   - check-success = "<check reel>"
+# CI réelle (`.github/workflows/ci.yml`, PR #113/#117/#120) : la file exige
+# ses 4 checks + le socle. `hermes-lite/verdict` rejoindra la file à la
+# sortie du dry-run (HERMES_LITE_DRY_RUN=1 : le gate ne publie aucun verdict
+# sur les PR en retard, l'exiger bloquerait tout).
 # Structure copiée du .mergify.yml de BaptisteFaisy/duello (décision
 # user 2026-10-10) : inline labels urgent / priority-low identiques.
 queue_rules:
@@ -14,6 +11,13 @@ queue_rules:
     queue_conditions:
       # Budget CI 5 min (règle user 2026-10-24) : le garde-fou du socle.
       - check-success = ci-budget
+      # CI Rust : fmt/clippy/build/test verts exigés (sinon la file merge
+      # avec une CI rouge, constaté sur #113/#117).
+      - check-success = fmt
+      - check-success = clippy
+      - check-success = build
+      - check-success = test
+      - check-success = stale-base-guard
       - -conflict
       - -draft
       - base = main

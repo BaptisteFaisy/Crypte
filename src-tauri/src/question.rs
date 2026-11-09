@@ -1,6 +1,12 @@
 //! Questions de l'IA au user : bloc ```question, pastille jaune.
 //!
-//! Port tel quel de `question.rs` du TUI (pur, sans état).
+//! Port de `question.rs` du TUI (pur, sans état) + panneau navigable
+//! (#104) : l'IA écrit un bloc ```question (2 à 4 options), le backend
+//! le détecte, le montre rendu (`render_display`) et mémorise la
+//! question en attente (pastille jaune, curseur `step`/`selected`,
+//! style zerocode) ; l'utilisateur répond ↑↓ + Entrée, par le chiffre
+//! (`resolve_answer`) ou en mots libres. `QUESTION_SYSTEM` enseigne le
+//! format au modèle (injecté dans chaque requête, voir `history`).
 
 /// Instructions envoyées au modèle (une question à choix par réponse).
 pub const QUESTION_SYSTEM: &str = "To ask the user a real multiple-choice question, \
@@ -18,6 +24,22 @@ const MAX_OPTIONS: usize = 6;
 pub struct PendingQuestion {
     pub question: String,
     pub options: Vec<String>,
+    /// Highlighted option in the panel (zerocode style).
+    pub cursor: usize,
+}
+
+impl PendingQuestion {
+    /// Moves the cursor by `delta` options (clamped, zerocode style).
+    pub fn step(&mut self, delta: isize) {
+        let last = self.options.len().saturating_sub(1) as isize;
+        let at = self.cursor as isize + delta;
+        self.cursor = at.clamp(0, last.max(0)) as usize;
+    }
+
+    /// Label of the highlighted option (`""` when none).
+    pub fn selected(&self) -> &str {
+        self.options.get(self.cursor).map_or("", String::as_str)
+    }
 }
 
 /// Texte affiché (premier bloc valide remplacé par son rendu) +
@@ -54,7 +76,7 @@ pub fn render(q: &PendingQuestion) -> String {
     for (i, opt) in q.options.iter().enumerate() {
         out.push_str(&format!("  {}) {}\n", i + 1, opt));
     }
-    out.push_str("  (reply with the number or in your own words)");
+    out.push_str("  (↑↓ + Enter, number or words)");
     out
 }
 
@@ -101,7 +123,11 @@ fn parse_block(content: &str) -> Option<PendingQuestion> {
     if question.is_empty() || !(MIN_OPTIONS..=MAX_OPTIONS).contains(&options.len()) {
         return None;
     }
-    Some(PendingQuestion { question, options })
+    Some(PendingQuestion {
+        question,
+        options,
+        cursor: 0,
+    })
 }
 
 /// Variante JSON tolérée : `question` (chaîne) + `options`/`choices`.
@@ -124,6 +150,7 @@ fn parse_json(content: &str) -> Option<PendingQuestion> {
     Some(PendingQuestion {
         question: question.to_string(),
         options,
+        cursor: 0,
     })
 }
 
@@ -174,6 +201,7 @@ mod tests {
         PendingQuestion {
             question: String::from("Shall we go on?"),
             options: vec![String::from("Yes"), String::from("No")],
+            cursor: 0,
         }
     }
 
@@ -211,6 +239,7 @@ mod tests {
             PendingQuestion {
                 question: String::from("J?"),
                 options: vec![String::from("x"), String::from("y")],
+                cursor: 0,
             }
         );
         let seven = (1..=7)
@@ -246,6 +275,20 @@ mod tests {
         assert!(resolve_answer(&q, "3").is_none());
         assert!(resolve_answer(&q, "maybe tomorrow").is_none());
         assert!(resolve_answer(&q, "").is_none());
+    }
+
+    #[test]
+    fn cursor_clamped_and_selection_follows() {
+        let mut q = sample();
+        assert_eq!(q.selected(), "Yes");
+        q.step(-1);
+        assert_eq!(q.cursor, 0, "up at top: clamped");
+        q.step(1);
+        assert_eq!(q.selected(), "No");
+        q.step(9);
+        assert_eq!(q.cursor, 1, "down at bottom: clamped");
+        q.step(-9);
+        assert_eq!(q.cursor, 0);
     }
 
     #[test]
