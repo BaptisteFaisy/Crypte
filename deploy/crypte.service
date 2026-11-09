@@ -1,4 +1,6 @@
 # Crypte TUI on a VPS: systemd owns a tmux session running the binary.
+# NOTE (branche Tauri) : cette unité vise les checkouts TUI (main) ; la
+# branche Tauri produit une app desktop, /vps y garde le TUI distant en tmux.
 # Install: cp deploy/crypte.service /etc/systemd/system/crypte.service, then
 #   systemctl daemon-reload && systemctl enable --now crypte
 # Needs: /opt/crypte checkout (built, see docs/VPS.md), /etc/crypte/env

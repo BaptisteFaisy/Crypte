@@ -1,6 +1,6 @@
 name: mbox (broadcast agents)
 
-# CI ciblée du module mbox (src/mbox/ + tests/mbox_interop.rs) : format,
+# CI ciblée du module mbox (src-tauri/src/mbox/ + interop) : format,
 # build, tests unitaires + interop, garde des limites Crypte
 # (500 L / 30 fn par fichier, < 50 L par fonction). Budget CI 5 min
 # (règle user 2026-10-24) : un seul job, timeout explicite, annulation
@@ -9,14 +9,16 @@ name: mbox (broadcast agents)
 on:
   pull_request:
     paths:
-      - 'src/mbox/**'
-      - 'tests/mbox*'
+      - 'src-tauri/src/mbox/**'
+      - 'src-tauri/src/interop.rs'
+      - 'src-tauri/src/cmd_mbox*'
       - '.github/workflows/mbox.yml'
   push:
     branches: [main]
     paths:
-      - 'src/mbox/**'
-      - 'tests/mbox*'
+      - 'src-tauri/src/mbox/**'
+      - 'src-tauri/src/interop.rs'
+      - 'src-tauri/src/cmd_mbox*'
       - '.github/workflows/mbox.yml'
   workflow_dispatch: {}
 
@@ -32,6 +34,9 @@ jobs:
     name: mbox
     runs-on: [self-hosted, horror_cli-worker]
     timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: src-tauri
     steps:
       - name: Checkout (superficiel)
         uses: actions/checkout@v4
@@ -49,9 +54,11 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: mbox-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          key: mbox-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             mbox-${{ runner.os }}-
+      - name: Syslibs Tauri (webkit)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Format (rustfmt)
         run: cargo fmt --check
       - name: Build (hors-ligne si cache trouvé)
@@ -61,27 +68,13 @@ jobs:
           else
             cargo build --locked
           fi
-      - name: Tests unitaires mbox
-        run: cargo test --locked --bin kiro-horror-tui mbox
-      - name: Tests interop Rust <-> shell
-        run: |
-          if [ -x /home/baptiste/Bureau/.scratch/broadcast/bin/bcast ]; then
-            cargo test --locked --test mbox_interop
-          else
-            echo "interop ignoré : bcast shell absent de ce runner (tests/mbox_interop.rs exige le poste de dev)"
-          fi
-      - name: Tests vague 5 (JSON + fraîcheur)
-        run: |
-          if command -v python3 >/dev/null 2>&1; then
-            cargo test --locked --test mbox_vague5
-          else
-            echo "vague5 ignoré : python3 absent de ce runner (oracle json.tool exigé)"
-          fi
+      - name: Tests mbox + interop (en processus)
+        run: cargo test --locked mbox
       - name: Garde des limites (500 L / 30 fn / 50 L)
         run: |
           set -u
           ECHEC=0
-          for f in src/mbox/*.rs tests/mbox*.rs; do
+          for f in src/mbox/*.rs src/interop.rs src/cmd_mbox*.rs; do
             L=$(wc -l < "$f")
             F=$(grep -cE 'fn [a-zA-Z_][a-zA-Z0-9_]* *\(' "$f")
             [ "$L" -gt 500 ] && { echo "LIMITE $f: $L lignes (>500)"; ECHEC=1; }
