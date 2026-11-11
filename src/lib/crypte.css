@@ -1,0 +1,398 @@
+/* Thème canonique Crypte (palette --cry-* + styles widgets). Importé par +layout. */
+/* crypte.css — thème Crypte exact (miroir CRYPTE_THEME de contracts.ts)
+ * + styles uniques des widgets partagés (front-widgets).
+ * Importé UNE fois par le shell (ex. dans src/app.css ou +layout).
+ * Anti-slop : pas de gradient, pas de glassmorphism, pas d'Inter ;
+ * animations seulement si prefers-reduced-motion: no-preference. */
+
+:root {
+  --cry-void: #0c0908;
+  --cry-crypt: #1e1512;
+  --cry-bone: #ebddc3;
+  --cry-sand: #baa685;
+  --cry-umber: #4c4437;
+  --cry-ash: #6e6862;
+  --cry-pumpkin: #f2701e;
+  --cry-blood: #d7263d;
+  --cry-dried: #6e101a;
+  --cry-ecto: #7cf29a;
+  --cry-spectre: #9b8cff;
+  --cry-candle: #ffc46b;
+  --cry-ink: #120d0b;
+  --cry-pumpkin-dark: #963e12;
+  --cry-ecto-dark: #2d4e34;
+  --cry-spectre-dark: #42396e;
+  --cry-candle-dark: #ac783c;
+  --cry-burlap: #6e583a;
+  --cry-moss: #58d668;
+  --cry-wisp: #4aa8f0;
+  --cry-font-body: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    "Times New Roman", serif;
+  --cry-font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+  --cry-radius: 3px;
+  --cry-border: 1px solid var(--cry-umber);
+  --cry-pill-dim: #2c2720;
+  --cry-track: #241c17;
+  --cry-font-title: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --cry-header-h: 2.25rem;
+  --cry-footer-h: 1.75rem;
+}
+
+/* Socle optionnel : le shell l'applique sur le conteneur racine. */
+.cry-app {
+  background: var(--cry-void);
+  color: var(--cry-bone);
+  font-family: var(--cry-font-body);
+}
+
+.cry-app :focus-visible {
+  outline: 2px solid var(--cry-candle);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------- bouton */
+.cry-btn {
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  padding: 0.45rem 1rem;
+  border-radius: var(--cry-radius);
+  border: var(--cry-border);
+  background: var(--cry-crypt);
+  color: var(--cry-sand);
+  cursor: pointer;
+}
+.cry-btn--sm {
+  font-size: 0.82rem;
+  padding: 0.25rem 0.65rem;
+}
+.cry-btn--primary {
+  background: var(--cry-pumpkin-dark);
+  border-color: var(--cry-pumpkin);
+  color: var(--cry-bone);
+  font-weight: bold;
+}
+.cry-btn--danger {
+  background: var(--cry-dried);
+  border-color: var(--cry-blood);
+  color: var(--cry-bone);
+  font-weight: bold;
+}
+.cry-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--cry-sand);
+}
+.cry-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cry-btn[aria-pressed="true"] {
+  border-color: var(--cry-candle);
+  color: var(--cry-candle);
+}
+
+/* ------------------------------------------------------------ champ */
+.cry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-family: inherit;
+}
+.cry-field__label {
+  font-size: 0.85rem;
+  color: var(--cry-sand);
+}
+.cry-field__wrap {
+  display: flex;
+  gap: 0.4rem;
+  align-items: stretch;
+}
+.cry-field__input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--cry-radius);
+  border: var(--cry-border);
+  background: var(--cry-ink);
+  color: var(--cry-bone);
+}
+.cry-field__input::placeholder {
+  color: var(--cry-ash);
+}
+.cry-field--mono .cry-field__input {
+  font-family: var(--cry-font-mono);
+  font-size: 0.9rem;
+}
+.cry-field--error .cry-field__input {
+  border-color: var(--cry-blood);
+}
+.cry-field__input:disabled {
+  opacity: 0.5;
+}
+.cry-field__hint {
+  font-size: 0.8rem;
+  color: var(--cry-ash);
+}
+.cry-field__error {
+  font-size: 0.85rem;
+  color: var(--cry-blood);
+}
+
+/* ------------------------------------------------------------ liste */
+.cry-list {
+  border: var(--cry-border);
+  border-radius: var(--cry-radius);
+  background: var(--cry-ink);
+  overflow-y: auto;
+  font-family: inherit;
+}
+.cry-list__row {
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid var(--cry-crypt);
+  cursor: pointer;
+  color: var(--cry-sand);
+}
+.cry-list__row:last-child {
+  border-bottom: none;
+}
+.cry-list__row[aria-selected="true"] {
+  background: var(--cry-ecto-dark);
+  color: var(--cry-bone);
+  box-shadow: inset 3px 0 0 var(--cry-pumpkin);
+}
+.cry-list__empty {
+  padding: 1rem;
+  color: var(--cry-ash);
+  font-style: italic;
+}
+.cry-list--disabled .cry-list__row {
+  cursor: default;
+}
+
+/* --------------------------------------------------------- dialogue */
+.cry-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 9, 8, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.cry-dialog {
+  background: var(--cry-crypt);
+  border: 1px solid var(--cry-burlap);
+  border-radius: var(--cry-radius);
+  box-shadow: 0 0 0 1px var(--cry-ink), 0 1.2rem 3rem rgba(0, 0, 0, 0.6);
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  display: flex;
+  flex-direction: column;
+  font-family: inherit;
+}
+.cry-dialog--wide {
+  width: min(46rem, calc(100vw - 2rem));
+}
+.cry-dialog__title {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  font-size: 1.1rem;
+  color: var(--cry-candle);
+  border-bottom: var(--cry-border);
+  letter-spacing: 0.02em;
+}
+.cry-dialog__body {
+  padding: 1rem;
+  overflow-y: auto;
+  color: var(--cry-bone);
+}
+.cry-dialog__footer {
+  padding: 0.7rem 1rem;
+  border-top: var(--cry-border);
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+/* ------------------------------------------------------------- menu */
+.cry-menu {
+  position: relative;
+  display: inline-block;
+  font-family: inherit;
+}
+.cry-menu__popup {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 12rem;
+  background: var(--cry-crypt);
+  border: 1px solid var(--cry-burlap);
+  border-radius: var(--cry-radius);
+  box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.6);
+  z-index: 40;
+  padding: 0.25rem;
+}
+.cry-menu__popup--end {
+  left: auto;
+  right: 0;
+}
+.cry-menu__item {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: 0.8rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  padding: 0.4rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--cry-sand);
+  cursor: pointer;
+}
+.cry-menu__item--danger {
+  color: var(--cry-blood);
+}
+.cry-menu__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cry-menu__item--hot {
+  background: var(--cry-umber);
+  color: var(--cry-bone);
+}
+.cry-menu__hint {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--cry-ash);
+}
+.cry-menu__separator {
+  border: none;
+  border-top: var(--cry-border);
+  margin: 0.25rem 0.4rem;
+}
+
+/* ----------------------------------------------------------- onglets */
+.cry-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: var(--cry-border);
+  font-family: inherit;
+}
+.cry-tabs__tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 0.9rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--cry-ash);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.cry-tabs__tab[aria-selected="true"] {
+  color: var(--cry-candle);
+  border-bottom-color: var(--cry-pumpkin);
+}
+.cry-tabs__tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cry-tabs__badge {
+  font-family: var(--cry-font-mono);
+  font-size: 0.75rem;
+  background: var(--cry-umber);
+  color: var(--cry-bone);
+  border-radius: 2rem;
+  padding: 0 0.45rem;
+  line-height: 1.4;
+}
+
+/* ------------------------------------------------------------- badge */
+.cry-badge {
+  display: inline-block;
+  font-family: var(--cry-font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 0 0.5rem;
+  border-radius: 2px;
+  border: 1px solid currentcolor;
+  white-space: nowrap;
+}
+.cry-badge--pumpkin {
+  color: var(--cry-pumpkin);
+  background: rgba(150, 62, 18, 0.25);
+}
+.cry-badge--blood {
+  color: var(--cry-blood);
+  background: rgba(110, 16, 26, 0.4);
+}
+.cry-badge--ecto {
+  color: var(--cry-ecto);
+  background: rgba(45, 78, 52, 0.4);
+}
+.cry-badge--spectre {
+  color: var(--cry-spectre);
+  background: rgba(66, 57, 110, 0.4);
+}
+.cry-badge--candle {
+  color: var(--cry-candle);
+  background: rgba(172, 120, 60, 0.22);
+}
+.cry-badge--wisp {
+  color: var(--cry-wisp);
+  background: rgba(74, 168, 240, 0.12);
+}
+.cry-badge--ash {
+  color: var(--cry-ash);
+  background: transparent;
+}
+.cry-badge--moss {
+  color: var(--cry-moss);
+  background: rgba(88, 214, 104, 0.12);
+}
+
+/* --------------------------------------- animations (motion autorisé) */
+@media (prefers-reduced-motion: no-preference) {
+  .cry-btn {
+    transition: background 120ms ease-out, border-color 120ms ease-out;
+  }
+  .cry-btn--primary:hover:not(:disabled) {
+    background: var(--cry-pumpkin);
+    color: var(--cry-ink);
+  }
+  .cry-btn--danger:hover:not(:disabled) {
+    background: var(--cry-blood);
+    color: var(--cry-bone);
+  }
+  .cry-btn--subtle:hover:not(:disabled),
+  .cry-btn--ghost:hover:not(:disabled) {
+    border-color: var(--cry-burlap);
+    color: var(--cry-bone);
+  }
+  .cry-list__row {
+    transition: background 100ms ease-out;
+  }
+  .cry-list__row:hover {
+    background: var(--cry-crypt);
+  }
+  .cry-list__row[aria-selected="true"]:hover {
+    background: var(--cry-ecto-dark);
+  }
+  .cry-menu__item {
+    transition: background 80ms ease-out;
+  }
+  .cry-tabs__tab {
+    transition: color 120ms ease-out, border-color 120ms ease-out;
+  }
+  .cry-tabs__tab:hover:not(:disabled) {
+    color: var(--cry-bone);
+  }
+}

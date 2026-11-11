@@ -1,0 +1,62 @@
+/* Thème canonique Crypte (palette --cry-* + styles base chat). Importé par +layout. */
+.crypte-chat {
+  background: var(--cry-void);
+  color: var(--cry-bone);
+  font-family: var(--cry-font-body);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.crypte-chat .frame-title {
+  font-family: var(--cry-font-title);
+  letter-spacing: 0.04em;
+}
+
+.crypte-chat button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.crypte-chat button:focus-visible,
+.crypte-chat textarea:focus-visible,
+.crypte-chat [tabindex]:focus-visible {
+  outline: 1px solid var(--cry-candle);
+  outline-offset: 1px;
+}
+
+/* Bordures arrondies façon TUI (BorderType::Rounded, ombre). */
+.crypte-frame {
+  border: 1px solid var(--cry-umber);
+  border-radius: 8px;
+  background: var(--cry-ink);
+}
+
+/* Molettes fines, teintées crypte. */
+.crypte-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--cry-umber) transparent;
+}
+.crypte-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.crypte-scroll::-webkit-scrollbar-thumb {
+  background: var(--cry-umber);
+  border-radius: 4px;
+}
+
+.crypte-chat canvas.pixel {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crypte-chat *,
+  .crypte-chat *::before,
+  .crypte-chat *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
