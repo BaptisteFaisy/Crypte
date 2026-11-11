@@ -222,6 +222,7 @@ impl App {
     /// occuper un permis réseau ; le canal borné garde la backpressure.
     pub(crate) fn tool_spawn_exec(&mut self, chat: usize, call: ToolCall) {
         self.hooks_fire(crate::kiro::hooks::Trigger::PreToolUse, &call.name, chat);
+        self.space_tool_events(&call);
         self.push_tool_line(chat, format!("[tool {}]", call_line(&call)));
         let tx = self.tx.clone();
         let mcp = self.mcp.clone();

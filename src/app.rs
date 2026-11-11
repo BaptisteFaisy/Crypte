@@ -11,6 +11,7 @@ mod keys;
 mod model;
 mod picker;
 mod send;
+mod space;
 mod ui;
 
 pub use self::ui::Screen;
@@ -78,6 +79,12 @@ pub struct App {
     bank: ImageBank,
     pub(crate) apparition: Apparition,
     pub(crate) hub: Hub,
+    /// Pont d'événements vers le fond 3D (gratuit quand la vue est coupée).
+    pub(crate) scene: crate::space::scene::SceneLog,
+    /// Fond 3D « project space » (F8) ; `None` = coupé.
+    pub(crate) space_view: Option<crate::space::view::SpaceView>,
+    /// Une séquence Kitty d'effacement est en attente (juste après F8).
+    pub(crate) space_delete: bool,
     pub(crate) shop: Shop,
     /// Jeu Haunt (F9, pause hors écran) et son clavier (`app/haunt.rs`).
     pub(crate) haunt: Haunt,
@@ -180,6 +187,7 @@ impl App {
     pub async fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let mut last_tick = Instant::now();
         let mut last_pump = Instant::now();
+        let mut last_space = Instant::now();
         let mut dirty = true;
         'main: loop {
             if dirty {
@@ -213,6 +221,7 @@ impl App {
                 dirty |= self.screen != Screen::Haunt;
             }
             dirty |= self.pump_haunt(&mut last_pump);
+            dirty |= self.pump_space(&mut last_space);
         }
         self.release_keys();
         self.mcp.shutdown().await;

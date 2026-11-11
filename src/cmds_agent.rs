@@ -54,6 +54,11 @@ impl App {
         }
         self.events
             .emit(&Event::agent_spawned(agent_id, id, deliver, &prompt));
+        self.scene.emit(crate::space::SceneEvent::AgentSpawn {
+            id: agent_id as u32,
+            kind: crate::space::AgentKind::Sub,
+            target: crate::space::Target::Path(std::env::current_dir().unwrap_or_default()),
+        });
         self.hooks_fire_agent_spawn(id, &prompt);
         let line = if deliver == id {
             crate::agent_view::spawn_line(agent_id, None, &prompt)

@@ -26,6 +26,8 @@ impl App {
         let messages = critique_messages(prompt);
         let tx = self.tx.clone();
         self.phantom.begin_critique();
+        self.scene
+            .emit(crate::space::SceneEvent::CriticStart { file: None });
         self.pool.spawn(async move {
             let reply = provider.complete_full(&messages, &model, None).await;
             let _ = tx.send(Incoming::Critique(reply)).await;
@@ -35,6 +37,8 @@ impl App {
     /// Critique arrivée : bulle de Kiro (erreur = il ronchonne, sans
     /// détail ; l'almanach a déjà compté les tokens).
     pub(super) fn drain_critique(&mut self, reply: Result<Completion>) {
+        self.scene
+            .emit(crate::space::SceneEvent::CriticDone { file: None });
         match reply {
             Ok(done) => {
                 let tokens = done.prompt_tokens.saturating_add(done.completion_tokens);

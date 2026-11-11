@@ -35,7 +35,14 @@ impl App {
     pub(crate) fn cmd_rewind(&mut self, target: String) {
         match self.t5.checkpoint_dir.as_deref() {
             Some(ckpt) => match crate::kiro::checkpoint::rewind_in(ckpt, &target) {
-                Ok(msg) | Err(msg) => self.push_system(msg),
+                Ok(msg) => {
+                    self.scene.emit(crate::space::SceneEvent::Rewind {
+                        to: 0,
+                        files: Vec::new(),
+                    });
+                    self.push_system(msg)
+                }
+                Err(msg) => self.push_system(msg),
             },
             None => self.push_system(String::from("no checkpoints")),
         }

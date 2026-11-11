@@ -68,6 +68,8 @@ impl App {
             KeyCode::End => self.cmd(|s| s.scroll_bottom()),
             KeyCode::F(5) => self.cmd(|s| s.spook()),
             KeyCode::F(6) => self.cmd(|s| s.open_shop()),
+            KeyCode::F(7) => self.cmd(|s| s.toggle_space_hub()),
+            KeyCode::F(8) => self.cmd(|s| s.toggle_space()),
             KeyCode::F(9) => self.cmd(|s| s.open_haunt()),
             KeyCode::Left if ctrl => self.cmd(|s| s.resize_right(2)),
             KeyCode::Right if ctrl => self.cmd(|s| s.resize_right(-2)),

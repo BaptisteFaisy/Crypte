@@ -22,6 +22,7 @@ pub mod render;
 pub mod scan;
 pub mod scene;
 pub mod slabs;
+pub mod view;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

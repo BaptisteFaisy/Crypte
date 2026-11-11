@@ -87,6 +87,9 @@ impl App {
                 let shown = sess.track_question(&done.text);
                 sess.chat.push(Role::Assistant, shown);
                 self.events.emit(&Event::assistant_msg(id, &done));
+                self.scene.emit(crate::space::SceneEvent::StepStart {
+                    step: crate::space::Step::Answer,
+                });
                 self.hub.signal(Signal::Reply { chat: id });
                 self.apparition.advance();
                 self.pump_chat_inbox(id);
@@ -127,6 +130,10 @@ impl App {
                 let error = format!("{err:#}");
                 self.events
                     .emit(&Event::agent_failed(owner, agent_id, deliver, &error));
+                self.scene.emit(crate::space::SceneEvent::AgentDone {
+                    id: agent_id as u32,
+                    ok: false,
+                });
                 if let Some(dest) = self.sessions.get_mut(deliver) {
                     dest.chat
                         .push(Role::System, format!("{tag} error: {error}"));
@@ -147,6 +154,10 @@ impl App {
         }
         self.events
             .emit(&Event::agent_done(owner, agent_id, deliver, &done));
+        self.scene.emit(crate::space::SceneEvent::AgentDone {
+            id: agent_id as u32,
+            ok: true,
+        });
         if let Some(dest) = self.sessions.get_mut(deliver) {
             dest.ledger
                 .record(done.prompt_tokens, done.completion_tokens, 0.0);
@@ -217,6 +228,9 @@ impl App {
         let Some(provider) = self.provider.clone() else {
             return;
         };
+        self.scene.emit(crate::space::SceneEvent::StepStart {
+            step: crate::space::Step::Think,
+        });
         let (history, epoch) = {
             let Some(sess) = self.sessions.get_mut(idx) else {
                 return;

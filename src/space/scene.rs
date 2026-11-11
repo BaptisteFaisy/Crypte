@@ -232,6 +232,15 @@ fn basename(t: &str) -> &str {
     t.rsplit('/').next().unwrap_or(t)
 }
 
+/// La commande shell d'un appel d'outil : les args sont du JSON
+/// (`{"command": …}`) ; hors JSON, on prend la chaîne telle quelle.
+pub fn shell_command(args: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(args)
+        .ok()
+        .and_then(|v| v.get("command").and_then(|c| c.as_str()).map(String::from))
+        .unwrap_or_else(|| args.to_string())
+}
+
 /// Un argument qui n'est pas un drapeau (cible de redirection, `tee`, `cp`…).
 fn looks_like_path(t: &str) -> bool {
     !t.starts_with('-')

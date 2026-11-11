@@ -68,7 +68,9 @@ impl App {
         self.shop_rows.clear();
         self.bank.begin_frame();
         self.phantom.begin_frame();
-        self.fx.paint_background(area, frame.buffer_mut());
+        if self.space_view.is_none() {
+            self.fx.paint_background(area, frame.buffer_mut());
+        }
         if area.width < MIN_W || area.height < MIN_H {
             let msg = "Terminal too small: 70x17 required (q to quit)";
             let style = Style::new().fg(CANDLE);
@@ -100,7 +102,12 @@ impl App {
             }
         }
         self.draw_status(frame, foot);
-        self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
+        if self.space_view.is_some() {
+            // Fond 3D dessous : le panneau doit rester sans fond de cellule.
+            super::space::clear_panel_bg(frame.buffer_mut(), super::space::panel_cells(area));
+        } else {
+            self.fx.draw(area, frame.buffer_mut(), self.bank.drawn());
+        }
     }
 
     /// Corps chat : cercueils | discussion | hub + apparition ; Kiro en

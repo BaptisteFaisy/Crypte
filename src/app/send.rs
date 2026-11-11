@@ -65,6 +65,8 @@ impl App {
         sess.chat.push(Role::User, text.clone());
         sess.chat.scroll.to_bottom();
         self.events.emit(&crate::events::Event::user_msg(id, &text));
+        self.scene
+            .emit(crate::space::SceneEvent::PromptSent { chat: id });
         sess.push_history("user", text);
         let mut history = send_window(&sess.history, sess.pinned_system);
         sess.sending = true;
@@ -140,7 +142,18 @@ impl App {
             &self.t5.kiro_project,
             self.t5.kiro_global.as_deref(),
         );
-        crate::kiro::steering::auto_for(&files, prompt)
+        let matched = crate::kiro::steering::auto_for(&files, prompt);
+        self.scene
+            .emit_with(|| crate::space::SceneEvent::ContextLoad {
+                files: matched
+                    .iter()
+                    .map(|f| std::path::PathBuf::from(&f.name))
+                    .collect(),
+            });
+        self.scene.emit(crate::space::SceneEvent::StepStart {
+            step: crate::space::Step::Context,
+        });
+        matched
             .into_iter()
             .map(|file| (file.name.clone(), file.body.clone()))
             .collect()

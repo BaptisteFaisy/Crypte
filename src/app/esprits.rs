@@ -18,15 +18,15 @@ impl App {
     /// (si l'écran est affiché dans un terminal Kitty).
     pub(crate) fn render_frame(&mut self, frame: &mut Frame) -> Option<String> {
         self.draw(frame);
+        let space = self.space_sequence(frame);
+        let del = self.take_space_delete();
         let hub = self.hub.view.take_pending();
         let game = self.haunt.view.take_pending();
-        match (hub, game) {
-            (Some(mut a), Some(b)) => {
-                a.push_str(&b);
-                Some(a)
-            }
-            (a, b) => a.or(b),
+        let mut out = String::new();
+        for seq in [space, del, hub, game].into_iter().flatten() {
+            out.push_str(&seq);
         }
+        (!out.is_empty()).then_some(out)
     }
 
     /// Scène pixel des esprits dans `area` (slot keeper, sans liste).

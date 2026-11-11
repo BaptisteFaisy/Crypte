@@ -43,7 +43,13 @@ impl App {
     /// Attente maximale des événements : 1 ms en jeu (240 images/s),
     /// 10 ms ailleurs.
     pub(crate) fn poll_wait(&self) -> Duration {
-        Duration::from_millis(if self.screen == Screen::Haunt { 1 } else { 10 })
+        Duration::from_millis(if self.screen == Screen::Haunt {
+            1
+        } else if self.space_view.is_some() {
+            4
+        } else {
+            10
+        })
     }
 
     /// F9 : ouvre le jeu, ou revient au chat.

@@ -238,6 +238,21 @@ fn upscale(cv: &RgbaImage, scale: u32, out: &mut RgbaImage) {
     }
 }
 
+/// PNG « rapide » (CompressionType::Fast + filtre Sub) : partagé par le hub
+/// et le fond 3D (`space/view.rs`).
+pub(crate) fn png_fast(img: &RgbaImage) -> Option<Vec<u8>> {
+    let mut png = Vec::new();
+    PngEncoder::new_with_quality(&mut png, CompressionType::Fast, FilterType::Sub)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            ExtendedColorType::Rgba8,
+        )
+        .ok()?;
+    Some(png)
+}
+
 /// Séquence Kitty « remplace l'image `id` » (PNG, placement virtuel,
 /// silencieuse), découpée en morceaux de 4096 octets base64.
 /// Filtre PNG : `Sub` aux petits agrandissements (×1, ×2 : 30-40 % plus
@@ -274,8 +289,8 @@ fn kitty_png(id: u32, img: &RgbaImage, scale: u32) -> Option<String> {
     Some(out)
 }
 
-/// Base64 standard (RFC 4648, avec bourrage).
-fn base64(bytes: &[u8]) -> String {
+/// Base64 standard (RFC 4648, avec bourrage) — partagé par `space/view.rs`.
+pub(crate) fn base64(bytes: &[u8]) -> String {
     const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for c in bytes.chunks(3) {
