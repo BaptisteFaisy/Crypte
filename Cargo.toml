@@ -60,3 +60,7 @@ codegen-units = 1 # une seule unite = LTO maximal (avec lto=true)
 # capture souris) repose sur Drop pendant l'unwind ; abort laisserait le terminal casse.
 panic = "unwind"
 overflow-checks = false # defaut release, explicite
+
+# Le depot est son propre workspace (le workspace parent ~/Cargo.toml est casse
+# localement : crates/ vide ; en CI le checkout est seul de toute facon).
+[workspace]

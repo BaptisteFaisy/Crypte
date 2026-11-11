@@ -36,6 +36,15 @@ pub const CANDLE: Color = Color::Rgb(0xFF, 0xC4, 0x6B);
 pub const INK: Color = Color::Rgb(0x12, 0x0D, 0x0B);
 /// Ombres des accents dans le pixel art (citrouille, ectoplasme…).
 pub const PUMPKIN_DARK: Color = Color::Rgb(0x96, 0x3E, 0x12);
+
+// Palette « project space » (docs/design/project-space/DESIGN.md §2) :
+// le fond 3D et son UI flottante. Distincte de la crypte ci-dessus.
+/// Fond du monde 3D, brouillard, yeux des fantômes.
+pub const SPACE_BG: Color = Color::Rgb(0x05, 0x05, 0x05);
+/// Fantômes, lignes, texte du monde 3D.
+pub const SPACE_FG: Color = Color::Rgb(0xF5, 0xF5, 0xF3);
+/// Unique accent : ce qui est actif ou modifié.
+pub const SPACE_ACCENT: Color = Color::Rgb(0xFF, 0x5B, 0x1F);
 pub const ECTO_DARK: Color = Color::Rgb(0x2D, 0x4E, 0x34);
 pub const SPECTRE_DARK: Color = Color::Rgb(0x42, 0x39, 0x6E);
 pub const CANDLE_DARK: Color = Color::Rgb(0xAC, 0x78, 0x3C);

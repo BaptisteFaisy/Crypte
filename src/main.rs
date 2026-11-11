@@ -49,6 +49,7 @@ mod sessions;
 mod settings;
 mod shop;
 mod sidebar;
+mod space;
 #[cfg(test)]
 mod test_env;
 mod texts;
