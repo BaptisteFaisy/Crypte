@@ -58,7 +58,12 @@ jobs:
           restore-keys: |
             mbox-${{ runner.os }}-
       - name: Syslibs Tauri (webkit)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+        run: |
+          if pkg-config --exists webkit2gtk-4.1 gtk+-3.0 librsvg-2.0; then
+            echo "Syslibs Tauri déjà présentes sur le runner."
+          else
+            sudo -n apt-get update && sudo -n apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          fi
       - name: Format (rustfmt)
         run: cargo fmt --check
       - name: Build (hors-ligne si cache trouvé)
