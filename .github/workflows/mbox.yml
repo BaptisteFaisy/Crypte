@@ -47,16 +47,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Cache cargo (registre + git)
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: mbox-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            mbox-${{ runner.os }}-
+      # Cache cargo retiré : `hashFiles` plante de façon déterministe sur les
+      # runners self-hosted (actions/cache@v4 forcé en node24). Le registre
+      # ~/.cargo est de toute façon partagé entre runners sur la même machine.
       - name: Syslibs Tauri (webkit)
         run: |
           if pkg-config --exists webkit2gtk-4.1 gtk+-3.0 librsvg-2.0; then
@@ -66,13 +59,8 @@ jobs:
           fi
       - name: Format (rustfmt)
         run: cargo fmt --check
-      - name: Build (hors-ligne si cache trouvé)
-        run: |
-          if [ "${{ steps.cache.outputs.cache-hit }}" = "true" ]; then
-            cargo build --locked --offline
-          else
-            cargo build --locked
-          fi
+      - name: Build
+        run: cargo build --locked
       - name: Tests mbox + interop (en processus)
         run: cargo test --locked mbox
       - name: Garde des limites (500 L / 30 fn / 50 L)
