@@ -20,8 +20,11 @@ impl App {
         self.draw(frame);
         let space = self.space_sequence(frame);
         let del = self.take_space_delete();
-        let hub = self.hub.view.take_pending();
-        let game = self.haunt.view.take_pending();
+        // Fond 3D actif : une seule image Kitty par frame (la 3D remplace le
+        // panneau hub) — concaténer deux séquences corrompait le transport.
+        let alone = space.is_some();
+        let hub = self.hub.view.take_pending().filter(|_| !alone);
+        let game = self.haunt.view.take_pending().filter(|_| !alone);
         let mut out = String::new();
         for seq in [space, del, hub, game].into_iter().flatten() {
             out.push_str(&seq);

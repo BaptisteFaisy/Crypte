@@ -20,8 +20,9 @@ const Z_BELOW: i64 = -1_073_741_825;
 pub const IMG_ID: u32 = 900_001;
 /// Pas de simulation (30 fps visés).
 const DT: f32 = 1.0 / 30.0;
-/// Taille maximale d'un morceau base64 (comme `hub/live.rs`).
-const CHUNK: usize = 4096;
+/// Taille d'un morceau base64. 16 384 octets : moins d'APC par frame que les
+/// 4 096 de la spec, et vérifié de bout en bout sur Ghostty 1.3.1.
+const CHUNK: usize = 16384;
 
 /// La vue 3D : état logique, monde, file d'événements, horloge.
 pub struct SpaceView {
@@ -33,7 +34,6 @@ pub struct SpaceView {
     pub panel: Option<[i64; 4]>,
     rx: Receiver<SceneEvent>,
     now: f64,
-    placed: bool,
     half: RgbaImage,
     full: RgbaImage,
 }
@@ -47,7 +47,6 @@ impl SpaceView {
             panel: None,
             rx,
             now: 0.0,
-            placed: false,
             half: RgbaImage::new(2, 2),
             full: RgbaImage::new(4, 4),
         }
@@ -79,9 +78,7 @@ impl SpaceView {
             .frame(&mut self.half, &self.state, self.now, DT, panel);
         upscale2(&self.half, &mut self.full);
         let png = png_fast(&self.full)?;
-        let seq = chunks(&base64(&png), self.placed);
-        self.placed = true;
-        Some(seq)
+        Some(chunks(&base64(&png), cols, rows))
     }
 
     /// Efface l'image du terminal (bascule F8 vers l'arrêt).
@@ -90,33 +87,25 @@ impl SpaceView {
     }
 }
 
-/// Séquence Kitty : premier envoi = transmission + placement (curseur en
-/// 0,0, z sous les cellules) ; ensuite = remplacement des données en place.
-fn chunks(data: &str, placed: bool) -> String {
-    let action = if placed { "t" } else { "T" };
-    let mut out = String::new();
-    if !placed {
-        out.push_str("\x1b[H");
-    }
+/// Séquence Kitty plein cadre, même placement (`p=1`) à chaque frame : le
+/// terminal remplace l'image en place. En-tête vérifié sur Ghostty 1.3.1
+/// (curseur en 0,0, `z` sous les fonds de cellules, `c`/`r` = emprise).
+fn chunks(data: &str, cols: u16, rows: u16) -> String {
+    let mut out = String::from("\x1b[H");
     let bytes = data.as_bytes();
     let n = bytes.len().div_ceil(CHUNK);
     for i in 0..n {
         let more = u8::from(i + 1 < n);
         let head = if i == 0 {
-            if placed {
-                format!("\x1b_Ga={action},f=100,q=2,i={IMG_ID},")
-            } else {
-                format!("\x1b_Ga={action},f=100,q=2,z={Z_BELOW},i={IMG_ID},")
-            }
+            format!("a=T,f=100,i={IMG_ID},q=2,z={Z_BELOW},p=1,C=1,c={cols},r={rows},m={more};")
         } else {
-            String::new()
+            format!("m={more};")
         };
         let slice = &bytes[i * CHUNK..bytes.len().min((i + 1) * CHUNK)];
-        out.push_str(&format!(
-            "{}m={more};{}\x1b\\",
-            head,
-            std::str::from_utf8(slice).unwrap_or("")
-        ));
+        out.push_str("\x1b_G");
+        out.push_str(&head);
+        out.push_str(std::str::from_utf8(slice).unwrap_or(""));
+        out.push_str("\x1b\\");
     }
     out
 }
@@ -159,16 +148,32 @@ mod tests {
 
     use std::path::PathBuf;
 
+    /// Décharge la séquence Kitty réelle dans /tmp/space-seq.bin (vérif visu).
     #[test]
-    fn la_première_frame_place_les_suivantes_remplacent() {
+    #[ignore]
+    fn dump_sequence() {
+        let (_tx, rx) = mpsc::channel(4);
+        let tree = crate::space::scan::scan_tree(std::path::Path::new(".")).unwrap_or_default();
+        let mut v = SpaceView::new(rx, &tree);
+        for i in 0..60 {
+            v.pump();
+            let _ = i;
+        }
+        let seq = v.sequence(160, 45, (10, 19)).expect("seq");
+        std::fs::write("/tmp/space-seq.bin", seq).expect("write");
+    }
+
+    #[test]
+    fn chaque_frame_remplace_le_même_placement() {
         let (_tx, rx) = mpsc::channel(4);
         let mut v = SpaceView::new(rx, &tree());
         let first = v.sequence(40, 12, (10, 20)).expect("assez grand");
         assert!(first.starts_with("\x1b[H\x1b_Ga=T,"), "placement initial");
         assert!(first.contains("z=-1073741825"));
+        assert!(first.contains("p=1,C=1,c=40,r=12"), "emprise plein cadre");
         let next = v.sequence(40, 12, (10, 20)).expect("assez grand");
-        assert!(next.contains("\x1b_Ga=t,"), "remplacement en place");
-        assert!(!next.starts_with("\x1b[H"), "pas de re-placement");
+        assert!(next.contains("\x1b_Ga=T,"), "même action, même placement");
+        assert!(next.contains(&format!("i={IMG_ID}")));
     }
 
     #[test]

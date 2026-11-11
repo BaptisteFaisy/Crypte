@@ -140,15 +140,19 @@ impl App {
         let agents = self.sessions.running_agents(self.sessions.index());
         let [esprits, omen] =
             Layout::vertical([Constraint::Percentage(45), Constraint::Min(6)]).areas(right);
-        self.draw_hub(frame, esprits);
+        if self.space_view.is_none() {
+            self.draw_hub(frame, esprits);
+        }
         let creature = self.apparition.current(sending, agents);
         let accent = if self.apparition.scaring() {
             BLOOD
         } else {
             PUMPKIN
         };
-        draw_card(frame, omen, creature, accent, &mut self.bank);
-        self.phantom.draw(frame, side.union(chat), &mut self.bank);
+        if self.space_view.is_none() {
+            draw_card(frame, omen, creature, accent, &mut self.bank);
+            self.phantom.draw(frame, side.union(chat), &mut self.bank);
+        }
     }
 
     /// Corps compact (< 80 col.) : sidebar 14 + discussion au reste.
