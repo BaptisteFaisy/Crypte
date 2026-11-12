@@ -88,9 +88,14 @@ impl SceneState {
             SceneEvent::CheckpointSaved { n } => self.checkpoint = *n,
             SceneEvent::Rewind { to, files } => {
                 self.checkpoint = *to;
+                let from = files
+                    .iter()
+                    .map(|f| self.files.get(f).map(|s| s.slabs).unwrap_or(1))
+                    .collect();
                 self.rewind = Some(RewindState {
                     at: now,
                     files: files.clone(),
+                    from,
                 });
                 for f in files {
                     if let Some(fs) = self.files.get_mut(f) {

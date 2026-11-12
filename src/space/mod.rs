@@ -14,6 +14,8 @@
 
 pub mod actors;
 pub mod cam;
+pub mod collapse;
+pub mod falls;
 pub mod layout;
 pub mod paint;
 pub mod proj;
@@ -193,6 +195,8 @@ pub struct KiroState {
 pub struct RewindState {
     pub at: f64,
     pub files: Vec<PathBuf>,
+    /// Dalles que chaque fichier portait AVANT l'effondrement (animation).
+    pub from: Vec<u32>,
 }
 
 /// Le monde logique : ce que la scène sait, indépendamment du rendu.
