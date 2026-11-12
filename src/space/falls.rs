@@ -150,7 +150,7 @@ impl Falls {
             }
             if let Some(p) = flight_pos(state, layout, *id, now) {
                 let v = raster::fog(eye_dist(cam, p), far * 0.12, far);
-                ghost(cv, cam, w, h, p, SUB_W);
+                ghost(cv, cam, w, h, p, SUB_W, now, v);
                 if let Some(t) = target_pos(&s.target, layout) {
                     beam_to(cv, cam, w, h, p, t, v);
                 }
@@ -158,7 +158,8 @@ impl Falls {
         }
         for f in self.falls.values() {
             if let Some((p, _ang)) = f.pose(now) {
-                ghost(cv, cam, w, h, p, SUB_W);
+                let v = raster::fog(eye_dist(cam, p), far * 0.12, far);
+                ghost(cv, cam, w, h, p, SUB_W, now, v);
             }
         }
         for im in &self.impacts {

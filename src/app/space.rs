@@ -19,6 +19,8 @@ use crate::space::{scan, SceneEvent};
 
 /// Cadence du fond : 30 images par seconde.
 const FRAME: Duration = Duration::from_millis(33);
+/// Nombre maximal de quartiers dessinés (le projet actif compris).
+const MAX_PROJECTS: usize = 6;
 
 impl App {
     /// F8 : active ou coupe le fond 3D.
@@ -26,17 +28,22 @@ impl App {
         if self.space_view.is_some() {
             self.space_view = None;
             self.scene = SceneLog::disabled();
+            self.space_watch = None;
             self.space_delete = true;
             return;
         }
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let tree = scan::scan_tree(&cwd).unwrap_or_default();
+        let entries = districts(&cwd, tree.clone());
         let (log, rx) = SceneLog::channel(256);
-        let mut view = SpaceView::new(rx, &tree);
+        let mut view = SpaceView::new(rx, &entries);
         view.state
             .apply(&SceneEvent::ProjectOpen { path: cwd, tree }, 0.0);
         self.scene = log;
         self.space_view = Some(view);
+        let mut watch = crate::space::watch::Watcher::new();
+        watch.seed(&std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        self.space_watch = Some(watch);
     }
 
     /// F7 : la caméra s'éloigne sur tous les projets (ou revient).
@@ -87,6 +94,36 @@ impl App {
         }
     }
 
+    /// Diff du disque (écritures hors shell) ; `None` quand la 3D est coupée.
+    pub(crate) fn poll_space_watch(&mut self) {
+        let Some(w) = self.space_watch.as_mut() else {
+            return;
+        };
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        for ch in w.poll(&cwd) {
+            use crate::space::watch::Change;
+            match ch {
+                Change::Written {
+                    path,
+                    added,
+                    removed,
+                } => self.scene.emit(crate::space::SceneEvent::FileWrite {
+                    path,
+                    agent: crate::space::AgentRef::Main,
+                    added,
+                    removed,
+                }),
+                Change::Created { path, .. } => {
+                    self.scene.emit(crate::space::SceneEvent::FileCreate {
+                        path,
+                        agent: crate::space::AgentRef::Main,
+                    });
+                }
+                Change::Removed { .. } => {} // pas de visuel dédié pour l'instant
+            }
+        }
+    }
+
     /// Séquence Kitty du fond, à écrire après les cellules ; mémorise au
     /// passage le rectangle du panneau (voile cuit dans l'image).
     pub(crate) fn space_sequence(&mut self, frame: &mut Frame) -> Option<String> {
@@ -106,6 +143,44 @@ impl App {
             None
         }
     }
+}
+
+/// Dossiers de travail où chercher les autres projets (`KH_SPACE_WORKSPACES`,
+/// séparés par `:`, sinon `~/code`).
+fn workspaces() -> Vec<PathBuf> {
+    if let Ok(v) = std::env::var("KH_SPACE_WORKSPACES") {
+        return v
+            .split(':')
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect();
+    }
+    std::env::var("HOME")
+        .ok()
+        .map(|h| vec![PathBuf::from(h).join("code")])
+        .unwrap_or_default()
+}
+
+/// Le projet actif + jusqu'à [`MAX_PROJECTS`] quartiers voisins.
+fn districts(cwd: &PathBuf, tree: scan::ProjectTree) -> Vec<(String, scan::ProjectTree, bool)> {
+    let mut out = vec![(name_of(cwd), tree, true)];
+    let ws = workspaces();
+    for p in scan::list_projects(&ws, cwd) {
+        if out.len() >= MAX_PROJECTS {
+            break;
+        }
+        if let Ok(t) = scan::scan_tree(&p) {
+            out.push((name_of(&p), t, false));
+        }
+    }
+    out
+}
+
+/// Nom d'un projet (dernier composant du chemin).
+fn name_of(p: &PathBuf) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| p.to_string_lossy().to_string())
 }
 
 /// Rectangle du panneau de chat, en cellules (proportions du design §3 :

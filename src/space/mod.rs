@@ -15,9 +15,12 @@
 pub mod actors;
 pub mod cam;
 pub mod collapse;
+pub mod demo;
 pub mod falls;
+pub mod hud;
 pub mod layout;
 pub mod paint;
+pub mod post;
 pub mod proj;
 pub mod raster;
 pub mod render;
@@ -25,6 +28,7 @@ pub mod scan;
 pub mod scene;
 pub mod slabs;
 pub mod view;
+pub mod watch;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

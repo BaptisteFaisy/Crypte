@@ -85,6 +85,8 @@ pub struct App {
     pub(crate) space_view: Option<crate::space::view::SpaceView>,
     /// Une séquence Kitty d'effacement est en attente (juste après F8).
     pub(crate) space_delete: bool,
+    /// Diff du disque pour la 3D (`None` quand la vue est coupée).
+    pub(crate) space_watch: Option<crate::space::watch::Watcher>,
     pub(crate) shop: Shop,
     /// Jeu Haunt (F9, pause hors écran) et son clavier (`app/haunt.rs`).
     pub(crate) haunt: Haunt,
@@ -282,6 +284,9 @@ impl App {
         self.fx.tick(self.apparition.scaring());
         if self.tick % 10 == 0 {
             self.refresh_ctx_cache();
+        }
+        if self.tick % 20 == 0 {
+            self.poll_space_watch();
         }
         crate::mbox::eveil::tour(&self.events);
     }

@@ -39,11 +39,11 @@ pub struct SpaceView {
 }
 
 impl SpaceView {
-    /// Vue neuve sur un projet.
-    pub fn new(rx: Receiver<SceneEvent>, tree: &ProjectTree) -> Self {
+    /// Vue neuve sur un ou plusieurs projets (quartiers).
+    pub fn new(rx: Receiver<SceneEvent>, entries: &[(String, ProjectTree, bool)]) -> Self {
         Self {
             state: SceneState::new(),
-            space: Space::new(tree),
+            space: Space::new_many(entries),
             panel: None,
             rx,
             now: 0.0,
@@ -154,7 +154,7 @@ mod tests {
     fn dump_sequence() {
         let (_tx, rx) = mpsc::channel(4);
         let tree = crate::space::scan::scan_tree(std::path::Path::new(".")).unwrap_or_default();
-        let mut v = SpaceView::new(rx, &tree);
+        let mut v = SpaceView::new(rx, &[(String::from("p"), tree, true)]);
         for i in 0..60 {
             v.pump();
             let _ = i;
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn chaque_frame_remplace_le_même_placement() {
         let (_tx, rx) = mpsc::channel(4);
-        let mut v = SpaceView::new(rx, &tree());
+        let mut v = SpaceView::new(rx, &[(String::from("p"), tree(), true)]);
         let first = v.sequence(40, 12, (10, 20)).expect("assez grand");
         assert!(first.starts_with("\x1b[H\x1b_Ga=T,"), "placement initial");
         assert!(first.contains("z=-1073741825"));
@@ -179,14 +179,14 @@ mod tests {
     #[test]
     fn trop_petit_ne_produit_rien() {
         let (_tx, rx) = mpsc::channel(4);
-        let mut v = SpaceView::new(rx, &tree());
+        let mut v = SpaceView::new(rx, &[(String::from("p"), tree(), true)]);
         assert!(v.sequence(1, 1, (10, 20)).is_none());
     }
 
     #[test]
     fn les_événements_sont_pliés_au_pump() {
         let (tx, rx) = mpsc::channel(4);
-        let mut v = SpaceView::new(rx, &tree());
+        let mut v = SpaceView::new(rx, &[(String::from("p"), tree(), true)]);
         tx.try_send(SceneEvent::HubOpen).unwrap();
         v.pump();
         assert!(v.state.hub);

@@ -1,6 +1,7 @@
 //! Fantômes et faisceaux : le fantôme principal vole vers les fichiers.
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use image::{Rgba, RgbaImage};
 
@@ -9,8 +10,7 @@ use super::paint::{accent, ink};
 use super::proj::{eye_dist, project, world_to_px, CamParams, Vec3};
 use super::raster;
 use super::{KiroState, SceneState};
-use crate::canvas::px;
-use crate::theme;
+use crate::canvas::Ink;
 
 /// Le fantôme flotte 46 unités au-dessus du fichier (DESIGN §6.1).
 const HOVER: f32 = 46.0;
@@ -86,7 +86,16 @@ fn kiro_body(cv: &mut RgbaImage, cam: &CamParams, w: u32, h: u32, pos: Vec3, v: 
         return;
     };
     let r = world_to_px(cam, KIRO_W, d, h).max(3.0);
-    ghost(cv, cam, w, h, pos, KIRO_W);
+    let side = (r * 2.0).round().max(4.0) as u32;
+    let scaled = crate::bestiary::fit(&sprites()[2], side, side);
+    let (sw, sh) = scaled.dimensions();
+    crate::canvas::blit(
+        cv,
+        &scaled,
+        sx as i64 - i64::from(sw) / 2,
+        sy as i64 - i64::from(sh) / 2,
+        Ink::alpha(v.min(1.0)),
+    );
     for s in [-1.0_f32, 1.0] {
         raster::line(
             cv,
@@ -109,6 +118,7 @@ pub fn main_ghost(
     state: &SceneState,
     layout: &Layout,
     now: f64,
+    far: f32,
 ) {
     let Some(path) = &state.main_file else {
         return;
@@ -119,7 +129,8 @@ pub fn main_ghost(
     let top_y = file_top_y(state, path);
     let bob = (now * BOB_W).sin() as f32 * BOB;
     let pos = b.base + Vec3::new(0.0, top_y + HOVER + bob, 0.0);
-    ghost(cv, cam, w, h, pos, GHOST_W);
+    let v = raster::fog(eye_dist(cam, pos), far * 0.12, far);
+    ghost(cv, cam, w, h, pos, GHOST_W, now, v);
     let target = b.base + Vec3::new(0.0, top_y, 0.0);
     let (c, a) = if state.main_wrote {
         (accent(1.0), 0.85)
@@ -143,33 +154,50 @@ pub fn file_top_y(state: &SceneState, path: &PathBuf) -> f32 {
 }
 
 /// Silhouette de fantôme : dôme lumineux, corps, deux yeux.
-pub fn ghost(cv: &mut RgbaImage, cam: &CamParams, w: u32, h: u32, pos: Vec3, size: f32) {
+/// Un fantôme : le sprite du dépôt (`assets/hub/agent-*.txt`, ou
+/// `sous-agent-*` si `sub`), mis à l'échelle entière, sur un halo doux.
+/// Les deux frames alternent pour un flottement vivant.
+pub fn ghost(
+    cv: &mut RgbaImage,
+    cam: &CamParams,
+    w: u32,
+    h: u32,
+    pos: Vec3,
+    size: f32,
+    now: f64,
+    v: f32,
+) {
     let Some((sx, sy, d)) = project(cam, pos, w, h) else {
         return;
     };
-    let r = world_to_px(cam, size, d, h).max(3.0);
-    raster::glow(cv, sx, sy - r * 0.25, r * 0.9, ink(1.0), 0.85);
-    raster::quad(
+    let r = world_to_px(cam, size, d, h).max(2.0);
+    raster::glow(cv, sx, sy + r * 0.35, r * 1.15, ink(1.0), 0.22 * v);
+    let frame = if (now * 4.0) as u64 % 2 == 0 { 0 } else { 1 };
+    let sprite = &sprites()[frame];
+    let side = (r * 2.0).round().max(4.0) as u32;
+    let scaled = crate::bestiary::fit(sprite, side, side);
+    let (sw, sh) = scaled.dimensions();
+    crate::canvas::blit(
         cv,
-        [
-            (sx - r * 0.42, sy - r * 0.1),
-            (sx + r * 0.42, sy - r * 0.1),
-            (sx + r * 0.34, sy + r * 0.62),
-            (sx - r * 0.34, sy + r * 0.62),
-        ],
-        ink(1.0),
-        0.95,
+        &scaled,
+        sx as i64 - i64::from(sw) / 2,
+        sy as i64 - i64::from(sh) / 2,
+        Ink::alpha(v.min(1.0)),
     );
-    for s in [-1.0_f32, 1.0] {
-        raster::dot(
-            cv,
-            sx + s * r * 0.16,
-            sy - r * 0.18,
-            (r * 0.09).max(0.7),
-            px(theme::SPACE_BG),
-            1.0,
-        );
-    }
+}
+
+/// Sprites embarqués à la compilation (comme `hub/render.rs`) : les deux
+/// frames du fantôme blanc, puis Kiro qui juge.
+fn sprites() -> &'static [RgbaImage; 3] {
+    static S: OnceLock<[RgbaImage; 3]> = OnceLock::new();
+    S.get_or_init(|| {
+        let g = |src: &str| crate::bestiary::decode_grid(src).expect("sprite valide");
+        [
+            g(include_str!("../../assets/hub/agent-a.txt")),
+            g(include_str!("../../assets/hub/agent-b.txt")),
+            g(include_str!("../../assets/pixel/kiro-juge.txt")),
+        ]
+    })
 }
 
 /// Faisceau du fantôme vers le fichier (blanc en lecture, orange en écriture).

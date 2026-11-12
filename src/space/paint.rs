@@ -1,11 +1,9 @@
-//! Couleurs et étiquettes du monde 3D (via `theme.rs`).
+//! Couleurs du monde 3D (via `theme.rs`) et enveloppes temporelles.
 
-use image::{Rgba, RgbaImage};
+use image::Rgba;
 
-use super::proj::{project, CamParams, Vec3};
 use super::FileState;
 use crate::canvas::px;
-use crate::hub::font;
 use crate::theme;
 
 /// Enveloppe d'un fichier lu : 0,3 s de montée, 0,6 s de descente (DESIGN §7).
@@ -29,28 +27,6 @@ pub fn accent(t: f32) -> Rgba<u8> {
         t.clamp(0.0, 1.0),
     ))
 }
-
-/// Étiquettes au sol (police pixel 3×5 du hub, réutilisée).
-pub fn label(
-    cv: &mut RgbaImage,
-    cam: &CamParams,
-    at: Vec3,
-    text: &str,
-    w: u32,
-    h: u32,
-    c: Rgba<u8>,
-    v: f32,
-) {
-    let Some((sx, sy, _)) = project(cam, at, w, h) else {
-        return;
-    };
-    let x0 = sx as i64 - (font::width(text) / 2);
-    let col = Rgba([c[0], c[1], c[2], 255]);
-    if v > 0.15 {
-        font::paint(cv, x0, sy as i64, text, 1, |_| col);
-    }
-}
-
 /// Intensités 0..1 d'un fichier : lecture, écriture en cours, modification.
 pub fn intensities(st: Option<&FileState>, now: f64) -> (f32, f32, f32) {
     let Some(st) = st else {

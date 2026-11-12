@@ -21,6 +21,8 @@ pub(crate) struct Args {
     pub(crate) planche: Option<String>,
     pub(crate) apercu: Option<String>,
     pub(crate) haunt_shot: Option<String>,
+    /// Planche PNG du monde 3D (`--space-shot`).
+    pub(crate) space_shot: Option<String>,
     pub(crate) events_log: Option<String>,
     pub(crate) mbox: Option<Vec<String>>,
 }
@@ -38,6 +40,7 @@ pub(crate) fn parse_args() -> Result<Args> {
         planche: None,
         apercu: None,
         haunt_shot: None,
+        space_shot: None,
         events_log: None,
         mbox: None,
     };
@@ -79,6 +82,10 @@ fn parse_option(
         "--haunt-shot" => {
             let path = it.next().context("--haunt-shot expects a .png path")?;
             args.haunt_shot = Some(path);
+        }
+        "--space-shot" => {
+            let path = it.next().context("--space-shot expects a .png path")?;
+            args.space_shot = Some(path);
         }
         "--planche" | "--sheet" => {
             let path = it.next().context("--sheet expects a .png path")?;

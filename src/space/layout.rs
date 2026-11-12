@@ -48,6 +48,17 @@ pub struct FileBox {
     pub dir: usize,
 }
 
+/// Un quartier (projet) posé au sol : sa plaque extérieure et son nom.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectPlate {
+    pub name: String,
+    pub origin: Vec3,
+    pub w: f32,
+    pub d: f32,
+    /// Le projet actif : cadre orange pointillé « you are here ».
+    pub active: bool,
+}
+
 /// Le monde d'un projet.
 #[derive(Debug, Clone, Default)]
 pub struct Layout {
@@ -55,6 +66,8 @@ pub struct Layout {
     files: BTreeMap<PathBuf, FileBox>,
     /// Dossiers trop denses : une pile unique au centre de la plaque.
     grouped: BTreeMap<usize, FileBox>,
+    /// Quartiers : un par projet (le premier est l'actif).
+    pub projects: Vec<ProjectPlate>,
 }
 
 /// Origine du quartier d'un projet (`0` = projet actif, au centre ; les autres
@@ -69,25 +82,51 @@ pub fn district_origin(index: usize) -> Vec3 {
 }
 
 impl Layout {
-    /// Construit la disposition d'un arbre de projet.
+    /// Construit la disposition d'un arbre de projet (projet actif seul).
     pub fn build(tree: &ProjectTree) -> Self {
-        let dirs = dir_boxes(tree);
-        let mut files = BTreeMap::new();
-        let mut grouped = BTreeMap::new();
-        for (file, rank) in ranked(tree) {
-            let Some(dir) = dirs.get(file.dir) else {
-                continue;
-            };
-            files.insert(file.path.clone(), slot_of(dir, rank, file.dir));
-            if dir.files > MAX_FILES_PER_FOLDER && !grouped.contains_key(&file.dir) {
-                grouped.insert(file.dir, group_center(dir, file.dir));
+        let name = tree
+            .root
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| tree.root.to_string_lossy().to_string());
+        Self::build_many(&[(name, tree.clone(), true)])
+    }
+
+    /// Pose plusieurs quartiers : un par projet, décalés de
+    /// [`district_origin`]. Les chemins du projet actif restent relatifs ;
+    /// ceux des autres sont préfixés par leur racine (clés uniques).
+    pub fn build_many(entries: &[(String, ProjectTree, bool)]) -> Self {
+        let mut out = Self::default();
+        for (i, (name, tree, active)) in entries.iter().enumerate() {
+            let off = district_origin(i);
+            let dirs = dir_boxes(tree, off);
+            let base = out.dirs.len();
+            for (file, rank) in ranked(tree) {
+                let Some(dir) = dirs.get(file.dir) else {
+                    continue;
+                };
+                let key = if *active {
+                    file.path.clone()
+                } else {
+                    tree.root.join(&file.path)
+                };
+                out.files.insert(key, slot_of(dir, rank, base + file.dir));
+                let g = base + file.dir;
+                if dir.files > MAX_FILES_PER_FOLDER && !out.grouped.contains_key(&g) {
+                    out.grouped.insert(g, group_center(dir, g));
+                }
             }
+            let (w, d) = bounds(&dirs);
+            out.projects.push(ProjectPlate {
+                name: name.clone(),
+                origin: off,
+                w,
+                d,
+                active: *active,
+            });
+            out.dirs.extend(dirs);
         }
-        Self {
-            dirs,
-            files,
-            grouped,
-        }
+        out
     }
 
     /// Position d'un fichier.
@@ -105,15 +144,19 @@ impl Layout {
         self.files.iter()
     }
 
-    /// Centre du projet (cible de caméra au repos).
+    /// Centre du projet actif (cible de caméra au repos).
     pub fn center(&self) -> Vec3 {
-        let rows = self.dirs.len().saturating_sub(1) as f32;
-        Vec3::new(0.0, 0.0, -rows * ROW_PITCH / 2.0)
+        self.projects
+            .iter()
+            .find(|p| p.active)
+            .or_else(|| self.projects.first())
+            .map(|p| p.origin + Vec3::new(p.w / 2.0, 0.0, -p.d / 2.0))
+            .unwrap_or_default()
     }
 }
 
 /// Une plaque par dossier, rangée en profondeur.
-fn dir_boxes(tree: &ProjectTree) -> Vec<DirBox> {
+fn dir_boxes(tree: &ProjectTree, off: Vec3) -> Vec<DirBox> {
     tree.dirs
         .iter()
         .enumerate()
@@ -121,13 +164,20 @@ fn dir_boxes(tree: &ProjectTree) -> Vec<DirBox> {
             let n = tree.files.iter().filter(|f| f.dir == i).count();
             DirBox {
                 path: dir.path.clone(),
-                origin: Vec3::new(0.0, 0.0, -(i as f32) * ROW_PITCH),
+                origin: off + Vec3::new(0.0, 0.0, -(i as f32) * ROW_PITCH),
                 w: plate_width(n),
                 d: SLAB + FOLDER_PAD * 2.0,
                 files: n,
             }
         })
         .collect()
+}
+
+/// Emprise d'un quartier : largeur de sa plus grande plaque, profondeur de
+/// ses rangées de dossiers.
+fn bounds(dirs: &[DirBox]) -> (f32, f32) {
+    let w = dirs.iter().map(|b| b.w).fold(0.0, f32::max);
+    (w.max(SLAB), dirs.len() as f32 * ROW_PITCH)
 }
 
 /// Largeur d'une plaque pour `n` fichiers (bornée au regroupement).
@@ -246,6 +296,7 @@ mod tests {
     fn dossier_courant_non_regroupé() {
         let l = Layout::build(&tree(&["src"], &[("src/a.rs", 0, 10)]));
         assert!(l.grouped_of(0).is_none());
-        assert!(l.center().z.abs() < 0.01);
+        // Le centre est le milieu du quartier actif, pas l'origine.
+        assert!((l.center().z + ROW_PITCH / 2.0).abs() < 0.01);
     }
 }

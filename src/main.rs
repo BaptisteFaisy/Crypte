@@ -252,6 +252,11 @@ async fn sortie_precoce(args: &Args) -> Result<bool> {
         println!("haunt shot: {path}");
         return Ok(true);
     }
+    if let Some(path) = args.space_shot.as_deref() {
+        crate::space::demo::write_shot(path)?;
+        println!("space shot: {path}");
+        return Ok(true);
+    }
     if let Some(prompt) = args.once.as_deref() {
         let cfg = resolve_or_stored(args)
             .context("no API key: --config, KH_API_KEY or a /settings entry")?;

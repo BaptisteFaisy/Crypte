@@ -165,6 +165,7 @@ impl App {
             scene: crate::space::scene::SceneLog::disabled(),
             space_view: None,
             space_delete: false,
+            space_watch: None,
             vps: crate::vps::VpsRuntime::load(),
             cloud: crate::kiro::cloud::CloudJobs::new(),
             tx,
