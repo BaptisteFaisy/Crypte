@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crypt — project space 3D</title>
+<meta name="description" content="Le fond 3D de Crypt : vos projets en quartiers, vos fichiers en dalles, l'agent en fantôme. Rendu logiciel dans le terminal.">
+<style>
+  :root { --bg:#050505; --fg:#F5F5F3; --acc:#FF5B1F; --dim:rgba(245,245,243,.55); --line:rgba(245,245,243,.13); }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:400 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  a { color:var(--acc); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  header { padding:56px 24px 24px; max-width:1080px; margin:0 auto; }
+  h1 { font-size:clamp(28px,5vw,52px); letter-spacing:-.04em; margin:0 0 8px; font-weight:600; }
+  h1 span { color:var(--acc); }
+  .sub { color:var(--dim); max-width:640px; }
+  .badges { margin-top:16px; }
+  .badge { display:inline-block; border:1px solid var(--line); border-radius:999px;
+           padding:2px 12px; margin:0 6px 6px 0; font-size:12px; color:var(--dim); }
+  main { max-width:1080px; margin:0 auto; padding:0 24px 80px; }
+  section { margin-top:56px; }
+  h2 { font-size:13px; letter-spacing:.16em; text-transform:uppercase; color:var(--acc);
+       margin:0 0 20px; font-weight:600; }
+  video, img.shot { width:100%; border:1px solid var(--line); border-radius:14px; display:block; background:#000; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; }
+  figure { margin:0; }
+  figcaption { color:var(--dim); font-size:13px; margin-top:10px; }
+  figcaption b { color:var(--fg); font-weight:600; }
+  .keys { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  .key { border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .key code { color:var(--acc); }
+  ul.todo { columns:2; column-gap:40px; padding-left:18px; color:var(--dim); font-size:13px; }
+  ul.todo li { margin-bottom:4px; break-inside:avoid; }
+  ul.todo li.done { color:var(--fg); }
+  ul.todo li.done::marker { color:var(--acc); }
+  footer { border-top:1px solid var(--line); padding:24px; text-align:center; color:var(--dim); font-size:13px; }
+  @media (max-width:720px){ ul.todo { columns:1; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>CRYPT <span>·</span> PROJECT SPACE</h1>
+  <p class="sub">Un chat LLM dans une crypte hantée, dont le fond d'écran est une
+  vraie 3D&nbsp;: vos projets en quartiers, vos dossiers en plaques, vos fichiers en
+  piles de dalles — et le fantôme de l'agent qui vole vers ce qu'il lit et écrit,
+  <b>dans le terminal</b>, sans fenêtre graphique.</p>
+  <div class="badges">
+    <span class="badge">Rust · ratatui</span>
+    <span class="badge">rendu 3D logiciel</span>
+    <span class="badge">image Kitty derrière les cellules</span>
+    <span class="badge">44 fps mesurés à 960×540</span>
+    <span class="badge">0 dépendance graphique</span>
+  </div>
+</header>
+
+<main>
+<section>
+  <h2>La scène, en direct</h2>
+  <video autoplay muted loop playsinline poster="shot-impact.png" src="space-demo.mp4"></video>
+  <p class="sub" style="margin-top:12px">Neuf secondes de scénario réel du moteur :
+  lecture (faisceau blanc), écriture (orange + dalle ajoutée), sous-agent poussé dans
+  le vide et impact au sol, Kiro sur son perchoir, <code>/rewind</code> qui effondre
+  les dalles, puis <code>F7</code> qui éloigne la caméra sur tous les projets.</p>
+</section>
+
+<section>
+  <h2>Ce que montre le fond</h2>
+  <div class="grid">
+    <figure><img class="shot" src="shot-read.png" alt="Lecture d'un fichier">
+      <figcaption><b>Lecture.</b> Le fantôme principal vole vers le fichier, faisceau
+      blanc, dessus de la dalle éclairé.</figcaption></figure>
+    <figure><img class="shot" src="shot-impact.png" alt="Écriture et impact">
+      <figcaption><b>Écriture + impact.</b> Le fichier s'allume en orange, une dalle
+      s'ajoute ; le sous-agent terminé est poussé : anneaux orange et blanc au sol.</figcaption></figure>
+    <figure><img class="shot" src="shot-fall.png" alt="Sous-agent en chute">
+      <figcaption><b>La chute.</b> vx 260, vy 200, gravité 900, tumbling — puis il
+      s'enfonce dans le sol.</figcaption></figure>
+    <figure><img class="shot" src="shot-rewind.png" alt="Effondrement /rewind">
+      <figcaption><b>/rewind.</b> Les dalles créées depuis le checkpoint se détachent
+      du sommet vers la base ; la caméra encaisse (+8° de fov, secousse).</figcaption></figure>
+    <figure><img class="shot" src="shot-hub.png" alt="Vue de tous les projets">
+      <figcaption><b>F7 — le hub.</b> La caméra s'éloigne, le brouillard s'ouvre, les
+      quartiers apparaissent ; l'actif garde son cadre orange pointillé
+      «&nbsp;you are here&nbsp;».</figcaption></figure>
+    <figure><img class="shot" src="shot-real.png" alt="Rendu sur le vrai dépôt">
+      <figcaption><b>Sur le vrai dépôt.</b> <code>--space-shot</code> : la planche du
+      monde 3D posé sur l'arborescence réelle de Crypt, panneau de chat par-dessus.</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <h2>Comment ça tient dans un terminal</h2>
+  <div class="grid">
+    <figure>
+      <figcaption style="margin:0"><b>1. Rendu 3D logiciel.</b> Projection perspective
+      maison, tri du peintre, dalles translucides à arêtes fines, brouillard linéaire,
+      sol en grille de points, bloom approché — le tout peint dans une
+      <code>RgbaImage</code> à demi-résolution, agrandie ×2.</figcaption>
+      <figcaption><b>2. Une image Kitty en z-index négatif.</b> La frame part en une
+      seule image placée <em>sous</em> les fonds de cellules (z &lt; INT32_MIN/2) : le
+      texte ratatui reste net par-dessus. Le voile semi-transparent du panneau de chat
+      est cuit dans l'image (flou + dégradé + coins orange), car les cellules du
+      terminal sont opaques.</figcaption>
+      <figcaption><b>3. Découplé de l'agent.</b> La logique émet des
+      <code>SceneEvent</code> typés sur un canal borné ; le rendu les plie dans un état
+      logique. Vue coupée (défaut), l'émission ne coûte rien.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2>Essayer</h2>
+  <div class="keys">
+    <div class="key"><code>F8</code> — activer / couper le fond 3D</div>
+    <div class="key"><code>F7</code> — vue de tous les projets</div>
+    <div class="key"><code>--space-shot x.png</code> — planche hors terminal</div>
+    <div class="key"><code>--space-anim dir/</code> — frames d'une animation</div>
+    <div class="key"><code>KH_SPACE_WORKSPACES</code> — dossiers de projets (défaut <code>~/code</code>)</div>
+    <div class="key"><a href="lab.html">le prototype three.js interactif ⤢</a></div>
+  </div>
+</section>
+
+<section>
+  <h2>Les 100 idées — 10 faites</h2>
+  <ul class="todo">
+    <li class="done">Fantômes = sprites réels du dépôt (2 frames)</li>
+    <li class="done">Bloom approché + poussière + piliers</li>
+    <li class="done">Panneau de chat fidèle (flou, dégradé, coins orange)</li>
+    <li class="done">HUD : titre d'étape, caption, métriques</li>
+    <li class="done">Étiquettes LOD + anti-chevauchement</li>
+    <li class="done">Quartiers multi-projets + « you are here »</li>
+    <li class="done">Observation du disque sans dépendance (écritures réelles)</li>
+    <li class="done"><code>--space-shot</code> / <code>--space-anim</code></li>
+    <li class="done">Budget de perf mesuré (bench 500 fichiers)</li>
+    <li class="done">Chutes, impacts, perchoir de Kiro, effondrement /rewind</li>
+    <li>Parallaxe des couches UI</li>
+    <li>Ombrage de Lambert sur les dalles</li>
+    <li>Point-light orange sur le fichier écrit</li>
+    <li>Dalle qui se soulève à la création</li>
+    <li>Révélation gauche→droite de la réponse</li>
+    <li>Trace des 6 étapes dans le panneau</li>
+    <li>Barre de statut tok/s · p50 · contexte</li>
+    <li>Bouton RUN / RUNNING avec glow</li>
+    <li>Un fantôme par sous-agent multi-chats</li>
+    <li>Plateforme flottante pour la recherche web</li>
+    <li>Borne de checkpoint au sol</li>
+    <li>Stats par projet (fichiers, lignes, activité)</li>
+    <li>Projets GitHub non clonés en grisé</li>
+    <li>Navigation hub au clavier</li>
+    <li>Mini-carte des districts</li>
+    <li>Transitions de caméra en spline</li>
+    <li>Chemins tronqués au centre</li>
+    <li>Étiquettes orientées au sol</li>
+    <li>Police ×2 lissée</li>
+    <li>Base de caméra précalculée par frame</li>
+    <li>Culling par boîte englobante</li>
+    <li>Cache des projections de sommets</li>
+    <li>Fps affichés + saut de frame</li>
+    <li>20 fps sous forte charge</li>
+    <li>Zéro allocation par frame</li>
+    <li><code>/space on|off|hub|shot</code></li>
+    <li>F8 persisté dans les settings</li>
+    <li>Molette / drag caméra</li>
+    <li>Clic sur un fichier</li>
+    <li>Mode cinéma</li>
+    <li>Info-bulle au survol</li>
+    <li>Toggles étiquettes / sol</li>
+    <li>Vitesse d'animation configurable</li>
+    <li>Aura par statut git</li>
+    <li>Branche courante au sol</li>
+    <li>Diff en micro-dalles</li>
+    <li>Fichiers « chauds » par commits</li>
+    <li>Arbre = <code>git ls-files</code></li>
+    <li><code>.gitignore</code> respecté</li>
+    <li>Districts par worktree</li>
+    <li>Fanion PR / CI</li>
+    <li>Kiro en balade dans la 3D</li>
+    <li>Brouillard rouge sur alerte</li>
+    <li>Dalles qui s'effritent à la suppression</li>
+    <li>Sous-agents échoués en cendres</li>
+    <li>Jump scare discret</li>
+    <li>Débris persistants après impact</li>
+    <li>Lanternes d'allées</li>
+    <li>Mode crypte au sol</li>
+    <li>Écho en anneaux à la réponse</li>
+    <li>Almanach en particules</li>
+    <li>Golden images par hash</li>
+    <li>Invariant « panneau sans fond »</li>
+    <li>Repli demi-blocs non-Kitty</li>
+    <li>Message si pas de Kitty</li>
+    <li><code>--space-log</code> JSONL</li>
+    <li><code>--space-replay</code></li>
+    <li>PLAN.md + captures au dépôt</li>
+    <li>Garde CI lignes / fonctions</li>
+  </ul>
+  <p class="sub">Liste complète et détaillée :
+  <a href="https://github.com/BaptisteFaisy/Crypte/blob/feat/project-space-3d/docs/design/project-space/IDEES.md">docs/design/project-space/IDEES.md</a>
+  · spec : <a href="https://github.com/BaptisteFaisy/Crypte/blob/feat/project-space-3d/docs/design/project-space/DESIGN.md">DESIGN.md</a>
+  · brief : <a href="https://github.com/BaptisteFaisy/Crypte/blob/feat/project-space-3d/docs/design/project-space/BRIEF.md">BRIEF.md</a></p>
+</section>
+</main>
+
+<footer>
+  Crypt · <a href="https://github.com/BaptisteFaisy/Crypte">github.com/BaptisteFaisy/Crypte</a> ·
+  branche <code>feat/project-space-3d</code> · design : PR #145
+</footer>
+</body>
+</html>

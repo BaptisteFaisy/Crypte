@@ -25,9 +25,11 @@ pub fn write_shot(path: &str) -> std::io::Result<()> {
     let mut space = Space::new_many(&[("demo".to_string(), tree, true)]);
     for i in 0..90 {
         space.frame(&mut cv, &state, i as f64 / 30.0, 1.0 / 30.0, Some(PANEL));
+        fake_chat(&mut cv, PANEL);
     }
     state.step = Some(Step::Answer);
     space.frame(&mut cv, &state, 3.0, 1.0 / 30.0, Some(PANEL));
+    fake_chat(&mut cv, PANEL);
     cv.save(path)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     Ok(())
@@ -110,9 +112,194 @@ fn demo_state(tree: &ProjectTree) -> SceneState {
     s
 }
 
+/// Écrit une animation frame par frame dans `dir` (`frame0000.png`, …) et
+/// rend le nombre de frames. Les événements sont joués selon un scénario
+/// (`script`) : lecture, écriture, sous-agent poussé, Kiro, `/rewind`, hub.
+pub fn write_anim(dir: &str, fps: u32, secs: f64) -> std::io::Result<usize> {
+    let entries = demo_entries();
+    let mut state = SceneState::new();
+    state.apply(
+        &SceneEvent::ProjectOpen {
+            path: PathBuf::from("/demo"),
+            tree: entries[0].1.clone(),
+        },
+        0.0,
+    );
+    let mut space = Space::new_many(&entries);
+    let script = script();
+    let total = (fps as f64 * secs).round() as usize;
+    std::fs::create_dir_all(dir)?;
+    let mut applied = 0;
+    for i in 0..total {
+        let t = i as f64 / fps as f64;
+        while applied < script.len() && script[applied].0 <= t {
+            state.apply(&script[applied].1, script[applied].0);
+            applied += 1;
+        }
+        let mut cv = RgbaImage::from_pixel(W, H, Rgba([0, 0, 0, 255]));
+        space.frame(&mut cv, &state, t, 1.0 / fps as f32, Some(PANEL));
+        fake_chat(&mut cv, PANEL);
+        cv.save(format!("{dir}/frame{i:04}.png"))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    }
+    Ok(total)
+}
+
+/// Scénario de démonstration : (instant, événement).
+fn script() -> Vec<(f64, SceneEvent)> {
+    let hot = PathBuf::from("src/mod1/f05.rs");
+    let read = PathBuf::from("src/mod0/f04.rs");
+    vec![
+        (
+            0.4,
+            SceneEvent::FileRead {
+                path: read,
+                agent: AgentRef::Main,
+            },
+        ),
+        (
+            1.6,
+            SceneEvent::AgentSpawn {
+                id: 1,
+                kind: AgentKind::Sub,
+                target: Target::Path(PathBuf::from("src/mod2/f10.rs")),
+            },
+        ),
+        (
+            2.0,
+            SceneEvent::CriticStart {
+                file: Some(hot.clone()),
+            },
+        ),
+        (2.6, SceneEvent::StepStart { step: Step::Act }),
+        (3.4, SceneEvent::AgentDone { id: 1, ok: true }),
+        (
+            4.0,
+            SceneEvent::CriticDone {
+                file: Some(hot.clone()),
+            },
+        ),
+        (
+            4.6,
+            SceneEvent::FileWrite {
+                path: hot.clone(),
+                agent: AgentRef::Main,
+                added: 300,
+                removed: 0,
+            },
+        ),
+        (6.0, SceneEvent::CheckpointSaved { n: 1 }),
+        (
+            6.6,
+            SceneEvent::Rewind {
+                to: 1,
+                files: vec![hot],
+            },
+        ),
+        (7.6, SceneEvent::StepStart { step: Step::Answer }),
+        (8.4, SceneEvent::HubOpen),
+    ]
+}
+
+/// Le projet de démo + deux quartiers voisins (vue hub).
+fn demo_entries() -> Vec<(String, ProjectTree, bool)> {
+    vec![
+        ("demo".to_string(), demo_tree(), true),
+        (
+            "ghost-hours".to_string(),
+            side_tree("ghost-hours", 9),
+            false,
+        ),
+        ("thin-air".to_string(), side_tree("thin-air", 6), false),
+    ]
+}
+
+/// Petit arbre pour un quartier voisin.
+fn side_tree(name: &str, n: usize) -> ProjectTree {
+    ProjectTree {
+        root: PathBuf::from(format!("/{name}")),
+        dirs: (0..2)
+            .map(|i| DirNode {
+                path: PathBuf::from(format!("src/m{i}")),
+                parent: (i > 0).then_some(0),
+            })
+            .collect(),
+        files: (0..n)
+            .map(|i| FileNode {
+                path: PathBuf::from(format!("src/m{}/f{i:02}.rs", i % 2)),
+                dir: i % 2,
+                lines: 60 + ((i * 211) % 700) as u32,
+            })
+            .collect(),
+    }
+}
+
+/// Faux chat dessiné DANS le panneau : le vrai terminal écrit le texte par
+///-dessus de l'image Kitty ; la planche du site doit montrer le rendu final.
+fn fake_chat(cv: &mut RgbaImage, panel: [i64; 4]) {
+    use crate::hub::font;
+    let (x, y) = (panel[0] + 10, panel[1] + 10);
+    let white = crate::space::paint::ink(0.92);
+    let grey = crate::space::paint::ink(0.55);
+    let orange = crate::space::paint::accent(0.95);
+    // En-tête du panneau.
+    font::paint(cv, x, y, "CRY / CHAT-1 / MINI", 2, |_| grey);
+    for i in 0..3 {
+        let c = if i == 0 { orange } else { grey };
+        font::paint(cv, x + i * 10, y + 18, ".", 3, |_| c);
+    }
+    // Bulle utilisateur.
+    font::paint(
+        cv,
+        x + 40,
+        y + 40,
+        "ADD A HOVER EFFECT TO THE GHOST",
+        1,
+        |_| white,
+    );
+    // Trace des six etapes.
+    let steps = [
+        ("01 ASK", grey),
+        ("02 CONTEXT", grey),
+        ("03 THINK", grey),
+        ("04 ACT", orange),
+        ("05 CRITIC", grey),
+        ("06 ANSWER", grey),
+    ];
+    for (i, (s, c)) in steps.iter().enumerate() {
+        font::paint(cv, x, y + 80 + i as i64 * 16, s, 2, |_| *c);
+    }
+    // Reponse.
+    font::paint(cv, x, y + 200, "THE GHOST NOW MOVES TO THE FILE", 1, |_| {
+        white
+    });
+    font::paint(
+        cv,
+        x,
+        y + 216,
+        "IT READS. SRC/HUB/SERVER.RS  +4 -1",
+        1,
+        |_| grey,
+    );
+    // Saisie.
+    font::paint(cv, x, y + 400, "ASK THE CRYPT...", 1, |_| grey);
+    font::paint(cv, x + 240, y + 400, "RUN", 1, |_| orange);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn l_animation_écrit_ses_frames() {
+        let dir = std::env::temp_dir().join(format!("crypt-space-anim-{}", std::process::id()));
+        let n = write_anim(dir.to_str().expect("utf8"), 10, 0.5).expect("anim");
+        assert_eq!(n, 5);
+        let f0 = dir.join("frame0000.png");
+        let bytes = std::fs::read(&f0).expect("frame");
+        assert_eq!(&bytes[0..4], b"\x89PNG");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn la_planche_est_un_png() {

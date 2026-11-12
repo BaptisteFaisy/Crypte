@@ -257,6 +257,11 @@ async fn sortie_precoce(args: &Args) -> Result<bool> {
         println!("space shot: {path}");
         return Ok(true);
     }
+    if let Some(dir) = args.space_anim.as_deref() {
+        let n = crate::space::demo::write_anim(dir, 30, 9.5)?;
+        println!("space anim: {n} frames in {dir}");
+        return Ok(true);
+    }
     if let Some(prompt) = args.once.as_deref() {
         let cfg = resolve_or_stored(args)
             .context("no API key: --config, KH_API_KEY or a /settings entry")?;
