@@ -91,6 +91,26 @@
 </section>
 
 <section>
+  <h2>Aussi dans la webview (port Tauri + Svelte)</h2>
+  <div class="grid">
+    <figure><img class="shot" src="web-work.png" alt="Le monde 3D dans la webview">
+      <figcaption><b>three.js, même contrat.</b> Le port desktop (branche
+      <code>feat/space-tauri</code) rend le même monde dans la webview :
+      dalles translucides, fantômes extrudés du path du design, cadre orange
+      pointillé — et le panneau de chat devient un vrai verre dépoli
+      (<code>backdrop-filter</code>), impossible dans un terminal.</figcaption></figure>
+    <figure><img class="shot" src="web-hub.png" alt="Vue hub dans la webview">
+      <figcaption><b>F7 dans la webview.</b> La caméra recule sur le quartier,
+      les étiquettes de fichiers s'effacent (LOD), le cadre «&nbsp;you are
+      here&nbsp;» reste seul en orange.</figcaption></figure>
+  </div>
+  <p class="sub">Mêmes événements, deux rendus : le terminal (image Kitty en
+  z-négatif, branche <code>feat/project-space-3d</code>) et la webview
+  (three.js, branche <code>feat/space-tauri</code>) partagent le contrat
+  <code>SceneEvent</code> et la mise en place du monde.</p>
+</section>
+
+<section>
   <h2>Comment ça tient dans un terminal</h2>
   <div class="grid">
     <figure>
