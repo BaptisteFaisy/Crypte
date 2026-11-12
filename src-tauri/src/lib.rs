@@ -78,6 +78,7 @@ pub mod settings;
 pub mod shop;
 pub mod slash;
 pub mod sonde_timer;
+pub mod space;
 pub mod spec_runner;
 pub mod state;
 pub mod subagents;
@@ -103,7 +104,7 @@ pub use sessions::{AgentStatus, AskError, ChatSession, CloseOutcome, Sessions, S
 pub use state::{BackendOut, ToolsBackend};
 
 /// Lance l'app Tauri : migration legacy, états gérés, boucles de fond
-/// (`Incoming`, events, tick 10 Hz, sonde mbox), 93 commandes, autosave.
+/// (`Incoming`, events, tick 10 Hz, sonde mbox), 95 commandes, autosave.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(events_log: Option<std::path::PathBuf>) {
     let migrated = paths::migrate();
@@ -178,6 +179,8 @@ fn setup_tasks(
             bridge::on_event(&core, &tools, &relay, &event);
             use tauri::Emitter;
             let _ = relay.emit(bridge::CRYPTE_EVENT, &event);
+            // Le monde 3D dérive ses événements du flux domaine (un seul point).
+            crate::space::events::derive(&tools.lock().unwrap().space, &event);
         }
     });
     spawn_tick(handle.clone());

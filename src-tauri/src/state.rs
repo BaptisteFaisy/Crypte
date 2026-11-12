@@ -22,6 +22,7 @@ use crate::kiro::mcp_pool::McpState;
 use crate::permissions::{self, Mode, Rules};
 use crate::phantom::Phantom;
 use crate::provider::Llm;
+use crate::space::events::SpaceLog;
 use crate::spec_runner::SpecRunner;
 
 pub use crate::outbox::BackendOut;
@@ -90,6 +91,9 @@ pub struct ToolsBackend {
     pub last_omen: Option<(String, Instant)>,
     /// Journal JSONL (`--events-log` / `KH_EVENTS_LOG`).
     pub events: EventLog,
+    /// Événements du monde 3D (canal `space-event`). Désactivé au boot :
+    /// l'intégrateur branche `space = SpaceLog::from_app(handle)`.
+    pub space: SpaceLog,
     /// File des sorties vers la tranche core (`take_outbox`).
     pub outbox: Vec<BackendOut>,
     critique_tx: tokio::sync::mpsc::UnboundedSender<CritiqueDone>,
@@ -138,6 +142,7 @@ impl ToolsBackend {
             current_chat: 0,
             last_omen: None,
             events: EventLog::resolve(None),
+            space: SpaceLog::disabled(),
             outbox: Vec::new(),
             kiro_project,
             kiro_global,
