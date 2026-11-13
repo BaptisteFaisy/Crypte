@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 import {
   buildMany,
@@ -25,6 +26,8 @@ import {
   makeLabel,
   makePlate,
   makeSlabStack,
+  seen,
+  sizeLabel,
   toVec3,
   updateSlabStack,
   type ImpactObject,
@@ -40,7 +43,7 @@ export interface SpaceScene {
 const FOV = 42;
 const YAW = 0.62;
 const deg = (d: number) => (d * Math.PI) / 180;
-const CLOSE = { dist: 780, pitch: deg(17) };
+const CLOSE = { dist: 900, pitch: deg(20) };
 const OVERVIEW = { dist: 1850, pitch: deg(27) };
 const HUB = { dist: 10500, pitch: deg(38) };
 const PUSH = { vx: 260, vy: 200, g: 900 };
@@ -55,7 +58,10 @@ interface Fall {
 
 export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setClearColor(new THREE.Color(SPACE_THEME.bg), 1);
+  // Fond transparent : le noir vient du CSS du canvas (#050505). Une couleur
+  // de fond opaque passait deux fois en sRGB dans le composer et sortait
+  // en #262626 (gris) au lieu de #050505 (DESIGN §2).
+  renderer.setClearColor(new THREE.Color(SPACE_THEME.bg), 0);
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(new THREE.Color(SPACE_THEME.bg), 180, 1500);
   const camera = new THREE.PerspectiveCamera(FOV, 1, 10, 80000);
@@ -66,6 +72,9 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   composer.addPass(new UnrealBloomPass(new THREE.Vector2(480, 270), 0.7, 0.5, 0.62));
+  // Sans OutputPass, le composer sort du linéaire non converti : le noir
+  // #050505 ressortait gris. OutputPass applique l'espace sRGB (DESIGN §2).
+  composer.addPass(new OutputPass());
 
   const world = new THREE.Group();
   scene.add(world);
@@ -84,6 +93,8 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   const stacks = new Map<string, SlabStack>();
   const glows = new Map<string, THREE.Mesh>();
   const labels = new Map<string, THREE.Sprite>();
+  const allLabels: THREE.Sprite[] = [];
+  let viewH = 900;
   const subGhosts = new Map<number, THREE.Group>();
   const falls = new Map<number, Fall>();
   const impacts: { obj: ImpactObject; at: number; pos: THREE.Vector3; big: boolean }[] = [];
@@ -122,7 +133,14 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   function resize(width: number, height: number): void {
     renderer.setSize(width, height, false);
     composer.setSize(width, height);
+    viewH = Math.max(1, height);
+    for (const l of allLabels) sizeLabel(l, viewH, FOV);
     camera.aspect = width / Math.max(1, height);
+    // Le chat occupe la gauche (DESIGN §3) : on décale le centre de la vue
+    // vers la droite pour que la scène tombe dans la zone libre.
+    const shift = width > 900 ? Math.min(width * 0.2, 360) : 0;
+    if (shift > 0) camera.setViewOffset(width, height, -shift, 0, width, height);
+    else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   }
 
@@ -144,6 +162,14 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
     stacks.clear();
     glows.clear();
     labels.clear();
+    allLabels.length = 0;
+  }
+
+  function addLabel(sprite: THREE.Sprite): THREE.Sprite {
+    sizeLabel(sprite, viewH, FOV);
+    allLabels.push(sprite);
+    world.add(sprite);
+    return sprite;
   }
 
   function buildStatic(lay: WorldLayout): void {
@@ -151,23 +177,25 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
       const plate = makePlate(dir.w, dir.d);
       plate.position.copy(toVec3(dir.origin));
       world.add(plate);
-      const label = makeLabel(dir.path);
-      label.position.copy(toVec3(dir.origin)).add(new THREE.Vector3(dir.w / 2, 4, dir.d + 40));
+      // Le chemin du dossier est écrit au sol, au bord avant de la plaque.
+      const label = makeLabel(dir.path, "dir");
+      label.center.set(0, 0.5);
+      label.position.copy(toVec3(dir.origin)).add(new THREE.Vector3(6, 2, dir.d + 18));
       labels.set(dir.path, label);
-      world.add(label);
+      addLabel(label);
     }
     for (const p of lay.projects) {
       if (p.active) {
         const frameObj = makeDistrictFrame(p.w + 170, p.d + 170);
         frameObj.position.copy(toVec3(p.origin)).add(new THREE.Vector3(-85, 0, -85));
         world.add(frameObj);
-        const you = makeLabel("you are here");
+        const you = makeLabel("you are here", "here");
         you.position.copy(toVec3(p.origin)).add(new THREE.Vector3(p.w / 2, 6, p.d + 160));
-        world.add(you);
+        addLabel(you);
       }
-      const name = makeLabel(p.name);
+      const name = makeLabel(p.name, "project");
       name.position.copy(toVec3(p.origin)).add(new THREE.Vector3(p.w / 2, 10, -120));
-      world.add(name);
+      addLabel(name);
     }
     for (const [path, box] of lay.files) {
       const stack = makeSlabStack();
@@ -179,10 +207,10 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
       glow.scale.setScalar(165);
       glows.set(path, glow);
       world.add(glow);
-      const label = makeLabel(path.split("/").pop() ?? path);
+      const label = makeLabel(path.split("/").pop() ?? path, "file");
       label.position.copy(toVec3(box.base)).setY(60);
       labels.set(path, label);
-      world.add(label);
+      addLabel(label);
     }
   }
 
@@ -203,6 +231,8 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
         m.color.set(warm > cool ? SPACE_THEME.accent : SPACE_THEME.fg);
       }
       if (label) {
+        // L'étiquette du fichier flotte juste au-dessus de sa pile.
+        label.position.y = (st?.slabs ?? 1) * 22 + 12 + 10;
         const s = label.material as THREE.SpriteMaterial;
         s.opacity = state.hub ? 0 : Math.min(0.85, 0.25 + 0.6 * Math.max(read, active) + (changed ? 0.3 : 0));
       }
@@ -331,16 +361,16 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
       const u = Math.min(1, dt / 1.4);
       const e = 1 - (1 - u) * (1 - u);
       im.obj.ring.scale.setScalar(size * e + 1);
-      (im.obj.ring.material as THREE.MeshBasicMaterial).opacity = (1 - u) * 0.9;
+      (im.obj.ring.material as THREE.MeshBasicMaterial).opacity = (1 - u) * 0.7;
       const u2 = (dt - 0.12) / 1.6;
       if (u2 > 0) {
         const e2 = 1 - (1 - Math.min(1, u2)) ** 2;
         im.obj.white.scale.setScalar(size * 1.5 * e2 + 1);
-        (im.obj.white.material as THREE.MeshBasicMaterial).opacity = (1 - Math.min(1, u2)) * 0.45;
+        (im.obj.white.material as THREE.MeshBasicMaterial).opacity = (1 - Math.min(1, u2)) * 0.3;
       }
       if (dt < 0.45) {
-        im.obj.flash.scale.setScalar(size * 1.8);
-        (im.obj.flash.material as THREE.MeshBasicMaterial).opacity = 1 - dt / 0.45;
+        im.obj.flash.scale.setScalar(size * 1.2);
+        (im.obj.flash.material as THREE.MeshBasicMaterial).opacity = (1 - dt / 0.45) * 0.5;
       }
       const pos = im.obj.dust.geometry.getAttribute("position") as THREE.BufferAttribute;
       for (let j = 0; j < 26; j++) {
@@ -372,7 +402,7 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
         ? CLOSE
         : OVERVIEW;
     const target = state.hub
-      ? new THREE.Vector3()
+      ? layoutCenterVec(lay)
       : state.mainFile && lay.files.get(state.mainFile)
         ? toVec3(lay.files.get(state.mainFile)!.base).setY(60)
         : layoutCenterVec(lay);
@@ -467,7 +497,7 @@ function makeFloor(): THREE.Points {
       size: 3,
       sizeAttenuation: true,
       transparent: true,
-      opacity: 0.3,
+      opacity: seen(0.3),
       depthWrite: false,
     }),
   );

@@ -10,6 +10,7 @@
   import "../lib/crypte-screens.css";
   import { shell } from "../lib/crypte.svelte";
   import SpaceBackground from "../lib/space/SpaceBackground.svelte";
+  import SpaceHud from "../lib/space/SpaceHud.svelte";
   import { space } from "../lib/space/store.svelte";
   import "../lib/space/space.css";
   import ConnectModal from "../lib/components/ConnectModal.svelte";
@@ -88,6 +89,8 @@
   </main>
   <StatusBar />
 </div>
+
+<SpaceHud />
 
 {#if shell.question}
   <QuestionModal question={shell.question} />

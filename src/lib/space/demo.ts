@@ -49,7 +49,7 @@ export function startDemo(state: SceneState, now: () => number): () => void {
   const id = setInterval(() => {
     const t = now() - loop * 12;
     while (i < script.length && script[i][0] <= t) {
-      apply(state, script[i][1], script[i][0]);
+      apply(state, script[i][1], script[i][0] + loop * 12);
       i++;
     }
     if (i >= script.length && t > 12) {
