@@ -1,62 +1,123 @@
 // demo.ts — scénario de démonstration hors Tauri (dev navigateur).
-// Mêmes beats que `src/space/demo.rs` du port terminal : lecture, écriture,
-// sous-agent poussé, Kiro, /rewind, hub. Sert aussi de repli si le backend
-// ne répond pas encore.
+// Même histoire que le prototype `docs/design/project-space/crypt-lab.html` :
+// on travaille sur le projet crypt lui-même. Le fantôme charge le contexte,
+// lit server.rs et error.log, lance deux sous-agents (nginx.conf, le web),
+// corrige encode.rs, Kiro juge, réponse, puis F7 sur tous les projets.
+// Sert aussi de repli si le backend ne répond pas encore.
 import { apply } from "./state";
-import type { ProjectTree, SceneEvent, SceneState } from "./types";
+import { newSceneState, slabsFor, type ProjectTree, type SceneEvent, type SceneState } from "./types";
 
-/// Arbre de démonstration : 4 dossiers, 24 fichiers.
-export function demoTree(): ProjectTree {
-  const dirs = [0, 1, 2, 3].map((i) => ({
-    path: `src/mod${i}`,
-    parent: i > 0 ? 0 : null,
-  }));
-  const files = Array.from({ length: 24 }, (_, i) => ({
-    path: `src/mod${i % 4}/f${String(i).padStart(2, "0")}.rs`,
-    dir: i % 4,
-    lines: 40 + ((i * 137) % 900),
-  }));
-  return { root: "/demo", dirs, files };
+/// Arborescence de crypt (1 dalle ≈ 150 lignes, comme DESIGN §6.1).
+const CRYPT: [string, [string, number][]][] = [
+  ["crypt", [["AGENTS.md", 2], ["Cargo.toml", 1], ["README.md", 2]]],
+  [".kiro/steering", [["tone.md", 1], ["rust.md", 1]]],
+  ["skills", [["debug-http.md", 1]]],
+  ["src", [["main.rs", 2], ["app.rs", 4]]],
+  ["src/chat", [["session.rs", 5], ["stream.rs", 3], ["tokens.rs", 2]]],
+  ["src/hub", [["server.rs", 4], ["encode.rs", 5]]],
+  ["src/tui", [["render.rs", 6], ["crypt_scene.rs", 5], ["widgets.rs", 3]]],
+  ["src/agents", [["spawn.rs", 4], ["kiro.rs", 3]]],
+  ["src/store", [["checkpoints.rs", 3], ["coins.rs", 2]]],
+  ["deploy", [["nginx.conf", 2]]],
+  ["logs", [["error.log", 3]]],
+  ["tests", [["hub_test.rs", 2]]],
+];
+
+function pathOf(dir: string, name: string): string {
+  return dir === "crypt" ? name : `${dir}/${name}`;
 }
+
+/// Arbre de démonstration : le projet crypt (12 dossiers, 25 fichiers).
+export function demoTree(): ProjectTree {
+  const dirs = CRYPT.map(([path], i) => ({ path, parent: i > 0 ? 0 : null }));
+  const files = CRYPT.flatMap(([dir, list], d) =>
+    list.map(([name, slabs]) => ({ path: pathOf(dir, name), dir: d, lines: slabs * 150 - 20 })),
+  );
+  return { root: "/crypt", dirs, files };
+}
+
+/// Les autres projets de l'utilisateur (vue F7) : des quartiers plus petits.
+const NEIGHBORS = ["hub-site", "pixel-crypt", "kiro", "bestiary", "lantern", "docs"];
+
+/// Arbre généré (stable) d'un projet voisin.
+export function neighborTree(name: string, seed: number): ProjectTree {
+  let x = seed * 9301 + 49297;
+  const rnd = () => {
+    x = (x * 9301 + 49297) % 233280;
+    return x / 233280;
+  };
+  const nd = 3 + Math.floor(rnd() * 4);
+  const dirs = Array.from({ length: nd }, (_, i) => ({ path: i === 0 ? name : `src/m${i}`, parent: i > 0 ? 0 : null }));
+  const files: ProjectTree["files"] = [];
+  dirs.forEach((_, d) => {
+    const nf = 2 + Math.floor(rnd() * 4);
+    for (let f = 0; f < nf; f++) files.push({ path: `${d === 0 ? "" : `src/m${d}/`}f${f}.rs`, dir: d, lines: (1 + Math.floor(rnd() * 6)) * 150 - 20 });
+  });
+  return { root: `/${name}`, dirs, files };
+}
+
+/// Ajoute les voisins après le projet actif (index 0 = crypt).
+export function addNeighbors(state: SceneState): void {
+  NEIGHBORS.forEach((name, i) => {
+    const tree = neighborTree(name, i + 1);
+    state.projects.push({ root: tree.root, name, tree });
+    for (const f of tree.files) {
+      state.files.set(`${tree.root}/${f.path}`, { slabs: slabsFor(f.lines), readAt: null, writeAt: null, changed: false });
+    }
+  });
+}
+
+/// Durée d'un tour du scénario (s).
+export const DEMO_LOOP = 25;
 
 /// Le scénario : (instant, événement).
 export function demoScript(): [number, SceneEvent][] {
-  const hot = "src/mod1/f05.rs";
-  const read = "src/mod0/f04.rs";
   return [
-    [0.4, { type: "file_read", path: read, agent: "main" }],
-    [1.6, { type: "agent_spawn", id: 1, kind: "sub", target: { path: "src/mod2/f10.rs" } }],
-    [2.0, { type: "critic_start", file: hot }],
-    [2.6, { type: "step_start", step: "act" }],
-    [3.4, { type: "agent_done", id: 1, ok: true }],
-    [4.0, { type: "critic_done", file: hot }],
-    [4.6, { type: "file_write", path: hot, agent: "main", added: 300, removed: 0 }],
-    [6.0, { type: "checkpoint_saved", n: 1 }],
-    [6.6, { type: "rewind", to: 1, files: [hot] }],
-    [7.6, { type: "step_start", step: "answer" }],
-    [8.4, { type: "hub_open" }],
-    [11.0, { type: "hub_close" }],
-    [11.6, { type: "file_read", path: read, agent: "main" }],
+    [0.4, { type: "prompt_sent", chat: 1 }],
+    [1.6, { type: "step_start", step: "context" }],
+    [1.7, {
+      type: "context_load",
+      files: ["AGENTS.md", ".kiro/steering/tone.md", ".kiro/steering/rust.md", "skills/debug-http.md"],
+    }],
+    [3.6, { type: "step_start", step: "think" }],
+    [5.0, { type: "step_start", step: "act" }],
+    [5.2, { type: "file_read", path: "src/hub/server.rs", agent: "main" }],
+    [7.0, { type: "file_read", path: "logs/error.log", agent: "main" }],
+    [8.0, { type: "agent_spawn", id: 1, kind: "sub", target: { path: "deploy/nginx.conf" } }],
+    [8.3, { type: "agent_spawn", id: 2, kind: "web", target: "web" }],
+    [9.6, { type: "file_write", path: "src/hub/encode.rs", agent: "main", added: 150, removed: 1 }],
+    [12.4, { type: "agent_done", id: 1, ok: true }],
+    [13.2, { type: "agent_done", id: 2, ok: true }],
+    [13.6, { type: "step_start", step: "critic" }],
+    [13.7, { type: "critic_start", file: "src/hub/encode.rs" }],
+    [16.6, { type: "critic_done", file: "src/hub/encode.rs" }],
+    [17.2, { type: "step_start", step: "answer" }],
+    [17.8, { type: "checkpoint_saved", n: 3 }],
+    [19.5, { type: "hub_open" }],
+    [23.5, { type: "hub_close" }],
   ];
 }
 
 /// Lance le scénario sur `state` ; rend la fonction d'arrêt.
 export function startDemo(state: SceneState, now: () => number): () => void {
-  apply(state, { type: "project_open", path: "/demo", tree: demoTree() }, 0);
+  apply(state, { type: "project_open", path: "/crypt", tree: demoTree() }, 0);
+  addNeighbors(state);
   const script = demoScript();
   let i = 0;
   let loop = 0;
   const id = setInterval(() => {
-    const t = now() - loop * 12;
+    const t = now() - loop * DEMO_LOOP;
     while (i < script.length && script[i][0] <= t) {
-      apply(state, script[i][1], script[i][0]);
+      apply(state, script[i][1], script[i][0] + loop * DEMO_LOOP);
       i++;
     }
-    if (i >= script.length && t > 12) {
-      // rejoue le scénario en boucle pour la démo
+    if (i >= script.length && t > DEMO_LOOP) {
+      // rejoue le scénario en boucle, depuis un état propre
       i = 0;
       loop += 1;
-      apply(state, { type: "project_open", path: "/demo", tree: demoTree() }, loop * 12);
+      Object.assign(state, newSceneState());
+      apply(state, { type: "project_open", path: "/crypt", tree: demoTree() }, loop * DEMO_LOOP);
+      addNeighbors(state);
     }
   }, 100);
   return () => clearInterval(id);

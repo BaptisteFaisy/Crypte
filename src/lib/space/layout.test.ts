@@ -35,12 +35,18 @@ describe("layout", () => {
     expect(a.base.z).toBe(b.base.z);
   });
 
-  it("les dossiers s'empilent en profondeur", () => {
+  it("les dossiers se rangent en grille compacte", () => {
     const l = build(
       tree(["src", "tests"], [["src/a.rs", 0, 10], ["tests/b.rs", 1, 10]]),
     );
-    expect(l.dirs[0].origin.z - l.dirs[1].origin.z).toBeCloseTo(620, 5);
+    // 2 dossiers → 2 colonnes : côte à côte, même rangée.
+    expect(l.dirs[1].origin.x).toBeGreaterThan(l.dirs[0].origin.x);
+    expect(l.dirs[1].origin.z).toBe(l.dirs[0].origin.z);
     expect(l.dirs[1].files).toBe(1);
+    // 5 dossiers → 3 colonnes : le 4e passe à la rangée suivante (320 plus loin).
+    const five = build(tree(["a", "b", "c", "d", "e"], [["a/x.rs", 0, 10]]));
+    expect(five.dirs[0].origin.z - five.dirs[3].origin.z).toBeCloseTo(320, 5);
+    expect(five.dirs[3].origin.x).toBe(five.dirs[0].origin.x);
   });
 
   it("la plaque croît avec le nombre de fichiers, puis sature", () => {
@@ -60,7 +66,7 @@ describe("layout", () => {
 
   it("le centre est le milieu du quartier actif", () => {
     const l = build(tree(["src"], [["src/a.rs", 0, 10]]));
-    expect(layoutCenter(l).z).toBeCloseTo(-310, 5);
+    expect(layoutCenter(l).z).toBeCloseTo(-160, 5);
   });
 
   it("plusieurs projets : chemins préfixés pour les voisins", () => {

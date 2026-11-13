@@ -11,6 +11,9 @@
   import KiroWidget from "../lib/chat/KiroWidget.svelte";
   import ToolConfirm from "../lib/chat/ToolConfirm.svelte";
   import Sidebar from "../lib/chat/Sidebar.svelte";
+  import SpaceTermHead from "../lib/space/SpaceTermHead.svelte";
+  import SpaceTrace from "../lib/space/SpaceTrace.svelte";
+  import { space } from "../lib/space/store.svelte";
   import { keyAction } from "../lib/chat/keys";
   import {
     activeIndex,
@@ -105,7 +108,9 @@
     <div class="cols">
       <Sidebar />
       <main class="center">
+        {#if space.enabled}<SpaceTermHead />{/if}
         <ChatView {scrollCmd} />
+        {#if space.enabled}<SpaceTrace />{/if}
         <ChatInput />
       </main>
       <div class="right">

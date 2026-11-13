@@ -5,10 +5,12 @@ import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 import {
   buildMany,
   layoutCenter,
+  layoutCentroid,
   type Vec3,
   type WorldLayout,
 } from "./layout";
@@ -25,6 +27,8 @@ import {
   makeLabel,
   makePlate,
   makeSlabStack,
+  seen,
+  sizeLabel,
   toVec3,
   updateSlabStack,
   type ImpactObject,
@@ -40,9 +44,9 @@ export interface SpaceScene {
 const FOV = 42;
 const YAW = 0.62;
 const deg = (d: number) => (d * Math.PI) / 180;
-const CLOSE = { dist: 780, pitch: deg(17) };
+const CLOSE = { dist: 900, pitch: deg(20) };
 const OVERVIEW = { dist: 1850, pitch: deg(27) };
-const HUB = { dist: 10500, pitch: deg(38) };
+const HUB = { dist: 15500, pitch: deg(36) };
 const PUSH = { vx: 260, vy: 200, g: 900 };
 const FLY = { file: 1.2, web: 2.2, arc: 140 };
 
@@ -55,22 +59,39 @@ interface Fall {
 
 export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setClearColor(new THREE.Color(SPACE_THEME.bg), 1);
+  // Fond transparent : le noir vient du CSS du canvas (#050505). Une couleur
+  // de fond opaque passait deux fois en sRGB dans le composer et sortait
+  // en #262626 (gris) au lieu de #050505 (DESIGN §2).
+  renderer.setClearColor(new THREE.Color(SPACE_THEME.bg), 0);
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(new THREE.Color(SPACE_THEME.bg), 180, 1500);
   const camera = new THREE.PerspectiveCamera(FOV, 1, 10, 80000);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x161616, 0.62));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+  // three r155+ : unités physiques, il faut ×π pour retrouver l'éclairage du
+  // prototype (r128). Sinon les fantômes sortent gris (DESIGN §6.3).
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x161616, 0.62 * Math.PI));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7 * Math.PI);
   sun.position.set(500, 900, 800);
   scene.add(sun);
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  composer.addPass(new UnrealBloomPass(new THREE.Vector2(480, 270), 0.7, 0.5, 0.62));
+  // Bloom plus serré qu'au lab : avec l'éclairage ×π, un rayon de 0.5 faisait
+  // autour du fantôme un halo géant qui délavait le sol (« disque sombre »).
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(480, 270), 0.45, 0.22, 0.78));
+  // Sans OutputPass, le composer sort du linéaire non converti : le noir
+  // #050505 ressortait gris. OutputPass applique l'espace sRGB (DESIGN §2).
+  composer.addPass(new OutputPass());
 
   const world = new THREE.Group();
   scene.add(world);
   const floor = makeFloor();
   scene.add(floor);
+  const ambience = makeAmbience();
+  scene.add(ambience);
+  const plaza = makeGroundGlow();
+  (plaza.material as THREE.MeshBasicMaterial).color.set(SPACE_THEME.accent);
+  (plaza.material as THREE.MeshBasicMaterial).opacity = 0.18;
+  plaza.scale.setScalar(520);
+  scene.add(plaza);
   const mainGhost = makeGhost(60);
   const mainBeam = makeBeam();
   const mainGlow = makeGroundGlow();
@@ -84,6 +105,12 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   const stacks = new Map<string, SlabStack>();
   const glows = new Map<string, THREE.Mesh>();
   const labels = new Map<string, THREE.Sprite>();
+  const allLabels: THREE.Sprite[] = [];
+  const dirLabels: THREE.Sprite[] = [];
+  /// 1 près du projet, 0 en vue d'ensemble (F7) : les noms de fichiers et de
+  /// dossiers s'effacent quand on s'éloigne, seuls les projets restent.
+  let near = 1;
+  let viewH = 900;
   const subGhosts = new Map<number, THREE.Group>();
   const falls = new Map<number, Fall>();
   const impacts: { obj: ImpactObject; at: number; pos: THREE.Vector3; big: boolean }[] = [];
@@ -122,7 +149,14 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   function resize(width: number, height: number): void {
     renderer.setSize(width, height, false);
     composer.setSize(width, height);
+    viewH = Math.max(1, height);
+    for (const l of allLabels) sizeLabel(l, viewH, FOV);
     camera.aspect = width / Math.max(1, height);
+    // Le chat occupe la gauche (DESIGN §3) : on décale le centre de la vue
+    // vers la droite pour que la scène tombe dans la zone libre.
+    const shift = width > 900 ? Math.min(width * 0.2, 360) : 0;
+    if (shift > 0) camera.setViewOffset(width, height, -shift, 0, width, height);
+    else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   }
 
@@ -130,6 +164,7 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
     clearWorld();
     disposeObject(world);
     disposeObject(floor);
+    disposeObject(ambience);
     renderer.dispose();
   }
 
@@ -144,6 +179,14 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
     stacks.clear();
     glows.clear();
     labels.clear();
+    allLabels.length = 0;
+  }
+
+  function addLabel(sprite: THREE.Sprite): THREE.Sprite {
+    sizeLabel(sprite, viewH, FOV);
+    allLabels.push(sprite);
+    world.add(sprite);
+    return sprite;
   }
 
   function buildStatic(lay: WorldLayout): void {
@@ -151,23 +194,26 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
       const plate = makePlate(dir.w, dir.d);
       plate.position.copy(toVec3(dir.origin));
       world.add(plate);
-      const label = makeLabel(dir.path);
-      label.position.copy(toVec3(dir.origin)).add(new THREE.Vector3(dir.w / 2, 4, dir.d + 40));
+      // Le chemin du dossier est écrit au sol, au bord avant de la plaque.
+      const label = makeLabel(dir.path, "dir");
+      label.center.set(0, 0.5);
+      label.position.copy(toVec3(dir.origin)).add(new THREE.Vector3(6, 2, dir.d + 18));
       labels.set(dir.path, label);
-      world.add(label);
+      dirLabels.push(label);
+      addLabel(label);
     }
     for (const p of lay.projects) {
       if (p.active) {
         const frameObj = makeDistrictFrame(p.w + 170, p.d + 170);
         frameObj.position.copy(toVec3(p.origin)).add(new THREE.Vector3(-85, 0, -85));
         world.add(frameObj);
-        const you = makeLabel("you are here");
+        const you = makeLabel("you are here", "here");
         you.position.copy(toVec3(p.origin)).add(new THREE.Vector3(p.w / 2, 6, p.d + 160));
-        world.add(you);
+        addLabel(you);
       }
-      const name = makeLabel(p.name);
+      const name = makeLabel(p.name, "project");
       name.position.copy(toVec3(p.origin)).add(new THREE.Vector3(p.w / 2, 10, -120));
-      world.add(name);
+      addLabel(name);
     }
     for (const [path, box] of lay.files) {
       const stack = makeSlabStack();
@@ -179,10 +225,10 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
       glow.scale.setScalar(165);
       glows.set(path, glow);
       world.add(glow);
-      const label = makeLabel(path.split("/").pop() ?? path);
+      const label = makeLabel(path.split("/").pop() ?? path, "file");
       label.position.copy(toVec3(box.base)).setY(60);
       labels.set(path, label);
-      world.add(label);
+      addLabel(label);
     }
   }
 
@@ -203,8 +249,10 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
         m.color.set(warm > cool ? SPACE_THEME.accent : SPACE_THEME.fg);
       }
       if (label) {
+        // L'étiquette du fichier flotte juste au-dessus de sa pile.
+        label.position.y = (st?.slabs ?? 1) * 22 + 12 + 10;
         const s = label.material as THREE.SpriteMaterial;
-        s.opacity = state.hub ? 0 : Math.min(0.85, 0.25 + 0.6 * Math.max(read, active) + (changed ? 0.3 : 0));
+        s.opacity = near * Math.min(0.85, 0.25 + 0.6 * Math.max(read, active) + (changed ? 0.3 : 0));
       }
       void box;
     }
@@ -213,10 +261,20 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   function updateMain(state: SceneState, now: number, lay: WorldLayout): void {
     const path = state.mainFile;
     const box = path ? lay.files.get(path) : undefined;
+    const front = plazaOf(lay);
+    plaza.position.copy(front).setY(1);
     if (!box) {
-      mainGhost.visible = false;
+      // Pas de fichier en cours : le fantôme attend au sol, devant le projet.
+      const bob = Math.sin(now * 2.6) * 5;
+      mainGhost.visible = true;
+      mainGhost.position.copy(front).setY(60 + bob);
+      mainGhost.rotation.y = Math.sin(now * 0.4) * 0.45;
       mainBeam.visible = false;
-      mainGlow.visible = false;
+      mainGlow.visible = true;
+      mainGlow.position.copy(front).setY(1.5);
+      const gm = mainGlow.material as THREE.MeshBasicMaterial;
+      gm.opacity = 0.18;
+      gm.color.set(SPACE_THEME.fg);
       return;
     }
     const st = state.files.get(path!);
@@ -331,16 +389,16 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
       const u = Math.min(1, dt / 1.4);
       const e = 1 - (1 - u) * (1 - u);
       im.obj.ring.scale.setScalar(size * e + 1);
-      (im.obj.ring.material as THREE.MeshBasicMaterial).opacity = (1 - u) * 0.9;
+      (im.obj.ring.material as THREE.MeshBasicMaterial).opacity = (1 - u) * 0.7;
       const u2 = (dt - 0.12) / 1.6;
       if (u2 > 0) {
         const e2 = 1 - (1 - Math.min(1, u2)) ** 2;
         im.obj.white.scale.setScalar(size * 1.5 * e2 + 1);
-        (im.obj.white.material as THREE.MeshBasicMaterial).opacity = (1 - Math.min(1, u2)) * 0.45;
+        (im.obj.white.material as THREE.MeshBasicMaterial).opacity = (1 - Math.min(1, u2)) * 0.3;
       }
       if (dt < 0.45) {
-        im.obj.flash.scale.setScalar(size * 1.8);
-        (im.obj.flash.material as THREE.MeshBasicMaterial).opacity = 1 - dt / 0.45;
+        im.obj.flash.scale.setScalar(size * 1.2);
+        (im.obj.flash.material as THREE.MeshBasicMaterial).opacity = (1 - dt / 0.45) * 0.5;
       }
       const pos = im.obj.dust.geometry.getAttribute("position") as THREE.BufferAttribute;
       for (let j = 0; j < 26; j++) {
@@ -372,12 +430,18 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
         ? CLOSE
         : OVERVIEW;
     const target = state.hub
-      ? new THREE.Vector3()
+      ? toVec3(layoutCentroid(lay))
       : state.mainFile && lay.files.get(state.mainFile)
-        ? toVec3(lay.files.get(state.mainFile)!.base).setY(60)
+        ? toVec3(lay.files.get(state.mainFile)!.base).setY(
+            // On vise le haut de la pile : le fantôme reste au centre de la vue,
+            // sous le titre de l'étape, même sur une pile haute.
+            (state.files.get(state.mainFile)?.slabs ?? 1) * 22 + 40,
+          )
         : layoutCenterVec(lay);
     const k = 1 - Math.exp(-3.2 * dt);
     cam.dist += (goal.dist - cam.dist) * k;
+    near = 1 - Math.min(1, Math.max(0, (cam.dist - 2600) / 2400));
+    for (const l of dirLabels) (l.material as THREE.SpriteMaterial).opacity = 0.4 * near;
     cam.pitch += (goal.pitch - cam.pitch) * k;
     cam.target.lerp(target, k);
     const shake = cam.shake;
@@ -400,6 +464,9 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
     const fog = scene.fog as THREE.Fog;
     fog.far = Math.max(far, cam.dist * 2.2);
     fog.near = fog.far * 0.12;
+    const fu = (floor.material as THREE.ShaderMaterial).uniforms;
+    fu.uNear.value = fog.near;
+    fu.uFar.value = fog.far;
   }
 
   function spawnImpact(pos: THREE.Vector3, big: boolean, now: number): void {
@@ -448,29 +515,88 @@ function setBeam(beam: THREE.Line, from: THREE.Vector3, to: THREE.Vector3, wrote
   m.opacity = wrote ? 0.85 : 0.55;
 }
 
-/// Sol en grille de points (pas 56 : 2× le design, pour tenir 60 fps webview).
-function makeFloor(): THREE.Points {
-  const step = 56;
-  const n = 48;
-  const positions: number[] = [];
-  for (let iz = -n; iz <= n; iz++) {
-    for (let ix = -n; ix <= n; ix++) {
-      positions.push(ix * step, 0, iz * step);
-    }
+/// Sol (DESIGN §6.4) : points tous les 28, qui s'éteignent entre 1 600 et
+/// 5 200 de la caméra, et lignes discrètes tous les 600. Shader, comme le
+/// prototype : un plan infini, sans bord visible.
+function makeFloor(): THREE.Mesh {
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uNear: { value: 300 },
+      uFar: { value: 4000 },
+      uDot: { value: seen(0.3) },
+      uLine: { value: seen(0.08) },
+    },
+    vertexShader:
+      "varying vec3 vW;void main(){vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}",
+    fragmentShader:
+      "uniform float uNear,uFar,uDot,uLine;varying vec3 vW;" +
+      "void main(){vec2 p=vW.xz/28.;vec2 g=abs(fract(p)-.5);float d=length(g);float aa=fwidth(d);" +
+      "float dt=1.-smoothstep(.075-aa,.075+aa,d);float dist=distance(vW,cameraPosition);dt*=(1.-smoothstep(1600.,5200.,dist))*uDot;" +
+      "vec2 q=vW.xz/600.;vec2 r=.5-abs(fract(q)-.5);vec2 fw=fwidth(q)*1.3;float ln=1.-min(smoothstep(0.,fw.x,r.x),smoothstep(0.,fw.y,r.y));ln*=uLine;" +
+      "float fog=1.-smoothstep(uNear,uFar,dist);gl_FragColor=vec4(vec3(.96),(dt+ln)*fog);}",
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(120000, 120000), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  return mesh;
+}
+
+/// Ambiance (DESIGN §6.4) : poussière et piliers très pâles, loin du projet.
+function makeAmbience(): THREE.Group {
+  const group = new THREE.Group();
+  let seed = 7;
+  const rnd = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const n = 1000;
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = (rnd() - 0.5) * 12000;
+    pos[i * 3 + 1] = rnd() * 2000;
+    pos[i * 3 + 2] = (rnd() - 0.5) * 12000;
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  return new THREE.Points(
-    geo,
-    new THREE.PointsMaterial({
-      color: new THREE.Color(SPACE_THEME.fg),
-      size: 3,
-      sizeAttenuation: true,
-      transparent: true,
-      opacity: 0.3,
-      depthWrite: false,
-    }),
+  const dust = new THREE.Points(
+    new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(pos, 3)),
+    new THREE.PointsMaterial({ color: 0xf5f5f3, size: 3, transparent: true, opacity: seen(0.4), depthWrite: false }),
   );
+  group.add(dust);
+  const c = document.createElement("canvas");
+  c.width = 4;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+  if (ctx) {
+    const g = ctx.createLinearGradient(0, 256, 0, 0);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.5, "rgba(255,255,255,.25)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 4, 256);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  geo.translate(0, 0.5, 0);
+  for (let i = 0; i < 34; i++) {
+    const a = rnd() * Math.PI * 2;
+    const r = 2200 + rnd() * 9000;
+    const w = 40 + rnd() * 50;
+    const pillar = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({ map: tex, color: 0xf5f5f3, transparent: true, opacity: seen(0.05 + rnd() * 0.035), depthWrite: false, side: THREE.DoubleSide }),
+    );
+    pillar.scale.set(w, 3000 + rnd() * 4000, w);
+    pillar.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+    group.add(pillar);
+  }
+  return group;
+}
+
+/// Le parvis : devant le projet actif, là où le fantôme attend.
+function plazaOf(lay: WorldLayout): THREE.Vector3 {
+  const p = lay.projects.find((x) => x.active) ?? lay.projects[0];
+  if (!p) return new THREE.Vector3();
+  return toVec3(p.origin).add(new THREE.Vector3(p.w / 2, 0, 520));
 }
 
 export type { Vec3 };

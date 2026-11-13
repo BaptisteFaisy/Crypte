@@ -10,6 +10,13 @@ const FG = new THREE.Color(SPACE_THEME.fg);
 const ACCENT = new THREE.Color(SPACE_THEME.accent);
 const BG = new THREE.Color(SPACE_THEME.bg);
 
+/// Les opacités de DESIGN.md sont des opacités « vues » (mélange en sRGB, comme
+/// le prototype). three.js mélange en linéaire : un blanc à 4 % y ressort
+/// comme ~20 % de gris. On convertit pour garder le rendu du design.
+export function seen(alpha: number): number {
+  return Math.pow(Math.max(0, Math.min(1, alpha)), 2.2);
+}
+
 /** Une dalle : boîte translucide + dessus + arêtes fines. */
 export interface SlabPart {
   box: THREE.Mesh;
@@ -58,10 +65,10 @@ export function updateSlabStack(
   for (const part of stack.parts) {
     const m = part.edges.material as THREE.LineBasicMaterial;
     m.color.copy(edgeColor);
-    m.opacity = edgeAlpha;
+    m.opacity = seen(edgeAlpha);
     const tm = part.top.material as THREE.MeshBasicMaterial;
     tm.color.copy(warm > 0.02 ? ACCENT : FG);
-    tm.opacity = topAlpha;
+    tm.opacity = seen(topAlpha);
   }
 }
 
@@ -73,7 +80,7 @@ function makeSlab(index: number): SlabPart {
     new THREE.MeshBasicMaterial({
       color: FG,
       transparent: true,
-      opacity: 0.04,
+      opacity: seen(0.04),
       depthWrite: false,
     }),
   );
@@ -106,62 +113,75 @@ function makeSlab(index: number): SlabPart {
   return { box, top, edges };
 }
 
-/// Le chemin 2D du fantôme (DESIGN §6.3), mis à l'échelle `size`.
-const GHOST_PATH = [
-  [50, 6],
-  [27, 6],
-  [12, 23],
-  [12, 46],
-  [12, 104],
-  [25, 95],
-  [38, 104],
-  [50, 95],
-  [62, 104],
-  [75, 95],
-  [88, 104],
-  [88, 46],
-  [88, 23],
-  [73, 6],
-] as const;
+/// Silhouette 2D du fantôme (DESIGN §6.3), coordonnées du SVG (y vers le bas).
+/// L'axe Y est retourné (y' = 104 − y) : sinon l'ondulation passe en haut.
+/// La tête garde ses deux courbes de Bézier : en segments, elle devient anguleuse.
+function ghostShape(): THREE.Shape {
+  const X = (x: number) => x - 50;
+  const Y = (y: number) => 104 - y;
+  const s = new THREE.Shape();
+  s.moveTo(X(50), Y(6));
+  s.bezierCurveTo(X(27), Y(6), X(12), Y(23), X(12), Y(46));
+  s.lineTo(X(12), Y(104));
+  s.lineTo(X(25), Y(95));
+  s.lineTo(X(38), Y(104));
+  s.lineTo(X(50), Y(95));
+  s.lineTo(X(62), Y(104));
+  s.lineTo(X(75), Y(95));
+  s.lineTo(X(88), Y(104));
+  s.lineTo(X(88), Y(46));
+  s.bezierCurveTo(X(88), Y(23), X(73), Y(6), X(50), Y(6));
+  return s;
+}
 
-/** Un fantôme 3D : silhouette extrudée + deux yeux noirs. */
+/// Géométrie partagée, à l'échelle 100 (largeur), centrée sur son volume.
+let ghostGeo: THREE.ExtrudeGeometry | null = null;
+function ghostGeometry(): THREE.ExtrudeGeometry {
+  if (ghostGeo) return ghostGeo;
+  ghostGeo = new THREE.ExtrudeGeometry(ghostShape(), {
+    depth: 18,
+    bevelEnabled: true,
+    bevelThickness: 9,
+    bevelSize: 7,
+    bevelSegments: 5,
+    curveSegments: 24,
+  });
+  ghostGeo.center();
+  ghostGeo.computeVertexNormals();
+  return ghostGeo;
+}
+
+/// Hauteur des yeux après centrage : y' = 104 − 48 = 56, centre de la boîte ≈ 49.
+const EYE_Y = 7;
+/// Face avant après centrage : profondeur 18 + biseau 9 de chaque côté → ±18.
+const EYE_Z = 18.6;
+
+/** Un fantôme 3D : silhouette extrudée mate + deux yeux noirs posés sur la face avant. */
 export function makeGhost(size: number): THREE.Group {
   const group = new THREE.Group();
-  const shape = new THREE.Shape();
-  const k = size / 100;
-  GHOST_PATH.forEach(([x, y], i) => {
-    if (i === 0) shape.moveTo(x * k, y * k);
-    else shape.lineTo(x * k, y * k);
-  });
-  shape.closePath();
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: 18 * k,
-    bevelEnabled: true,
-    bevelThickness: 9 * k,
-    bevelSize: 7 * k,
-    bevelSegments: 5,
-  });
-  geo.center();
+  const inner = new THREE.Group();
+  inner.scale.setScalar(size / 100);
   const body = new THREE.Mesh(
-    geo,
+    ghostGeometry(),
     new THREE.MeshStandardMaterial({
-      color: 0xf5f5f3,
+      color: 0xdeded9,
       roughness: 0.55,
       metalness: 0,
       emissive: 0xffffff,
-      emissiveIntensity: 0.35,
+      emissiveIntensity: 0.06,
     }),
   );
-  group.add(body);
+  inner.add(body);
   for (const s of [-1, 1]) {
     const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 16, 12),
+      new THREE.SphereGeometry(1, 20, 14),
       new THREE.MeshBasicMaterial({ color: BG }),
     );
-    eye.scale.set(5 * k, 7 * k, 2 * k);
-    eye.position.set(s * 13 * k, 8 * k, 9 * k);
-    group.add(eye);
+    eye.scale.set(6.5, 8.5, 2.2);
+    eye.position.set(s * 11, EYE_Y, EYE_Z);
+    inner.add(eye);
   }
+  group.add(inner);
   return group;
 }
 
@@ -174,8 +194,8 @@ export function makeHorns(size: number): THREE.Group {
       new THREE.ConeGeometry(5.5 * k, 18 * k, 14),
       new THREE.MeshBasicMaterial({ color: ACCENT }),
     );
-    horn.position.set(s * 22 * k, 46 * k, 0);
-    horn.rotation.z = s * -0.35;
+    horn.position.set(s * 16 * k, 56 * k, 0);
+    horn.rotation.z = s * -0.4;
     group.add(horn);
   }
   return group;
@@ -224,7 +244,7 @@ export interface ImpactObject {
 
 export function makeImpact(): ImpactObject {
   const group = new THREE.Group();
-  const ringGeo = new THREE.RingGeometry(0.92, 1, 96);
+  const ringGeo = new THREE.RingGeometry(0.975, 1, 128);
   const ring = new THREE.Mesh(
     ringGeo,
     new THREE.MeshBasicMaterial({
@@ -277,30 +297,67 @@ export function makeImpact(): ImpactObject {
   return { group, ring, white, flash, dust };
 }
 
-/// Une étiquette (sprite sur texture canvas).
-export function makeLabel(text: string): THREE.Sprite {
+/// Style d'étiquette (DESIGN §6.1) : fichier en minuscules 10.5 px, dossier
+/// en majuscules 9.5 px posé au sol, projet en 15 px.
+export type LabelKind = "file" | "dir" | "project" | "here";
+
+const LABEL_FONT = '"Geist Mono", ui-monospace, "Cascadia Mono", Menlo, monospace';
+const LABEL_PX: Record<LabelKind, number> = { file: 10.5, dir: 9.5, project: 15, here: 11 };
+
+/// Une étiquette à taille constante à l'écran (elle ne grossit pas près de
+/// la caméra). Texture dessinée en 4× pour rester nette.
+export function makeLabel(text: string, kind: LabelKind = "file"): THREE.Sprite {
+  const px = LABEL_PX[kind];
+  const dpr = 4;
+  const label = kind === "dir" ? text.toUpperCase() : text;
+  const font = `${kind === "project" ? 600 : 500} ${px * dpr}px ${LABEL_FONT}`;
   const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 48;
   const ctx = canvas.getContext("2d");
+  let w = 64;
   if (ctx) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.font = "600 26px ui-monospace, monospace";
-    ctx.fillStyle = SPACE_THEME.fg;
-    ctx.textBaseline = "top";
-    ctx.fillText(text.toUpperCase(), 4, 6);
+    ctx.font = font;
+    w = Math.ceil(ctx.measureText(label).width + (kind === "dir" ? label.length * 0.12 * px * dpr : 0)) + 8;
+  }
+  const h = Math.ceil(px * dpr * 1.5);
+  canvas.width = w;
+  canvas.height = h;
+  if (ctx) {
+    ctx.font = font;
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = kind === "here" ? SPACE_THEME.accent : SPACE_THEME.fg;
+    if (kind === "dir" && "letterSpacing" in ctx) {
+      (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${0.12 * px * dpr}px`;
+    }
+    ctx.fillText(label, 4, h / 2);
   }
   const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
-      opacity: 0.5,
+      opacity: kind === "dir" ? 0.4 : 0.6,
       depthWrite: false,
+      depthTest: false,
+      sizeAttenuation: false,
     }),
   );
-  sprite.scale.set(120, 22, 1);
+  // sizeAttenuation=false : l'échelle est en unités écran (hauteur de la
+  // vue ≈ 2 / f). On vise `h / dpr` px sur une vue de 900 px de haut.
+  sprite.userData.labelPx = { w: w / dpr, h: h / dpr };
+  sprite.center.set(0.5, 0);
+  sizeLabel(sprite, 900);
   return sprite;
+}
+
+/// Recalcule l'échelle d'une étiquette pour une vue de `viewH` px de haut.
+export function sizeLabel(sprite: THREE.Sprite, viewH: number, fovDeg = 42): void {
+  const d = sprite.userData.labelPx as { w: number; h: number } | undefined;
+  if (!d) return;
+  const f = 1 / Math.tan((fovDeg * Math.PI) / 360);
+  const unit = 2 / (viewH * f);
+  sprite.scale.set(d.w * unit, d.h * unit, 1);
 }
 
 /// Le contour d'une plaque de dossier.
@@ -317,7 +374,7 @@ export function makePlate(w: number, d: number): THREE.Line {
     new THREE.LineBasicMaterial({
       color: FG,
       transparent: true,
-      opacity: 0.16,
+      opacity: seen(0.16),
       depthWrite: false,
     }),
   );
