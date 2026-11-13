@@ -20,7 +20,7 @@ concurrency:
 jobs:
   fmt:
     name: fmt
-    runs-on: [self-hosted, horror_cli-worker]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:
       run:
@@ -40,7 +40,7 @@ jobs:
 
   clippy:
     name: clippy
-    runs-on: [self-hosted, horror_cli-worker]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:
       run:
@@ -67,7 +67,7 @@ jobs:
 
   build:
     name: build
-    runs-on: [self-hosted, horror_cli-worker]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:
       run:
@@ -94,7 +94,7 @@ jobs:
 
   test:
     name: test
-    runs-on: [self-hosted, horror_cli-worker]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:
       run:
@@ -121,7 +121,7 @@ jobs:
 
   frontend:
     name: frontend
-    runs-on: [self-hosted, horror_cli-worker]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout (superficiel)
