@@ -43,6 +43,10 @@ export async function listenCrypte(
   channel: typeof CRYPTE_UI,
   cb: (event: CrypteUiEvent) => void,
 ): Promise<Unlisten>;
+export async function listenCrypte<T>(
+  channel: string,
+  cb: (event: T) => void,
+): Promise<Unlisten>;
 export async function listenCrypte(
   channel: string,
   cb: (event: never) => void,

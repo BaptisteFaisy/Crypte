@@ -14,6 +14,7 @@ use crate::state::ToolsBackend;
 
 /// Exécute un appel (natif ou `mcp.*`), journalise, livre, re-pilote.
 pub(crate) fn spawn_exec(app: AppHandle, chat: usize, call: crate::tools::wire::ToolCall) {
+    space_tool_events(&app, &call);
     tokio::spawn(async move {
         let tools_state = app.state::<Mutex<ToolsBackend>>();
         let mcp = match tools_state.lock() {
@@ -147,4 +148,37 @@ pub(crate) fn spawn_agent(
         }
         crate::bridge::drive_outbox(&core_state, &tools_state, &app);
     });
+}
+
+/// Émet l'étape Act puis les lectures/écritures devinées dans une commande
+/// shell (il n'existe pas d'outil fichier typé) vers le monde 3D.
+fn space_tool_events(app: &AppHandle, call: &crate::tools::wire::ToolCall) {
+    use crate::space::events::{
+        read_paths_from_shell, shell_command, write_paths_from_shell, AgentRef, SceneEvent, Step,
+    };
+    use tauri::Manager;
+    if call.name != "shell" {
+        return;
+    }
+    let log = app
+        .state::<std::sync::Mutex<crate::state::ToolsBackend>>()
+        .lock()
+        .map(|t| t.space.clone())
+        .unwrap_or_else(|p| p.into_inner().space.clone());
+    let cmd = shell_command(&call.args);
+    log.emit(&SceneEvent::StepStart { step: Step::Act });
+    for path in read_paths_from_shell(&cmd) {
+        log.emit(&SceneEvent::FileRead {
+            path,
+            agent: AgentRef::Main,
+        });
+    }
+    for path in write_paths_from_shell(&cmd) {
+        log.emit(&SceneEvent::FileWrite {
+            path,
+            agent: AgentRef::Main,
+            added: 0,
+            removed: 0,
+        });
+    }
 }

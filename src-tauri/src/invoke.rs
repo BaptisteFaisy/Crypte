@@ -1,4 +1,4 @@
-//! Registre des 93 commandes Tauri, en 4 groupes (<50 lignes/fn).
+//! Registre des 95 commandes Tauri, en 4 groupes (<50 lignes/fn).
 //!
 //! `tauri::generate_handler!` ne se compose pas (un seul handler par
 //! builder) : [`dispatch`] route sur le préfixe du nom vers le groupe
@@ -96,9 +96,13 @@ fn handler_bus_prov() -> impl Fn(Invoke<tauri::Wry>) -> bool {
 }
 
 /// §4–§10 : web, outils, kiro, specs, mcp, critique, boutique,
-/// apparition, hub, jeu, vps (39).
+/// apparition, hub, jeu, vps (39) + project space (2).
 fn handler_tools() -> impl Fn(Invoke<tauri::Wry>) -> bool {
     tauri::generate_handler![
+        crate::space::cmds::space_scan,
+        crate::space::cmds::space_projects,
+        crate::space::cmds::space_attach,
+        crate::space::cmds::space_detach,
         crate::cmd_tools::tools_status,
         crate::cmd_tools::tools_set,
         crate::cmd_tools::tools_list,
@@ -264,6 +268,10 @@ mod tests {
             "vps_add",
             "vps_remove",
             "vps_install",
+            "space_scan",
+            "space_projects",
+            "space_attach",
+            "space_detach",
         ] {
             check(cmd, Group::Tools);
         }

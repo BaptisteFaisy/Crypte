@@ -1,0 +1,73 @@
+/* space.css — fond 3D « project space » dans la webview.
+   Le monde est un canvas fixe DERRIÈRE l'app ; le panneau de chat devient
+   un vrai rectangle semi-transparent (backdrop-filter), comme DESIGN §4. */
+
+.space-bg {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+}
+
+:root[data-space="on"] body,
+:root[data-space="on"] .crypte-app,
+:root[data-space="on"] .crypte-chat.page {
+  background: transparent;
+}
+
+:root[data-space="on"] .crypte-app {
+  position: relative;
+  z-index: 1;
+}
+
+/* Le panneau de chat : voile translucide posé sur la 3D (DESIGN §4). */
+:root[data-space="on"] .crypte-chat .center {
+  background: linear-gradient(
+    180deg,
+    rgba(245, 245, 243, 0.03) 0%,
+    rgba(245, 245, 243, 0.0075) 100%
+  );
+  backdrop-filter: blur(6px) saturate(130%);
+  -webkit-backdrop-filter: blur(6px) saturate(130%);
+  border: 1px solid rgba(245, 245, 243, 0.13);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 1px 0 rgba(245, 245, 243, 0.16),
+    0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-space="on"] .crypte-chat .right,
+:root[data-space="on"] .crypte-chat .side,
+:root[data-space="on"] .crypte-frame {
+  background: rgba(5, 5, 5, 0.35);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Coins orange du panneau (L 9 px), comme le prototype. */
+:root[data-space="on"] .crypte-chat .center::before,
+:root[data-space="on"] .crypte-chat .center::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-color: #ff5b1f;
+  border-style: solid;
+  pointer-events: none;
+}
+:root[data-space="on"] .crypte-chat .center::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1.5px 0 0 1.5px;
+}
+:root[data-space="on"] .crypte-chat .center::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 1.5px 1.5px 0;
+}
+:root[data-space="on"] .crypte-chat .center {
+  position: relative;
+}
