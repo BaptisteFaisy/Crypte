@@ -65,8 +65,10 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(new THREE.Color(SPACE_THEME.bg), 180, 1500);
   const camera = new THREE.PerspectiveCamera(FOV, 1, 10, 80000);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x161616, 0.62));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+  // three r155+ : unités physiques, il faut ×π pour retrouver l'éclairage du
+  // prototype (r128). Sinon les fantômes sortent gris (DESIGN §6.3).
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x161616, 0.62 * Math.PI));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7 * Math.PI);
   sun.position.set(500, 900, 800);
   scene.add(sun);
   const composer = new EffectComposer(renderer);
@@ -80,6 +82,13 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   scene.add(world);
   const floor = makeFloor();
   scene.add(floor);
+  const ambience = makeAmbience();
+  scene.add(ambience);
+  const plaza = makeGroundGlow();
+  (plaza.material as THREE.MeshBasicMaterial).color.set(SPACE_THEME.accent);
+  (plaza.material as THREE.MeshBasicMaterial).opacity = 0.18;
+  plaza.scale.setScalar(520);
+  scene.add(plaza);
   const mainGhost = makeGhost(60);
   const mainBeam = makeBeam();
   const mainGlow = makeGroundGlow();
@@ -148,6 +157,7 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
     clearWorld();
     disposeObject(world);
     disposeObject(floor);
+    disposeObject(ambience);
     renderer.dispose();
   }
 
@@ -243,10 +253,20 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   function updateMain(state: SceneState, now: number, lay: WorldLayout): void {
     const path = state.mainFile;
     const box = path ? lay.files.get(path) : undefined;
+    const front = plazaOf(lay);
+    plaza.position.copy(front).setY(1);
     if (!box) {
-      mainGhost.visible = false;
+      // Pas de fichier en cours : le fantôme attend au sol, devant le projet.
+      const bob = Math.sin(now * 2.6) * 5;
+      mainGhost.visible = true;
+      mainGhost.position.copy(front).setY(60 + bob);
+      mainGhost.rotation.y = Math.sin(now * 0.4) * 0.45;
       mainBeam.visible = false;
-      mainGlow.visible = false;
+      mainGlow.visible = true;
+      mainGlow.position.copy(front).setY(1.5);
+      const gm = mainGlow.material as THREE.MeshBasicMaterial;
+      gm.opacity = 0.18;
+      gm.color.set(SPACE_THEME.fg);
       return;
     }
     const st = state.files.get(path!);
@@ -430,6 +450,9 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
     const fog = scene.fog as THREE.Fog;
     fog.far = Math.max(far, cam.dist * 2.2);
     fog.near = fog.far * 0.12;
+    const fu = (floor.material as THREE.ShaderMaterial).uniforms;
+    fu.uNear.value = fog.near;
+    fu.uFar.value = fog.far;
   }
 
   function spawnImpact(pos: THREE.Vector3, big: boolean, now: number): void {
@@ -478,29 +501,88 @@ function setBeam(beam: THREE.Line, from: THREE.Vector3, to: THREE.Vector3, wrote
   m.opacity = wrote ? 0.85 : 0.55;
 }
 
-/// Sol en grille de points (pas 56 : 2× le design, pour tenir 60 fps webview).
-function makeFloor(): THREE.Points {
-  const step = 56;
-  const n = 48;
-  const positions: number[] = [];
-  for (let iz = -n; iz <= n; iz++) {
-    for (let ix = -n; ix <= n; ix++) {
-      positions.push(ix * step, 0, iz * step);
-    }
+/// Sol (DESIGN §6.4) : points tous les 28, qui s'éteignent entre 1 600 et
+/// 5 200 de la caméra, et lignes discrètes tous les 600. Shader, comme le
+/// prototype : un plan infini, sans bord visible.
+function makeFloor(): THREE.Mesh {
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uNear: { value: 300 },
+      uFar: { value: 4000 },
+      uDot: { value: seen(0.3) },
+      uLine: { value: seen(0.08) },
+    },
+    vertexShader:
+      "varying vec3 vW;void main(){vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}",
+    fragmentShader:
+      "uniform float uNear,uFar,uDot,uLine;varying vec3 vW;" +
+      "void main(){vec2 p=vW.xz/28.;vec2 g=abs(fract(p)-.5);float d=length(g);float aa=fwidth(d);" +
+      "float dt=1.-smoothstep(.075-aa,.075+aa,d);float dist=distance(vW,cameraPosition);dt*=(1.-smoothstep(1600.,5200.,dist))*uDot;" +
+      "vec2 q=vW.xz/600.;vec2 r=.5-abs(fract(q)-.5);vec2 fw=fwidth(q)*1.3;float ln=1.-min(smoothstep(0.,fw.x,r.x),smoothstep(0.,fw.y,r.y));ln*=uLine;" +
+      "float fog=1.-smoothstep(uNear,uFar,dist);gl_FragColor=vec4(vec3(.96),(dt+ln)*fog);}",
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(120000, 120000), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  return mesh;
+}
+
+/// Ambiance (DESIGN §6.4) : poussière et piliers très pâles, loin du projet.
+function makeAmbience(): THREE.Group {
+  const group = new THREE.Group();
+  let seed = 7;
+  const rnd = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const n = 1000;
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = (rnd() - 0.5) * 12000;
+    pos[i * 3 + 1] = rnd() * 2000;
+    pos[i * 3 + 2] = (rnd() - 0.5) * 12000;
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  return new THREE.Points(
-    geo,
-    new THREE.PointsMaterial({
-      color: new THREE.Color(SPACE_THEME.fg),
-      size: 3,
-      sizeAttenuation: true,
-      transparent: true,
-      opacity: seen(0.3),
-      depthWrite: false,
-    }),
+  const dust = new THREE.Points(
+    new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(pos, 3)),
+    new THREE.PointsMaterial({ color: 0xf5f5f3, size: 3, transparent: true, opacity: seen(0.4), depthWrite: false }),
   );
+  group.add(dust);
+  const c = document.createElement("canvas");
+  c.width = 4;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+  if (ctx) {
+    const g = ctx.createLinearGradient(0, 256, 0, 0);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.5, "rgba(255,255,255,.25)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 4, 256);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  geo.translate(0, 0.5, 0);
+  for (let i = 0; i < 34; i++) {
+    const a = rnd() * Math.PI * 2;
+    const r = 2200 + rnd() * 9000;
+    const w = 40 + rnd() * 50;
+    const pillar = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({ map: tex, color: 0xf5f5f3, transparent: true, opacity: seen(0.05 + rnd() * 0.035), depthWrite: false, side: THREE.DoubleSide }),
+    );
+    pillar.scale.set(w, 3000 + rnd() * 4000, w);
+    pillar.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+    group.add(pillar);
+  }
+  return group;
+}
+
+/// Le parvis : devant le projet actif, là où le fantôme attend.
+function plazaOf(lay: WorldLayout): THREE.Vector3 {
+  const p = lay.projects.find((x) => x.active) ?? lay.projects[0];
+  if (!p) return new THREE.Vector3();
+  return toVec3(p.origin).add(new THREE.Vector3(p.w / 2, 0, 520));
 }
 
 export type { Vec3 };

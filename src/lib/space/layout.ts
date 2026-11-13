@@ -10,7 +10,10 @@ export const SLAB_H = 12;
 export const SLAB_PITCH = 22;
 export const FILE_PITCH = 150;
 export const FOLDER_PAD = 85;
-export const ROW_PITCH = 620;
+/// Pas entre deux rangées de dossiers : plaque (280) + allée (40).
+export const ROW_PITCH = 320;
+/// Allée entre deux colonnes de dossiers.
+export const COL_GAP = 60;
 export const DISTRICT_PITCH = 4500;
 export const MAX_FILES_PER_FOLDER = 24;
 
@@ -108,17 +111,34 @@ function joinPath(root: string, rel: string): string {
   return `${root.replace(/\/$/, "")}/${rel}`;
 }
 
+/// Les dossiers se rangent en grille compacte (comme le prototype) :
+/// K = ⌈√n⌉ colonnes, dans l'ordre de l'arbre, rangées vers le fond (−z).
 function dirBoxes(tree: ProjectTree, off: Vec3): DirBox[] {
-  return tree.dirs.map((dir, i) => {
-    const n = tree.files.filter((f) => f.dir === i).length;
-    return {
-      path: dir.path,
-      origin: v3(off.x, 0, off.z - i * ROW_PITCH),
-      w: plateWidth(n),
-      d: SLAB + FOLDER_PAD * 2,
-      files: n,
-    };
+  const n = tree.dirs.length;
+  const k = gridCols(n);
+  const counts = tree.dirs.map((_, i) => tree.files.filter((f) => f.dir === i).length);
+  const colW: number[] = Array.from({ length: k }, () => 0);
+  counts.forEach((c, i) => {
+    colW[i % k] = Math.max(colW[i % k], plateWidth(c));
   });
+  const colX: number[] = [];
+  let x = 0;
+  for (let c = 0; c < k; c++) {
+    colX.push(x);
+    x += colW[c] + COL_GAP;
+  }
+  return tree.dirs.map((dir, i) => ({
+    path: dir.path,
+    origin: v3(off.x + colX[i % k], 0, off.z - Math.floor(i / k) * ROW_PITCH),
+    w: plateWidth(counts[i]),
+    d: SLAB + FOLDER_PAD * 2,
+    files: counts[i],
+  }));
+}
+
+/// Nombre de colonnes de la grille de dossiers.
+export function gridCols(dirs: number): number {
+  return Math.max(1, Math.ceil(Math.sqrt(Math.max(1, dirs))));
 }
 
 /// Fichiers triés par dossier puis par chemin, avec leur rang dans le dossier.
@@ -148,6 +168,9 @@ function groupCenter(dir: DirBox, dirIndex: number): FileBox {
 }
 
 function bounds(dirs: DirBox[]): [number, number] {
-  const w = dirs.reduce((m, b) => Math.max(m, b.w), 0);
-  return [Math.max(w, SLAB), dirs.length * ROW_PITCH];
+  if (dirs.length === 0) return [SLAB, ROW_PITCH];
+  const x0 = Math.min(...dirs.map((b) => b.origin.x));
+  const x1 = Math.max(...dirs.map((b) => b.origin.x + b.w));
+  const rows = Math.ceil(dirs.length / gridCols(dirs.length));
+  return [Math.max(x1 - x0, SLAB), rows * ROW_PITCH];
 }

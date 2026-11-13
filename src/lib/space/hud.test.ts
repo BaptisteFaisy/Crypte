@@ -7,7 +7,7 @@ import { newSceneState } from "./types";
 
 function opened() {
   const s = newSceneState();
-  apply(s, { type: "project_open", path: "/demo", tree: demoTree() }, 0);
+  apply(s, { type: "project_open", path: "/crypt", tree: demoTree() }, 0);
   return s;
 }
 
@@ -22,19 +22,19 @@ describe("hudOf", () => {
   it("étape act + écriture : titre Act, légende Writes <fichier>", () => {
     const s = opened();
     apply(s, { type: "step_start", step: "act" }, 1);
-    apply(s, { type: "file_write", path: "src/mod1/f05.rs", agent: "main", added: 4, removed: 1 }, 1.2);
+    apply(s, { type: "file_write", path: "src/hub/encode.rs", agent: "main", added: 4, removed: 1 }, 1.2);
     const h = hudOf(s, 1.5);
     expect(h.title).toBe("Act");
     expect(h.index).toBe("04 / 06");
-    expect(h.caption).toBe("Writes src/mod1/f05.rs");
+    expect(h.caption).toBe("Writes src/hub/encode.rs");
   });
 
   it("un sous-agent au travail prend la légende", () => {
     const s = opened();
-    apply(s, { type: "agent_spawn", id: 1, kind: "sub", target: { path: "src/mod2/f10.rs" } }, 1);
+    apply(s, { type: "agent_spawn", id: 1, kind: "sub", target: { path: "deploy/nginx.conf" } }, 1);
     const h = hudOf(s, 1.5);
     expect(h.whoKind).toBe("sub");
-    expect(h.caption).toContain("src/mod2/f10.rs");
+    expect(h.caption).toContain("deploy/nginx.conf");
     expect(h.metrics.find((m) => m.label === "Sub-agents")?.value).toBe("1");
   });
 

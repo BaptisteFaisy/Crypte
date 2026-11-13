@@ -12,6 +12,12 @@
   import SpaceBackground from "../lib/space/SpaceBackground.svelte";
   import SpaceHud from "../lib/space/SpaceHud.svelte";
   import { space } from "../lib/space/store.svelte";
+  import "@fontsource/geist-sans/400.css";
+  import "@fontsource/geist-sans/600.css";
+  import "@fontsource/geist-sans/700.css";
+  import "@fontsource/geist-mono/400.css";
+  import "@fontsource/geist-mono/500.css";
+  import "@fontsource/geist-mono/600.css";
   import "../lib/space/space.css";
   import ConnectModal from "../lib/components/ConnectModal.svelte";
   import Header from "../lib/components/Header.svelte";

@@ -46,3 +46,4 @@
 </script>
 
 <canvas class="space-bg" bind:this={canvas} aria-hidden="true"></canvas>
+{#if space.enabled}<div class="space-vig" aria-hidden="true"></div>{/if}
