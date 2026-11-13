@@ -54,7 +54,23 @@ export function districtOrigin(index: number): Vec3 {
   if (index === 0) return v3();
   const ring = Math.floor((index + 1) / 2);
   const side = index % 2 === 1 ? 1 : -1;
-  return v3(side * DISTRICT_PITCH * ring, 0, 0);
+  // En arc derrière le projet actif : visibles en vue F7, jamais entre la
+  // caméra et le projet en cours.
+  const r = DISTRICT_PITCH * ring;
+  const a = ((30 + 15 * ring) * Math.PI) / 180;
+  return v3(side * r * Math.sin(a), 0, -r * Math.cos(a));
+}
+
+/// Centre de tous les quartiers (cible de caméra en vue F7).
+export function layoutCentroid(layout: WorldLayout): Vec3 {
+  if (layout.projects.length === 0) return v3();
+  let x = 0;
+  let z = 0;
+  for (const p of layout.projects) {
+    x += p.origin.x + p.w / 2;
+    z += p.origin.z - p.d / 2;
+  }
+  return v3(x / layout.projects.length, 0, z / layout.projects.length);
 }
 
 /// Largeur d'une plaque pour `n` fichiers (bornée au regroupement).

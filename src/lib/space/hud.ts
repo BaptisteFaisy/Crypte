@@ -38,7 +38,10 @@ export function hudOf(state: SceneState, now: number): Hud {
   const subsAlive = [...state.subs.values()].filter((s) => s.doneAt === null).length;
   let changed = 0;
   let slabs = 0;
-  for (const f of state.files.values()) {
+  for (const [path, f] of state.files) {
+    // Les fichiers des projets voisins ont un chemin absolu : on ne compte
+    // que le projet actif.
+    if (path.startsWith("/")) continue;
     if (f.changed) changed++;
     slabs += f.slabs;
   }

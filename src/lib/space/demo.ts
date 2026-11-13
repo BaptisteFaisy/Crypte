@@ -5,7 +5,7 @@
 // corrige encode.rs, Kiro juge, réponse, puis F7 sur tous les projets.
 // Sert aussi de repli si le backend ne répond pas encore.
 import { apply } from "./state";
-import { newSceneState, type ProjectTree, type SceneEvent, type SceneState } from "./types";
+import { newSceneState, slabsFor, type ProjectTree, type SceneEvent, type SceneState } from "./types";
 
 /// Arborescence de crypt (1 dalle ≈ 150 lignes, comme DESIGN §6.1).
 const CRYPT: [string, [string, number][]][] = [
@@ -34,6 +34,37 @@ export function demoTree(): ProjectTree {
     list.map(([name, slabs]) => ({ path: pathOf(dir, name), dir: d, lines: slabs * 150 - 20 })),
   );
   return { root: "/crypt", dirs, files };
+}
+
+/// Les autres projets de l'utilisateur (vue F7) : des quartiers plus petits.
+const NEIGHBORS = ["hub-site", "pixel-crypt", "kiro", "bestiary", "lantern", "docs"];
+
+/// Arbre généré (stable) d'un projet voisin.
+export function neighborTree(name: string, seed: number): ProjectTree {
+  let x = seed * 9301 + 49297;
+  const rnd = () => {
+    x = (x * 9301 + 49297) % 233280;
+    return x / 233280;
+  };
+  const nd = 3 + Math.floor(rnd() * 4);
+  const dirs = Array.from({ length: nd }, (_, i) => ({ path: i === 0 ? name : `src/m${i}`, parent: i > 0 ? 0 : null }));
+  const files: ProjectTree["files"] = [];
+  dirs.forEach((_, d) => {
+    const nf = 2 + Math.floor(rnd() * 4);
+    for (let f = 0; f < nf; f++) files.push({ path: `${d === 0 ? "" : `src/m${d}/`}f${f}.rs`, dir: d, lines: (1 + Math.floor(rnd() * 6)) * 150 - 20 });
+  });
+  return { root: `/${name}`, dirs, files };
+}
+
+/// Ajoute les voisins après le projet actif (index 0 = crypt).
+export function addNeighbors(state: SceneState): void {
+  NEIGHBORS.forEach((name, i) => {
+    const tree = neighborTree(name, i + 1);
+    state.projects.push({ root: tree.root, name, tree });
+    for (const f of tree.files) {
+      state.files.set(`${tree.root}/${f.path}`, { slabs: slabsFor(f.lines), readAt: null, writeAt: null, changed: false });
+    }
+  });
 }
 
 /// Durée d'un tour du scénario (s).
@@ -70,6 +101,7 @@ export function demoScript(): [number, SceneEvent][] {
 /// Lance le scénario sur `state` ; rend la fonction d'arrêt.
 export function startDemo(state: SceneState, now: () => number): () => void {
   apply(state, { type: "project_open", path: "/crypt", tree: demoTree() }, 0);
+  addNeighbors(state);
   const script = demoScript();
   let i = 0;
   let loop = 0;
@@ -85,6 +117,7 @@ export function startDemo(state: SceneState, now: () => number): () => void {
       loop += 1;
       Object.assign(state, newSceneState());
       apply(state, { type: "project_open", path: "/crypt", tree: demoTree() }, loop * DEMO_LOOP);
+      addNeighbors(state);
     }
   }, 100);
   return () => clearInterval(id);

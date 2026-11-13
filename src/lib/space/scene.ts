@@ -10,6 +10,7 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import {
   buildMany,
   layoutCenter,
+  layoutCentroid,
   type Vec3,
   type WorldLayout,
 } from "./layout";
@@ -45,7 +46,7 @@ const YAW = 0.62;
 const deg = (d: number) => (d * Math.PI) / 180;
 const CLOSE = { dist: 900, pitch: deg(20) };
 const OVERVIEW = { dist: 1850, pitch: deg(27) };
-const HUB = { dist: 10500, pitch: deg(38) };
+const HUB = { dist: 15500, pitch: deg(36) };
 const PUSH = { vx: 260, vy: 200, g: 900 };
 const FLY = { file: 1.2, web: 2.2, arc: 140 };
 
@@ -73,7 +74,9 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   scene.add(sun);
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  composer.addPass(new UnrealBloomPass(new THREE.Vector2(480, 270), 0.7, 0.5, 0.62));
+  // Bloom plus serré qu'au lab : avec l'éclairage ×π, un rayon de 0.5 faisait
+  // autour du fantôme un halo géant qui délavait le sol (« disque sombre »).
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(480, 270), 0.45, 0.22, 0.78));
   // Sans OutputPass, le composer sort du linéaire non converti : le noir
   // #050505 ressortait gris. OutputPass applique l'espace sRGB (DESIGN §2).
   composer.addPass(new OutputPass());
@@ -103,6 +106,10 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
   const glows = new Map<string, THREE.Mesh>();
   const labels = new Map<string, THREE.Sprite>();
   const allLabels: THREE.Sprite[] = [];
+  const dirLabels: THREE.Sprite[] = [];
+  /// 1 près du projet, 0 en vue d'ensemble (F7) : les noms de fichiers et de
+  /// dossiers s'effacent quand on s'éloigne, seuls les projets restent.
+  let near = 1;
   let viewH = 900;
   const subGhosts = new Map<number, THREE.Group>();
   const falls = new Map<number, Fall>();
@@ -192,6 +199,7 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
       label.center.set(0, 0.5);
       label.position.copy(toVec3(dir.origin)).add(new THREE.Vector3(6, 2, dir.d + 18));
       labels.set(dir.path, label);
+      dirLabels.push(label);
       addLabel(label);
     }
     for (const p of lay.projects) {
@@ -244,7 +252,7 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
         // L'étiquette du fichier flotte juste au-dessus de sa pile.
         label.position.y = (st?.slabs ?? 1) * 22 + 12 + 10;
         const s = label.material as THREE.SpriteMaterial;
-        s.opacity = state.hub ? 0 : Math.min(0.85, 0.25 + 0.6 * Math.max(read, active) + (changed ? 0.3 : 0));
+        s.opacity = near * Math.min(0.85, 0.25 + 0.6 * Math.max(read, active) + (changed ? 0.3 : 0));
       }
       void box;
     }
@@ -422,12 +430,18 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
         ? CLOSE
         : OVERVIEW;
     const target = state.hub
-      ? layoutCenterVec(lay)
+      ? toVec3(layoutCentroid(lay))
       : state.mainFile && lay.files.get(state.mainFile)
-        ? toVec3(lay.files.get(state.mainFile)!.base).setY(60)
+        ? toVec3(lay.files.get(state.mainFile)!.base).setY(
+            // On vise le haut de la pile : le fantôme reste au centre de la vue,
+            // sous le titre de l'étape, même sur une pile haute.
+            (state.files.get(state.mainFile)?.slabs ?? 1) * 22 + 40,
+          )
         : layoutCenterVec(lay);
     const k = 1 - Math.exp(-3.2 * dt);
     cam.dist += (goal.dist - cam.dist) * k;
+    near = 1 - Math.min(1, Math.max(0, (cam.dist - 2600) / 2400));
+    for (const l of dirLabels) (l.material as THREE.SpriteMaterial).opacity = 0.4 * near;
     cam.pitch += (goal.pitch - cam.pitch) * k;
     cam.target.lerp(target, k);
     const shake = cam.shake;
